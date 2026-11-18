@@ -1,4 +1,5 @@
 import type {Db,Filter} from "mongodb";
+import type {AuditEventDocument,SessionDocument} from "@zuri/core-platform";
 import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {z,ZodError} from "zod";
 import {coreCollections,createOrganization,createLocation,createMembership,createRole,upsertPolicy,setFeatureFlag,appendAuditEvent} from "@zuri/core-platform";
@@ -103,7 +104,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.get("/platform/sessions",{preHandler:permit("platform.sessions.read")},async request=>{
    const p=principal(request),q=z.object({userId:z.string().optional(),activeOnly:z.coerce.boolean().default(true)}).parse(request.query);
    const all=p.permissions.includes("platform.sessions.read.all"),userId=all?q.userId??undefined:p.userId;
-   const filter:Filter<{tenantId:string;userId?:string;revokedAt?:Date}>={tenantId:p.tenantId,...(userId?{userId}:{}),...(q.activeOnly?{revokedAt:{$exists:false}}:{})};
+   const filter:Filter<SessionDocument>={tenantId:p.tenantId,...(userId?{userId}:{}),...(q.activeOnly?{revokedAt:{$exists:false}}:{})};
    return {data:await c.sessions.find(filter,{projection:{_id:0,refreshTokenHash:0,refreshTokenHistory:0}}).sort({lastUsedAt:-1}).limit(200).toArray()};
   });
   app.post("/platform/sessions/:sessionId/revoke",{preHandler:permit("platform.sessions.revoke")},async(request,reply)=>{
@@ -117,7 +118,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.get("/platform/audit-events",{preHandler:permit("platform.audit.read")},async request=>{
    const p=principal(request),q=z.object({action:z.string().optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(request.query);
-   const filter:Filter<{tenantId:string;action?:string}>={tenantId:p.tenantId,...(q.action?{action:q.action}:{})};
+   const filter:Filter<AuditEventDocument>={tenantId:p.tenantId,...(q.action?{action:q.action}:{})};
    return {data:await c.auditEvents.find(filter,{projection:{_id:0}}).sort({occurredAt:-1}).limit(q.limit).toArray()};
   });
  };
