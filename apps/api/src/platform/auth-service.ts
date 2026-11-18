@@ -35,7 +35,7 @@ export async function login(db:Db,config:AuthConfig,input:{email:string;password
  const c=coreCollections(db),user=await c.users.findOne({emailNormalized:email}),now=new Date();
  if(user?.lockedUntil&&user.lockedUntil>now)throw new Error("INVALID_CREDENTIALS");
  const valid=user?.passwordHash?await verifyPassword(input.password,user.passwordHash):false;
- if(!valid){
+ if(!user||!valid){
   if(user){await c.users.updateOne({userId:user.userId},{$inc:{failedLoginCount:1},$set:{updatedAt:now}});const latest=await c.users.findOne({userId:user.userId});if((latest?.failedLoginCount??0)>=5)await c.users.updateOne({userId:user.userId},{$set:{lockedUntil:new Date(now.getTime()+15*60_000)}});}
   throw new Error("INVALID_CREDENTIALS");
  }
