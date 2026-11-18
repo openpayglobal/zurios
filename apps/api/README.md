@@ -43,7 +43,8 @@ Do not commit real credentials or place them in source control. Keep MongoDB acc
 
 ## Readiness
 
-- `/health/live` reports process liveness.
-- `/health/ready` verifies MongoDB connectivity and returns HTTP 503 while the database is unavailable.
+- The process establishes MongoDB connectivity before it begins listening; missing or unreachable database configuration prevents startup.
+- `/health/live` reports process liveness after startup.
+- `/health/ready` sends a MongoDB ping and returns HTTP 503 if database connectivity is lost.
 
 A successful Vercel build alone does not mean the API is operational. Runtime verification must include both endpoints after the required environment variables and MongoDB network access have been configured.
