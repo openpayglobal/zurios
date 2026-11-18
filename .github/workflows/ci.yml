@@ -45,3 +45,25 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      - name: Smoke-test Fastify API with MongoDB
+        env:
+          NODE_ENV: test
+          API_HOST: 127.0.0.1
+          API_PORT: 4100
+          MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
+          MONGODB_DATABASE: zuri_ci
+          JWT_ISSUER: https://zuri-ci.example
+          JWT_AUDIENCE: zuri-ci
+          JWT_SECRET: ci-only-secret-that-is-never-used-outside-this-job
+          CORS_ORIGINS: http://localhost:5173
+        run: |
+          node apps/api/dist/server.js > /tmp/zuri-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID" 2>/dev/null || true; wait "$API_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4100/health/live; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4100/health/ready
