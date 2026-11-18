@@ -63,12 +63,19 @@ jobs:
           trap 'kill "$API_PID" 2>/dev/null || true; sleep 1; kill -9 "$API_PID" 2>/dev/null || true' EXIT
           LIVE_OK=0
           for i in $(seq 1 30); do
+            if ! kill -0 "$API_PID" 2>/dev/null; then
+              cat /tmp/zuri-api.log
+              exit 1
+            fi
             if curl --max-time 2 -fsS http://127.0.0.1:4100/health/live; then
               LIVE_OK=1
               break
             fi
             sleep 1
           done
-          test "$LIVE_OK" -eq 1
+          if [ "$LIVE_OK" -ne 1 ]; then
+            cat /tmp/zuri-api.log
+            exit 1
+          fi
           curl --max-time 5 -fsS http://127.0.0.1:4100/health/ready
           cat /tmp/zuri-api.log
