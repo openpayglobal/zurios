@@ -18,7 +18,7 @@ Run these from the repository root:
 ```bash
 corepack pnpm install --frozen-lockfile
 corepack pnpm --filter @zuri/api typecheck
-corepack pnpm --filter @zuri/api build
+corepack pnpm --filter @zuri/api... build
 corepack pnpm --filter @zuri/api test
 ```
 
