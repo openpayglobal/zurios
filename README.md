@@ -2,76 +2,50 @@
 
 **A modular, multi-tenant Business Operating System by OIPTECH / ODEL Developers.**
 
-Zuri OS is being designed as a unified platform for business operations, commerce, finance, inventory, workforce, integrations, analytics, AI-assisted operations, and application hosting orchestration.
+## Foundation status
 
-## Project status
+The initial monorepo foundation is being implemented on `develop`. It includes the React/Vite application shell, Fastify API bootstrap, MongoDB connection/index initialization, password/JWT primitives, tenant-scoped authorization primitives, audit event writer and GitHub Actions CI. These are foundation components, not a production-ready identity provider or complete business application.
 
-**Stage:** Greenfield foundation  
-**Implementation status:** Not yet production-ready; capabilities described in project documentation are targets unless explicitly marked implemented and verified.
+## Stack
 
-The repository is being initialized before application implementation. Product requirements, architecture, UX, and database specifications are the governing inputs for subsequent engineering work.
-
-## Product principles
-
-- Modular business capabilities with independently configurable products and modules.
-- Multi-tenant architecture with explicit tenant isolation and organization/branch context.
-- MongoDB as the platform's database technology.
-- TypeScript-first application and service development.
-- Secure identity, RBAC/ABAC authorization, auditability, and least privilege.
-- Offline-capable workflows where operationally appropriate, with explicit synchronization and reconciliation.
-- Provider-neutral integrations and hosting orchestration, subject to each provider's actual API capabilities.
-- Human approval and policy controls for sensitive financial, security, and infrastructure actions.
-- Uganda-first market configuration with a design that can support additional jurisdictions.
-- No claims of compliance, provider integration, or production readiness without evidence and testing.
-
-## Planned product domains
-
-The planned product family includes Zuri Core, Zuri Till / Zuri Register, Zuri Stock, Zuri Ledger, Zuri Pay, Zuri Commerce, Zuri CRM, Zuri Supply, Zuri People, Zuri Workforce, Zuri Insight, Zuri Intelligence, Zuri Connect, Zuri Documents, Zuri Projects, Zuri Manufacturing, Zuri Hospitality, Zuri Pharmacy, Zuri Franchise, Zuri Devices OS, Zuri Cloud & Hosting OS, and the Zuri ecosystem and marketplace.
-
-The platform is also intended to support approved ODEI ecosystem products, partner products, and customer/developer applications. Product availability, licensing, permissions, data boundaries, and deployment capabilities must be explicitly configured.
-
-## Technology direction
-
+- pnpm workspaces + Turborepo
 - TypeScript
-- React
-- Vite
-- Tailwind CSS
-- Node.js services and APIs
-- MongoDB
-- GitHub
-- Vercel for suitable initial web workloads, with portable deployment architecture
-- tma.js as an optional Telegram Mini App channel, not a core platform dependency
+- React + Vite + Tailwind CSS
+- Fastify API on Node.js
+- MongoDB as the sole application database
+- GitHub Actions CI
+- Vercel as the initial web deployment direction
 
-Exact versions, package choices, deployment topology, and service boundaries will be fixed in the approved technical architecture and implementation decisions.
+## Repository layout
 
-## Repository map
+- `apps/web` — React/Vite application shell
+- `apps/api` — API bootstrap and platform services
+- `packages/*` — shared contracts and libraries (next implementation increment)
+- `.github/workflows` — CI workflows
 
-The repository will evolve to contain:
+## Local development
 
-- `apps/` — user-facing applications and portals
-- `services/` — business capabilities and platform services
-- `packages/` — shared UI, schemas, SDKs, authorization, events, and utilities
-- `providers/` — payment, hosting, tax, shipping, commerce, and communications adapters
-- `infrastructure/` — deployment, observability, backup, and operational configuration
-- `docs/` — product, architecture, database, UX, security, compliance, and operations specifications
-- `tests/` — unit, integration, end-to-end, performance, and security tests
+1. Install Node.js 20.11+ and pnpm 9.15.4.
+2. Start a MongoDB replica set for local development if transaction-backed workflows are being tested.
+3. Copy `.env.example` to `.env`; set a unique random `JWT_SECRET` of at least 32 characters.
+4. Run `pnpm install`.
+5. Run `pnpm dev`.
 
-This is a target organization, not a claim that these components have already been implemented.
+The API uses port 4000 and the web application uses port 5173.
+
+## Platform security invariants
+
+- Tenant identity is required for tenant-owned operations.
+- Organization and location scopes narrow access within a tenant.
+- Authorization is default-deny; role-derived permissions and ABAC predicates must both be satisfied.
+- Never accept tenant identifiers as proof of access. Resolve tenant membership from a verified identity/session.
+- Audit events are append-only through the application service. Production database permissions, tamper evidence, retention and export controls remain required.
+- Secrets, credentials, private keys and production data must never be committed.
+
+## Delivery status and limitations
+
+This is an initial development scaffold. Login/registration endpoints, refresh-token rotation and revocation, invitation and recovery flows, persistent role/policy administration, migrations, comprehensive tests, rate limiting, CSRF strategy, production key management, deployment configuration and operational hardening remain future increments. No compliance certification or production readiness is claimed.
 
 ## Engineering governance
 
-- Keep `main` releasable; use pull requests for reviewed changes.
-- Develop features on short-lived branches and merge through the agreed integration branch/workflow.
-- Record significant architecture decisions as ADRs in `docs/architecture/decisions/`.
-- Validate tenant isolation, financial correctness, inventory consistency, audit trails, and permission boundaries.
-- Never commit credentials, private keys, tokens, production data, or unredacted secrets.
-- Treat provider callbacks as untrusted input; verify signatures and make processing idempotent.
-- Document implementation status and evidence; distinguish planned, in-progress, implemented, tested, and production-verified capabilities.
-
-## Getting started
-
-The application workspace and development commands will be added after the foundation stack and package boundaries are approved. Until then, consult the specifications in `docs/` and the repository contribution guidance.
-
-## Ownership and licensing
-
-This repository is maintained by the Zuri OS project under OIPTECH / ODEL Developers. A formal repository license has not yet been selected. Public visibility alone does not grant permission to copy, redistribute, or create derivative works. Confirm licensing terms with the project owner before reuse.
+Keep `main` releasable. Work on `develop` and feature branches, review through pull requests, and record material architecture changes as ADRs. Preserve the approved MongoDB-native architecture and test tenant isolation, authorization boundaries, ledger correctness and audit integrity before enabling business modules.
