@@ -4,6 +4,7 @@ import helmet from "@fastify/helmet";
 import {config,corsOrigins} from "./config.js";
 import {connectMongo,closeMongo} from "./db/mongo.js";
 import {authRoutes} from "./platform/auth-routes.js";
+import {platformRoutes} from "./platform/platform-routes.js";
 import type {AuthConfig} from "./platform/auth-service.js";
 const app=Fastify({logger:true,bodyLimit:1_048_576});
 await app.register(helmet);
@@ -15,6 +16,7 @@ const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIEN
 try{
  const db=await connectMongo();
  await app.register(authRoutes(db,authConfig));
+ await app.register(platformRoutes(db,authConfig));
  await app.listen({host:config.API_HOST,port:config.API_PORT});
 }catch(error){app.log.error(error);process.exitCode=1;}
 const shutdown=async()=>{await app.close();await closeMongo();};
