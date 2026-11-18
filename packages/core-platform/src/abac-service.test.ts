@@ -1,11 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {evaluatePolicy} from "./abac-service.js";
-test("policy matching uses deny-overrides and defaults to deny",async()=>{
- const fakeDb={collection:()=>({find:()=>({sort:()=>({toArray:async()=>[
-  {policyId:"allow",effect:"allow",priority:1,subject:{department:"sales"},resource:{classification:"public"},actions:["read"]},
-  {policyId:"deny",effect:"deny",priority:2,subject:{department:"sales"},resource:{classification:"public"},actions:["read"]}
- ]})})})};
- const result=await evaluatePolicy(fakeDb as never,"t1",{subject:{department:"sales"},resource:{classification:"public"},action:"read"});
- assert.equal(result.allowed,false);assert.equal(result.reason,"EXPLICIT_DENY");
-});
+import {evaluatePolicyDocuments} from "./abac-service.js";
+const base={subject:{department:"sales"},resource:{classification:"public"},conditions:{},actions:["read"],priority:1};
+test("ABAC defaults to deny when no allow policy matches",()=>{const r=evaluatePolicyDocuments([],{subject:{department:"sales"},resource:{classification:"public"},action:"read"});assert.equal(r.allowed,false);assert.equal(r.reason,"NO_MATCHING_ALLOW");});
+test("ABAC explicit deny overrides a matching allow",()=>{const r=evaluatePolicyDocuments([{...base,policyId:"allow",effect:"allow"},{...base,policyId:"deny",effect:"deny",priority:2}],{subject:{department:"sales"},resource:{classification:"public"},action:"read"});assert.equal(r.allowed,false);assert.equal(r.reason,"EXPLICIT_DENY");});
+test("ABAC conditions must match supplied environment context",()=>{const p={...base,policyId:"conditional",effect:"allow" as const,conditions:{network:"managed"}};const denied=evaluatePolicyDocuments([p],{subject:{department:"sales"},resource:{classification:"public"},action:"read"});const allowed=evaluatePolicyDocuments([p],{subject:{department:"sales"},resource:{classification:"public"},action:"read",environment:{network:"managed"}});assert.equal(denied.allowed,false);assert.equal(allowed.allowed,true);});
+test("ABAC does not match inherited or absent attributes",()=>{const r=evaluatePolicyDocuments([{...base,policyId:"allow",effect:"allow"}],{subject:Object.create({department:"sales"}),resource:{classification:"public"},action:"read"});assert.equal(r.allowed,false);});
