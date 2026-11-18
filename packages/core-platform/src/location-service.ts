@@ -7,6 +7,6 @@ export async function createLocation(db:Db,tenantId:string,actorId:string,input:
  const d=schema.parse(input),c=coreCollections(db);
  if(!await c.organizations.findOne({tenantId,organizationId:d.organizationId,status:"active"}))throw new Error("ORGANIZATION_NOT_FOUND");
  if(d.parentLocationId&&!await c.locations.findOne({tenantId,locationId:d.parentLocationId,organizationId:d.organizationId}))throw new Error("PARENT_LOCATION_NOT_FOUND");
- const now=new Date(),doc={tenantId,locationId:newId("loc"),...d,status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
+ const now=new Date(),doc={tenantId,locationId:newId("loc"),...d,...(d.parentLocationId?{parentLocationId:d.parentLocationId}:{}),...(d.address?{address:d.address}:{}),status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await c.locations.insertOne(doc);return doc;
 }
