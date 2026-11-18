@@ -22,17 +22,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Generate lockfile
+      - name: Generate and validate lockfile
         run: |
           corepack enable
           corepack prepare pnpm@9.15.4 --activate
-          pnpm install --lockfile-only --no-frozen-lockfile
+          corepack pnpm install --lockfile-only --no-frozen-lockfile
+          test -s pnpm-lock.yaml
+          corepack pnpm install --frozen-lockfile
       - name: Commit generated lockfile
         run: |
-          if ! git diff --quiet -- pnpm-lock.yaml; then
+          git add -f pnpm-lock.yaml
+          if ! git diff --cached --quiet -- pnpm-lock.yaml; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add pnpm-lock.yaml
             git commit -m "build(deps): add pnpm workspace lockfile"
             git push origin HEAD:fix/vercel-pnpm-node22
           fi
