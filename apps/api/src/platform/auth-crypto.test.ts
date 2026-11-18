@@ -13,7 +13,7 @@ test("TOTP verifies current time step and rejects malformed codes",()=>{
  const secret=generateTotpSecret(),now=1_800_000_000_000,step=Math.floor(now/30_000),code=totpCode(secret,step);
  assert.equal(verifyTotpCode(secret,code,now),step);
  assert.equal(verifyTotpCode(secret,"123",now),null);
- assert.equal(verifyTotpCode(secret,"000000",now,0)===step,true);
+ assert.equal(verifyTotpCode(secret,code,now,0),step);
 });
 test("MFA secret encryption authenticates ciphertext",()=>{
  const secret=generateTotpSecret(),key=randomBytes(32).toString("base64"),encrypted=encryptMfaSecret(secret,key);
