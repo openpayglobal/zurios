@@ -11,3 +11,9 @@ export * from "./abac-service.js";
 export * from "./feature-flags.js";
 export * from "./audit-service.js";
 export * from "./repositories.js";
+
+export * from "./user-service.js";
+export * from "./policy-service.js";
+export * from "./feature-flag-service.js";
+export * from "./migrate.js";
+export * from "./seed.js";
