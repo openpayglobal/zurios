@@ -2,18 +2,20 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
 import {MongoClient} from "mongodb";
-import {ensureCoreIndexes} from "./indexes.js";
 import {scoped} from "./repositories.js";
 import {rotateRefreshToken} from "./session-service.js";
 import {revokeMembership} from "./membership-service.js";
 import {setTenantStatus} from "./tenant-service.js";
+import {runCoreMigrations} from "./migration-registry.js";
+import {seedPlatform} from "./seed.js";
 const uri=process.env.MONGODB_TEST_URI;
 const hash=(value:string)=>createHash("sha256").update(value).digest("hex");
-test("MongoDB replica-set integration: tenant isolation, uniqueness and lifecycle revocation", {skip:!uri}, async()=>{
+test("MongoDB replica-set integration: tenant isolation, migrations, seeds and lifecycle revocation", {skip:!uri}, async()=>{
  const client=new MongoClient(uri!);await client.connect();
  const db=client.db(`zuri_core_it_${randomUUID().replaceAll("-","")}`);
  try{
-  await ensureCoreIndexes(db);
+  assert.deepEqual(await runCoreMigrations(db),["0001_core_indexes"]);
+  assert.deepEqual(await runCoreMigrations(db),[],"migration runner must be idempotent");
   const now=new Date(),tenantA="tenant-a",tenantB="tenant-b",userId="user-global";
   await db.collection("tenants").insertMany([{tenantId:tenantA,slug:"tenant-a",status:"active"},{tenantId:tenantB,slug:"tenant-b",status:"active"}]);
   await db.collection("organizations").insertMany([{tenantId:tenantA,organizationId:"org-a",code:"HQ",status:"active",marker:"scope-check"},{tenantId:tenantB,organizationId:"org-b",code:"HQ",status:"active",marker:"scope-check"}]);
@@ -38,6 +40,11 @@ test("MongoDB replica-set integration: tenant isolation, uniqueness and lifecycl
    assert.ok(visible.length>0,name+" should have tenant A fixtures");
    assert.ok(visible.every(v=>v.tenantId===tenantA),name+" must not return tenant B documents");
   }
+  await seedPlatform(db,tenantA,"integration-test");
+  await seedPlatform(db,tenantA,"integration-test");
+  assert.equal(await db.collection("roles").countDocuments({tenantId:tenantA,key:"tenant.viewer"}),1,"seed must be idempotent");
+  const seeded=await db.collection("roles").findOne({tenantId:tenantA,key:"tenant.viewer"});
+  assert.ok(!seeded?.permissionKeys?.includes("*"),"seed must not grant wildcard permission");
   await assert.rejects(()=>rotateRefreshToken(db,tenantA,"session-race","unrelated-invalid-token"),/SESSION_INVALID/);
   let session=await db.collection("sessions").findOne({tenantId:tenantA,sessionId:"session-race"});
   assert.equal(session?.revokedAt,undefined,"an arbitrary invalid token must not revoke a session");
