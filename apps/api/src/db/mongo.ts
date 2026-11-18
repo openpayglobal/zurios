@@ -19,8 +19,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("policies").createIndex({tenantId:1,key:1},{unique:true}),db.collection("sessions").createIndex({tenantId:1,sessionId:1},{unique:true}),
   db.collection("sessions").createIndex({expiresAt:1},{expireAfterSeconds:0}),db.collection("feature_flags").createIndex({tenantId:1,key:1},{unique:true}),
   db.collection("audit_events").createIndex({tenantId:1,occurredAt:-1}),db.collection("audit_events").createIndex({eventId:1},{unique:true}),
-  db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
-  db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
+  db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
 }
 export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
