@@ -27,7 +27,7 @@ export function authenticate(db:Db,config:AuthConfig){
     permissionsForMembership(db,tenantId,membershipId),
     c.roles.find({tenantId,roleId:{$in:membership.roleIds},status:"active"}).toArray()
    ]);
-   request.principal={userId,tenantId,membershipId,sessionId,organizationId:membership.organizationIds.length===1?membership.organizationIds[0]:undefined,locationIds:membership.locationIds,roleKeys:roles.map(r=>r.key),permissions,attributes:{}};
+   request.principal={userId,tenantId,membershipId,sessionId,...(membership.organizationIds.length===1?{organizationId:membership.organizationIds[0]}:{}),locationIds:membership.locationIds,roleKeys:roles.map(r=>r.key),permissions,attributes:{}};
   }catch{return reply.code(401).send({error:"UNAUTHENTICATED"});}
  };
 }
