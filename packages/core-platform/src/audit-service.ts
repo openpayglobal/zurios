@@ -16,7 +16,10 @@ function redact(value:unknown,depth=0):unknown{
  return value;
 }
 export async function appendAuditEvent(db:Db,input:unknown){
- const event=eventSchema.parse(input),now=new Date(),doc={eventId:randomUUID(),occurredAt:now,...event,metadata:redact(event.metadata) as Record<string,unknown>};
+ const event=eventSchema.parse(input),now=new Date();
+ const {actor,resourceId,correlationId,metadata,...rest}=event;
+ const safeActor={...(actor.userId!==undefined?{userId:actor.userId}:{}),...(actor.service!==undefined?{service:actor.service}:{})};
+ const doc={eventId:randomUUID(),occurredAt:now,...rest,actor:safeActor,...(resourceId!==undefined?{resourceId}:{}),...(correlationId!==undefined?{correlationId}:{}),metadata:redact(metadata) as Record<string,unknown>};
  await coreCollections(db).auditEvents.insertOne(doc);
  return {eventId:doc.eventId,occurredAt:doc.occurredAt};
 }
