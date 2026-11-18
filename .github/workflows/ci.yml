@@ -57,13 +57,18 @@ jobs:
           JWT_SECRET: ci-only-secret-that-is-never-used-outside-this-job
           CORS_ORIGINS: http://localhost:5173
         run: |
+          set -euo pipefail
           node apps/api/dist/server.js > /tmp/zuri-api.log 2>&1 &
           API_PID=$!
-          trap 'kill "$API_PID" 2>/dev/null || true; wait "$API_PID" 2>/dev/null || true' EXIT
+          trap 'kill "$API_PID" 2>/dev/null || true; sleep 1; kill -9 "$API_PID" 2>/dev/null || true' EXIT
+          LIVE_OK=0
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:4100/health/live; then
+            if curl --max-time 2 -fsS http://127.0.0.1:4100/health/live; then
+              LIVE_OK=1
               break
             fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:4100/health/ready
+          test "$LIVE_OK" -eq 1
+          curl --max-time 5 -fsS http://127.0.0.1:4100/health/ready
+          cat /tmp/zuri-api.log
