@@ -10,7 +10,12 @@ export async function createMembership(db:Db,tenantId:string,actorId:string,inpu
  if(!await c.tenants.findOne({tenantId,status:"active"}))throw new Error("TENANT_NOT_ACTIVE");
  if(!await c.users.findOne({userId:d.userId,status:"active"}))throw new Error("ACTIVE_USER_REQUIRED");
  if(d.organizationIds.length&&await c.organizations.countDocuments({tenantId,organizationId:{$in:d.organizationIds},status:"active"})!==d.organizationIds.length)throw new Error("INVALID_ORGANIZATION_SCOPE");
- if(d.locationIds.length&&await c.locations.countDocuments({tenantId,locationId:{$in:d.locationIds},status:"active"})!==d.locationIds.length)throw new Error("INVALID_LOCATION_SCOPE");
+ if(d.locationIds.length){
+  const locations=await c.locations.find({tenantId,locationId:{$in:d.locationIds},status:"active"},{projection:{_id:0,locationId:1,organizationId:1}}).toArray();
+  if(locations.length!==d.locationIds.length)throw new Error("INVALID_LOCATION_SCOPE");
+  const allowedOrganizations=new Set(d.organizationIds);
+  if(locations.some(location=>!allowedOrganizations.has(location.organizationId)))throw new Error("INVALID_LOCATION_ORGANIZATION_SCOPE");
+ }
  if(d.roleIds.length&&await c.roles.countDocuments({tenantId,roleId:{$in:d.roleIds},status:"active"})!==d.roleIds.length)throw new Error("INVALID_ROLE_ASSIGNMENT");
  if(await c.memberships.findOne({tenantId,userId:d.userId,status:{$in:["invited","active","suspended"]}}))throw new Error("MEMBERSHIP_ALREADY_EXISTS");
  const now=new Date(),doc={tenantId,membershipId:newId("mem"),...d,status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
