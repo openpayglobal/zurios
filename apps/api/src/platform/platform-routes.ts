@@ -18,7 +18,7 @@ function fail(error:unknown,reply:FastifyReply){
  if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST",issues:error.issues.map(i=>({path:i.path,message:i.message}))});
  const code=error instanceof Error?error.message:"";
  if(["MEMBERSHIP_ALREADY_EXISTS","DUPLICATE_ORGANIZATION_SCOPE","DUPLICATE_LOCATION_SCOPE","DUPLICATE_ROLE_ASSIGNMENT"].includes(code))return reply.code(409).send({error:code});
- if(["PARENT_ORGANIZATION_NOT_FOUND","ORGANIZATION_NOT_FOUND","PARENT_LOCATION_NOT_FOUND","ACTIVE_USER_REQUIRED","TENANT_NOT_ACTIVE","INVALID_ORGANIZATION_SCOPE","INVALID_LOCATION_SCOPE","INVALID_ROLE_ASSIGNMENT"].includes(code))return reply.code(422).send({error:code});
+ if(["PARENT_ORGANIZATION_NOT_FOUND","ORGANIZATION_NOT_FOUND","PARENT_LOCATION_NOT_FOUND","ACTIVE_USER_REQUIRED","TENANT_NOT_ACTIVE","INVALID_ORGANIZATION_SCOPE","INVALID_LOCATION_SCOPE","INVALID_LOCATION_ORGANIZATION_SCOPE","INVALID_ROLE_ASSIGNMENT"].includes(code))return reply.code(422).send({error:code});
  return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 function permit(permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{const p=principal(request);if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return reply.code(403).send({error:"FORBIDDEN"});};}
