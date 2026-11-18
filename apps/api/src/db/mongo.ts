@@ -1,0 +1,22 @@
+import { MongoClient, type Db, type Collection } from "mongodb";
+import { config } from "../config.js";
+let client: MongoClient | undefined; let database: Db | undefined;
+export async function connectMongo(): Promise<Db> {
+ if(database) return database;
+ client=new MongoClient(config.MONGODB_URI,{appName:"zuri-os-api",maxPoolSize:20,minPoolSize:2});
+ await client.connect(); database=client.db(config.MONGODB_DATABASE); await ensureIndexes(database); return database;
+}
+export function getDb(): Db { if(!database) throw new Error("MongoDB has not been initialized"); return database; }
+export function collection<T extends object>(name:string):Collection<T>{return getDb().collection<T>(name);}
+async function ensureIndexes(db:Db):Promise<void>{
+ await Promise.all([
+  db.collection("tenants").createIndex({slug:1},{unique:true}),
+  db.collection("users").createIndex({tenantId:1,emailNormalized:1},{unique:true}),
+  db.collection("memberships").createIndex({tenantId:1,userId:1,status:1}),
+  db.collection("roles").createIndex({tenantId:1,key:1},{unique:true}),
+  db.collection("audit_events").createIndex({tenantId:1,occurredAt:-1}),
+  db.collection("audit_events").createIndex({eventId:1},{unique:true}),
+  db.collection("sessions").createIndex({expiresAt:1},{expireAfterSeconds:0})
+ ]);
+}
+export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
