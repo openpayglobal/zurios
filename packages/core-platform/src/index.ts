@@ -17,3 +17,5 @@ export * from "./policy-service.js";
 export * from "./feature-flag-service.js";
 export * from "./migrate.js";
 export * from "./seed.js";
+
+export * from "./migration-registry.js";
