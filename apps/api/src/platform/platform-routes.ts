@@ -1,4 +1,5 @@
 import type {Db,Filter} from "mongodb";
+import {createHash} from "node:crypto";
 import type {AuditEventDocument,SessionDocument} from "@zuri/core-platform";
 import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {z,ZodError} from "zod";
@@ -22,7 +23,7 @@ function fail(error:unknown,reply:FastifyReply){
 }
 function permit(permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{const p=principal(request);if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return reply.code(403).send({error:"FORBIDDEN"});};}
 async function audit(db:Db,p:Principal,request:FastifyRequest,action:string,type:string,id:string|undefined){
- await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ip:request.ip,userAgent:request.headers["user-agent"]},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",metadata:{}});
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:createHash("sha256").update(request.ip).digest("hex"),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}});
 }
 export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async app=>{
