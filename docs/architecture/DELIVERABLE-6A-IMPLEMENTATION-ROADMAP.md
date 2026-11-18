@@ -3,8 +3,8 @@
 
 **Programme owner:** Zuri OS  
 **Repository:** `openpayglobal/zurios`  
-**Working branch:** `feature/6a-core-platform-services`  
-**Status:** 6A.1 implementation and automated verification are progressing; 6A overall is not yet accepted.
+**Working branch:** `feature/6a3-platform-api`  
+**Status:** 6A.1/6A.2 merged to `develop`; 6A.3 initial API implementation submitted for review; 6A overall is not yet accepted.
 
 ## Governing architecture
 
@@ -170,3 +170,13 @@ These are separate domain bounded contexts. They may own their own collections a
 - Membership/session revocation spans multiple documents; production consistency and failure recovery require transaction or equivalent tested design.
 - API authentication and route-level integration remain separate deliverables.
 - The current repository's GitHub visibility must be confirmed by its owner before proprietary development continues; the connected GitHub metadata currently reports it as public.
+
+
+## Execution update — 18 November 2026
+
+- Deliverable 6A core services and identity foundations are merged into `develop` at merge commit `ae1673104dcc8730723a36b54d9b62a2abcdfb71`.
+- CI runs associated with the merge commit completed successfully; this confirms configured automated checks only, not production acceptance.
+- 6A.3 work is in `feature/6a3-platform-api`: shared platform API routes for tenant, organization, location, membership, roles, policies, feature flags, sessions and audit-event reads; exact permission enforcement; organization-scope propagation into authenticated principals; and route contract documentation.
+- 6A.3 remains pending full route-level replica-set integration tests, OpenAPI 3.1, idempotency, transactional outbox and independent security review.
+- The repository's GitHub API metadata currently reports visibility as public. This is a blocking confidentiality discrepancy for proprietary development and must be corrected by an owner through repository Settings before sensitive source or secrets are added.
+- The connected GitHub integration used for this work exposes repository read/write operations but does not expose a repository-visibility mutation operation in this session. No visibility change has been made.
