@@ -39,6 +39,8 @@ jobs:
           echo "MongoDB replica set did not become primary"
           docker logs zuri-mongo
           exit 1
+      - name: Validate OpenAPI 3.1 contract
+        run: pnpm dlx @redocly/cli lint docs/api/openapi.yaml
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
