@@ -1,4 +1,4 @@
-import {randomBytes,createHash} from "node:crypto";
+import {randomBytes,randomUUID,createHash} from "node:crypto";
 import type {Db} from "mongodb";
 import {SignJWT,jwtVerify} from "jose";
 import {coreCollections} from "@zuri/core-platform";
@@ -13,8 +13,10 @@ async function issueAccessToken(config:AuthConfig,claims:{userId:string;tenantId
  return new SignJWT({tenantId:claims.tenantId,membershipId:claims.membershipId,sessionId:claims.sessionId,permissions:claims.permissions})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime(`${config.accessTokenTtlSeconds}s`).sign(key(config));
 }
-async function issueMfaChallenge(config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string}){
- return new SignJWT({purpose:"mfa",tenantId:claims.tenantId,membershipId:claims.membershipId})
+async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string}){
+ const challengeId=randomUUID(),now=new Date();
+ await db.collection("auth_challenges").insertOne({challengeId,userId:claims.userId,tenantId:claims.tenantId,membershipId:claims.membershipId,createdAt:now,expiresAt:new Date(now.getTime()+5*60_000)});
+ return new SignJWT({purpose:"mfa",challengeId,tenantId:claims.tenantId,membershipId:claims.membershipId})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime("5m").sign(key(config));
 }
 async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string}){
@@ -45,13 +47,13 @@ export async function login(db:Db,config:AuthConfig,input:{email:string;password
  const membership=await c.memberships.findOne({tenantId:tenant.tenantId,userId:user.userId,status:"active"});
  if(!membership)throw new Error("INVALID_CREDENTIALS");
  await c.users.updateOne({userId:user.userId},{$set:{failedLoginCount:0,updatedAt:now},$unset:{lockedUntil:""}});
- if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
+ if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
  return {mfaRequired:false as const,...await completeLogin(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
 }
 export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:string,code:string){
  const verified=await jwtVerify(challengeToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});
  const claims=verified.payload;
- if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.tenantId!=="string"||typeof claims.membershipId!=="string")throw new Error("INVALID_MFA_CHALLENGE");
+ if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.tenantId!=="string"||typeof claims.membershipId!=="string"||typeof claims.challengeId!=="string")throw new Error("INVALID_MFA_CHALLENGE");
  const c=coreCollections(db),user=await c.users.findOne({userId:claims.sub,status:"active",mfaEnabled:true});
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_NOT_CONFIGURED");
  const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
@@ -64,6 +66,8 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
  }
  const membership=await c.memberships.findOne({tenantId:claims.tenantId,membershipId:claims.membershipId,userId:user.userId,status:"active"});
  if(!membership)throw new Error("ACTIVE_MEMBERSHIP_REQUIRED");
+ const consumed=await db.collection("auth_challenges").updateOne({challengeId:claims.challengeId,userId:user.userId,usedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{usedAt:new Date()}});
+ if(!consumed.modifiedCount)throw new Error("MFA_CHALLENGE_ALREADY_USED");
  return completeLogin(db,config,{userId:user.userId,tenantId:claims.tenantId,membershipId:claims.membershipId});
 }
 export async function beginMfaEnrollment(db:Db,userId:string,config:AuthConfig){
@@ -73,6 +77,22 @@ export async function beginMfaEnrollment(db:Db,userId:string,config:AuthConfig){
  const label=encodeURIComponent(user.emailNormalized),issuer=encodeURIComponent("Zuri OS");
  return {secret,otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`};
 }
+export async function disableMfa(db:Db,userId:string,password:string,code:string,config:AuthConfig){
+ const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
+ if(!user?.passwordHash||!user.mfaSecretEncrypted||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
+ const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ if(step!==null){
+  const used=await c.users.updateOne({userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},{$set:{mfaLastUsedStep:step}});
+  if(!used.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
+ }else{
+  const used=await c.users.updateOne({userId,mfaRecoveryCodeHashes:hashRecoveryCode(code)},{$pull:{mfaRecoveryCodeHashes:hashRecoveryCode(code)}});
+  if(!used.modifiedCount)throw new Error("MFA_STEP_UP_FAILED");
+ }
+ const now=new Date();
+ await c.users.updateOne({userId},{$set:{mfaEnabled:false,updatedAt:now},$unset:{mfaSecretEncrypted:"",pendingMfaSecretEncrypted:"",mfaRecoveryCodeHashes:"",mfaLastUsedStep:""}});
+ await c.sessions.updateMany({userId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:"security:mfa-disabled"}});
+ await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.disabled",resourceType:"user",resourceId:userId,outcome:"success",metadata:{}});
+}
 export async function confirmMfaEnrollment(db:Db,userId:string,code:string,config:AuthConfig){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active"});if(!user?.pendingMfaSecretEncrypted)throw new Error("MFA_ENROLLMENT_NOT_STARTED");
  const secret=decryptMfaSecret(user.pendingMfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
@@ -81,9 +101,17 @@ export async function confirmMfaEnrollment(db:Db,userId:string,code:string,confi
  await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.enabled",resourceType:"user",resourceId:userId,outcome:"success",metadata:{}});
  return {recoveryCodes};
 }
-export async function setInitialPassword(db:Db,userId:string,password:string){
- const passwordHash=await hashPassword(password),r=await coreCollections(db).users.updateOne({userId,status:"invited",passwordHash:{$exists:false}},{$set:{passwordHash,updatedAt:new Date()}});
- if(!r.matchedCount)throw new Error("PASSWORD_SETUP_NOT_ALLOWED");
+export async function issueInvitation(db:Db,userId:string,ttlSeconds=7*24*60*60){
+ if(!Number.isSafeInteger(ttlSeconds)||ttlSeconds<300||ttlSeconds>30*24*60*60)throw new Error("INVALID_INVITATION_TTL");
+ const token=randomBytes(32).toString("base64url"),now=new Date();
+ const r=await coreCollections(db).users.updateOne({userId,status:"invited"},{$set:{invitationTokenHash:hashOpaqueToken(token),invitationExpiresAt:new Date(now.getTime()+ttlSeconds*1000),updatedAt:now}});
+ if(!r.matchedCount)throw new Error("USER_NOT_INVITED");
+ return token;
+}
+export async function acceptInvitation(db:Db,userId:string,token:string,password:string){
+ const passwordHash=await hashPassword(password),now=new Date(),c=coreCollections(db);
+ const r=await c.users.updateOne({userId,status:"invited",invitationTokenHash:hashOpaqueToken(token),invitationExpiresAt:{$gt:now}},{$set:{passwordHash,emailVerifiedAt:now,status:"active",updatedAt:now},$unset:{invitationTokenHash:"",invitationExpiresAt:""}});
+ if(!r.matchedCount)throw new Error("INVITATION_INVALID_OR_EXPIRED");
 }
 export async function issueEmailVerification(db:Db,userId:string){
  const token=randomBytes(32).toString("base64url"),now=new Date();
