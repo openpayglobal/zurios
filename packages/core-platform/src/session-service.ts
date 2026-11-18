@@ -19,7 +19,7 @@ export async function rotateRefreshToken(db:Db,tenantId:string,sessionId:string,
  }
  const next=randomBytes(48).toString("base64url"),now=new Date();
  const result=await c.sessions.updateOne({tenantId,sessionId,refreshTokenHash:digest(presentedToken),revokedAt:{$exists:false}},{$set:{refreshTokenHash:digest(next),lastUsedAt:now,updatedAt:now}});
- if(!result.modifiedCount)throw new Error("REFRESH_TOKEN_REPLAY");
+ if(!result.modifiedCount){await c.sessions.updateMany({tenantId,tokenFamilyId:session.tokenFamilyId,revokedAt:{$exists:false}},{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:"security:refresh-race"}});throw new Error("REFRESH_TOKEN_REPLAY");}
  return {refreshToken:next};
 }
 export async function revokeSession(db:Db,tenantId:string,sessionId:string){
