@@ -1,23 +1,36 @@
-import {Activity,Boxes,Building2,ChevronRight,Command,ShieldCheck,Users} from "lucide-react";
-const foundations=[
- {icon:Building2,title:"Tenant & organization",detail:"Tenant-scoped workspace foundations"},
- {icon:Users,title:"Identity & membership",detail:"Users, memberships and sessions"},
- {icon:ShieldCheck,title:"Access governance",detail:"RBAC roles with ABAC policy hooks"},
- {icon:Activity,title:"Audit & observability",detail:"Append-only security event trail"}
+import {Activity,ArrowUpRight,Blocks,Building2,ChevronDown,CircleHelp,Command,Grid2X2,Layers3,LockKeyhole,Search,Settings2,ShieldCheck,Users,Warehouse} from "lucide-react";
+
+const modules=[
+ {icon:Building2,name:"Tenant & workspace",detail:"Tenant lifecycle and workspace setup",status:"Core service",tone:"text-cyan-300"},
+ {icon:Layers3,name:"Organization structure",detail:"Companies, departments and branches",status:"Core service",tone:"text-sky-300"},
+ {icon:Users,name:"Identity & membership",detail:"Users, access and membership lifecycle",status:"Core service",tone:"text-violet-300"},
+ {icon:ShieldCheck,name:"Access governance",detail:"Roles, permissions and policy evaluation",status:"Core service",tone:"text-emerald-300"},
+ {icon:Activity,name:"Audit & security",detail:"Traceable activity and security events",status:"Core service",tone:"text-amber-300"},
+ {icon:Warehouse,name:"Business ecosystems",detail:"ERP, POS, Inventory and more",status:"Coming next",tone:"text-slate-300"}
 ];
+const metrics=[{label:"Platform services",value:"10",hint:"Foundation scope"},{label:"Business ecosystems",value:"0",hint:"Activation follows core"},{label:"Governance model",value:"RBAC + ABAC",hint:"Default-deny access"}];
 export default function App(){
- return <main className="min-h-screen bg-ink text-slate-100">
-  <header className="border-b border-white/10 bg-panel/70"><div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-   <div className="flex items-center gap-3"><div className="rounded-xl bg-accent/15 p-2 text-accent"><Command size={22}/></div><div><p className="font-semibold tracking-wide">ZURI OS</p><p className="text-xs text-slate-400">Business operating system</p></div></div>
-   <span className="rounded-full border border-accent/30 px-3 py-1 text-xs text-accent">Platform foundation · 0.1.0</span>
-  </div></header>
-  <section className="mx-auto max-w-7xl px-6 py-16">
-   <p className="text-sm font-semibold uppercase tracking-[0.25em] text-accent">One platform. Connected operations.</p>
-   <h1 className="mt-4 max-w-3xl text-4xl font-semibold leading-tight md:text-6xl">Your operational world, <span className="text-accent">unified.</span></h1>
-   <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-400">Zuri OS is being established as a modular, multi-tenant platform. Shared identity, governance and data foundations power every business ecosystem.</p>
-   <div className="mt-12 grid gap-4 md:grid-cols-2">{foundations.map(({icon:Icon,title,detail})=><article key={title} className="rounded-2xl border border-white/10 bg-panel p-6 shadow-xl shadow-black/10"><div className="rounded-xl bg-white/5 p-3 text-accent w-fit"><Icon size={22}/></div><h2 className="mt-5 text-lg font-semibold">{title}</h2><p className="mt-2 text-sm text-slate-400">{detail}</p></article>)}</div>
-   <div className="mt-10 flex items-center justify-between rounded-2xl border border-white/10 bg-panel/60 p-6"><div><p className="font-medium">Platform services are being initialized</p><p className="mt-1 text-sm text-slate-400">Business modules will be enabled after foundation verification.</p></div><ChevronRight className="text-accent"/></div>
-   <footer className="mt-16 flex items-center gap-2 text-xs text-slate-500"><Boxes size={15}/> Zuri OS · Modular by design · Governed by default</footer>
-  </section>
- </main>;
+ return <div className="min-h-screen bg-[#0b1220] text-slate-100">
+  <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-white/[0.07] bg-[#0e1828] xl:flex">
+   <div className="flex h-[76px] items-center gap-3 border-b border-white/[0.07] px-6"><div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-2 text-cyan-200"><Command size={21}/></div><div><p className="font-semibold tracking-[0.16em]">ZURI OS</p><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Operating platform</p></div></div>
+   <div className="px-4 pt-7"><p className="px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Workspace</p><div className="mt-3 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] p-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-cyan-300/20 to-blue-500/20 text-cyan-200"><Blocks size={18}/></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">Platform Command</p><p className="text-xs text-slate-500">Foundation environment</p></div><ChevronDown size={15} className="text-slate-500"/></div></div>
+   <nav className="mt-8 flex-1 space-y-1 px-4"><p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Platform</p><a className="flex items-center gap-3 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.08] px-3 py-2.5 text-sm text-cyan-100"><Grid2X2 size={17}/> Overview</a><a className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400"><Building2 size={17}/> Organizations</a><a className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400"><Users size={17}/> Identity & access</a><a className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400"><ShieldCheck size={17}/> Governance</a><a className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400"><Activity size={17}/> Audit centre</a><p className="px-3 pb-2 pt-8 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">Administration</p><a className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400"><Settings2 size={17}/> Settings</a></nav>
+   <div className="m-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="flex items-center gap-2 text-xs text-slate-300"><CircleHelp size={15}/> Platform support</div><p className="mt-2 text-[11px] leading-5 text-slate-500">Foundation workspace · Version 0.2</p></div>
+  </aside>
+  <div className="xl:pl-64">
+   <header className="sticky top-0 z-10 flex h-[76px] items-center justify-between border-b border-white/[0.07] bg-[#0b1220]/90 px-5 backdrop-blur-xl md:px-9">
+    <div><p className="text-xs text-slate-500">Platform / <span className="text-slate-300">Overview</span></p><p className="mt-1 text-sm font-medium">Good day. Welcome to Zuri OS.</p></div>
+    <div className="flex items-center gap-3"><button className="hidden items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 sm:flex"><Search size={14}/> Search platform <span className="ml-4 text-slate-600">⌘ K</span></button><button className="rounded-lg border border-white/10 p-2 text-slate-400"><CircleHelp size={17}/></button><div className="grid h-9 w-9 place-items-center rounded-full border border-cyan-200/20 bg-cyan-200/10 text-xs font-semibold text-cyan-100">ZO</div></div>
+   </header>
+   <main className="mx-auto max-w-[1500px] px-5 py-9 md:px-9 md:py-12">
+    <div className="flex flex-wrap items-end justify-between gap-5"><div><div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300"/> Platform foundation</div><h1 className="mt-5 text-3xl font-semibold tracking-tight md:text-[42px]">Your operations, <span className="bg-gradient-to-r from-cyan-200 to-blue-300 bg-clip-text text-transparent">connected.</span></h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 md:text-base">A unified command layer for organizations, people, permissions and business ecosystems.</p></div><button className="flex items-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-200/[0.08] px-4 py-2.5 text-xs font-medium text-cyan-100">Foundation roadmap <ArrowUpRight size={15}/></button></div>
+    <section className="mt-9 grid gap-4 md:grid-cols-3">{metrics.map(m=><article key={m.label} className="rounded-2xl border border-white/[0.08] bg-gradient-to-br from-white/[0.045] to-white/[0.015] p-5 shadow-[0_14px_45px_rgba(0,0,0,0.12)]"><p className="text-xs text-slate-500">{m.label}</p><p className="mt-3 text-2xl font-semibold tracking-tight text-slate-100">{m.value}</p><p className="mt-1 text-[11px] text-slate-500">{m.hint}</p></article>)}</section>
+    <section className="mt-12"><div className="flex items-end justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200/80">Platform architecture</p><h2 className="mt-2 text-xl font-semibold">Core services</h2><p className="mt-1 text-xs text-slate-500">Shared foundations powering every Zuri OS ecosystem.</p></div><span className="text-xs text-slate-500">Foundation release · 0.2</span></div>
+     <div className="mt-5 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">{modules.map(({icon:Icon,name,detail,status,tone})=><article key={name} className="group rounded-2xl border border-white/[0.08] bg-[#111d2e]/80 p-5 transition hover:-translate-y-0.5 hover:border-cyan-200/20 hover:bg-[#142238]"><div className="flex items-start justify-between"><div className={`rounded-xl border border-white/[0.06] bg-white/[0.035] p-3 ${tone}`}><Icon size={19}/></div><span className={`rounded-full border px-2.5 py-1 text-[10px] ${status==="Coming next"?"border-white/10 text-slate-500":"border-cyan-200/15 bg-cyan-200/[0.05] text-cyan-200"}`}>{status}</span></div><h3 className="mt-5 text-sm font-semibold">{name}</h3><p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p></article>)}</div>
+    </section>
+    <section className="mt-10 overflow-hidden rounded-2xl border border-cyan-200/10 bg-gradient-to-r from-cyan-300/[0.07] via-blue-400/[0.035] to-transparent p-6 md:p-8"><div className="flex flex-col justify-between gap-6 md:flex-row md:items-center"><div><p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-200">Built for scale</p><h2 className="mt-2 text-lg font-semibold">One foundation. Many ecosystems.</h2><p className="mt-2 max-w-xl text-xs leading-6 text-slate-400">ERP, POS, Inventory and specialized business systems will inherit shared identity, governance, tenancy and audit services.</p></div><div className="flex items-center gap-2 text-xs text-cyan-100"><LockKeyhole size={15}/> Governance first</div></div></section>
+    <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-5 text-[10px] text-slate-600"><span>ZURI OS · Modular by design · Governed by default</span><span>OIPTECH / ODEL Developers</span></footer>
+   </main>
+  </div>
+ </div>;
 }

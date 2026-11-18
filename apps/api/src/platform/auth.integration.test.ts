@@ -1,0 +1,76 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {randomBytes,randomUUID} from "node:crypto";
+import {MongoClient} from "mongodb";
+import Fastify from "fastify";
+import {provisionTenant,setTenantStatus,createUser,createMembership,runCoreMigrations} from "@zuri/core-platform";
+import {issueInvitation,acceptInvitation,login,beginMfaEnrollment,confirmMfaEnrollment,verifyMfaLogin,disableMfa,refreshLogin,issuePasswordReset,resetPassword,logout} from "./auth-service.js";
+import {totpCode} from "./auth-crypto.js";
+import {authRoutes} from "./auth-routes.js";
+const uri=process.env.MONGODB_TEST_URI;
+test("invitation acceptance and password login use active tenant membership", {skip:!uri}, async()=>{
+ const client=new MongoClient(uri!);await client.connect();
+ const db=client.db("zuri_auth_"+randomUUID().replaceAll("-",""));
+ try{
+  await runCoreMigrations(db);
+  await db.collection("auth_rate_limits").createIndex({key:1},{unique:true});
+  await db.collection("auth_challenges").createIndex({challengeId:1},{unique:true});
+  const tenant=await provisionTenant(db,"test",{slug:"auth-test",legalName:"Auth Test Ltd",displayName:"Auth Test"});
+  await setTenantStatus(db,tenant.tenantId,"active","test");
+  const user=await createUser(db,"test",{email:"auth@example.test",displayName:"Auth User"});
+  const invitation=await issueInvitation(db,user.userId);
+  const password=randomBytes(24).toString("base64url");
+  await acceptInvitation(db,user.userId,invitation,password);
+  await createMembership(db,tenant.tenantId,"test",{userId:user.userId});
+  const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64")};
+  const result=await login(db,cfg,{email:"AUTH@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
+  assert.equal(result.mfaRequired,false);
+  if(result.mfaRequired)throw new Error("Unexpected MFA challenge");
+  assert.ok(result.accessToken);
+  const refreshed=await refreshLogin(db,cfg,tenant.tenantId,result.sessionId,result.refreshToken);
+  assert.ok(refreshed.accessToken);assert.ok(refreshed.refreshToken);
+
+  const enrollment=await beginMfaEnrollment(db,user.userId,cfg);
+  const recovery=await confirmMfaEnrollment(db,user.userId,totpCode(enrollment.secret),cfg);
+  assert.equal(recovery.recoveryCodes.length,10);
+  const mfaAttempt=await login(db,cfg,{email:"auth@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
+  if(!mfaAttempt.mfaRequired)throw new Error("Expected MFA challenge");
+  const second=await verifyMfaLogin(db,cfg,mfaAttempt.challengeToken,recovery.recoveryCodes[0]!);
+  assert.ok(second.accessToken);
+  await assert.rejects(()=>verifyMfaLogin(db,cfg,mfaAttempt.challengeToken,recovery.recoveryCodes[0]!));
+
+  const totpAttempt=await login(db,cfg,{email:"auth@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
+  if(!totpAttempt.mfaRequired)throw new Error("Expected MFA challenge");
+  const futureStep=Math.floor(Date.now()/30_000)+1;
+  const third=await verifyMfaLogin(db,cfg,totpAttempt.challengeToken,totpCode(enrollment.secret,futureStep));
+  assert.ok(third.accessToken);
+  await disableMfa(db,user.userId,password,recovery.recoveryCodes[1]!,cfg);
+
+  const reset=await issuePasswordReset(db,"auth@example.test");
+  assert.ok(reset);
+  const newPassword=randomBytes(24).toString("base64url");
+  await resetPassword(db,user.userId,reset!.token,newPassword);
+  const oldSession=await db.collection("sessions").findOne({tenantId:tenant.tenantId,sessionId:third.sessionId});
+  assert.ok(oldSession?.revokedAt);
+  const afterReset=await login(db,cfg,{email:"auth@example.test",password:newPassword,tenantSlug:tenant.slug,ipHash:"integration"});
+  assert.equal(afterReset.mfaRequired,false);
+  if(afterReset.mfaRequired)throw new Error("MFA should be disabled");
+  await logout(db,tenant.tenantId,afterReset.sessionId,user.userId);
+  const loggedOut=await db.collection("sessions").findOne({tenantId:tenant.tenantId,sessionId:afterReset.sessionId});
+  assert.ok(loggedOut?.revokedAt);
+
+  const app=Fastify();
+  await app.register(authRoutes(db,cfg));
+  const routeLogin=await app.inject({method:"POST",url:"/auth/login",payload:{email:"auth@example.test",password:newPassword,tenantSlug:tenant.slug}});
+  assert.equal(routeLogin.statusCode,200);
+  const routeBody=routeLogin.json() as {accessToken:string;sessionId:string};
+  const me=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
+  assert.equal(me.statusCode,200);
+  assert.equal(me.json().principal.userId,user.userId);
+  const routeLogout=await app.inject({method:"POST",url:"/auth/logout",headers:{authorization:"Bearer "+routeBody.accessToken}});
+  assert.equal(routeLogout.statusCode,204);
+  const meAfterLogout=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
+  assert.equal(meAfterLogout.statusCode,401);
+  await app.close();
+ }finally{await db.dropDatabase();await client.close();}
+});
