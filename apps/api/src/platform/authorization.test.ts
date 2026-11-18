@@ -1,0 +1,12 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {authorize} from "./authorization.js";
+import {resolvePermissions} from "./rbac.js";
+import {tenantFilter} from "./tenant-scope.js";
+import type {PlatformPrincipal} from "./types.js";
+const principal:PlatformPrincipal={userId:"u1",tenantId:"t1",organizationId:"o1",locationIds:["l1"],roleKeys:["manager"],permissions:["inventory.read"],attributes:{department:"ops"}};
+test("authorization rejects cross-tenant access",()=>{assert.equal(authorize(principal,{permission:"inventory.read",resourceTenantId:"t2"}),false);});
+test("authorization requires permission",()=>{assert.equal(authorize(principal,{permission:"finance.write",resourceTenantId:"t1"}),false);});
+test("authorization enforces location scope",()=>{assert.equal(authorize(principal,{permission:"inventory.read",resourceTenantId:"t1",locationId:"l2"}),false);});
+test("role permissions are resolved without duplicates",()=>{assert.deepEqual(resolvePermissions(["manager"],[{key:"manager",permissions:["a","b","a"]}]),["a","b"]);});
+test("tenant filter always adds principal tenant",()=>{assert.deepEqual(tenantFilter<{tenantId:string;status:string}>(principal,{status:"active"}),{$and:[{tenantId:"t1"},{status:"active"}]});});
