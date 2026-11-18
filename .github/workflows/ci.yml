@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main, develop, "feature/**"]
+    branches: [main, develop, "feature/**", "fix/**"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, "feature/**"]
 permissions:
   contents: read
 jobs:
@@ -18,8 +18,8 @@ jobs:
           version: 9.15.4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: pnpm install --no-frozen-lockfile
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
       - name: Start MongoDB replica set
         run: |
           docker run -d --name zuri-mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
