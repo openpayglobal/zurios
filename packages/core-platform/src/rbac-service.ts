@@ -4,7 +4,7 @@ import {newId} from "./ids.js";
 import {coreCollections} from "./repositories.js";
 const schema=z.object({key:z.string().min(2).max(80).regex(/^[a-z][a-z0-9._-]*$/),name:z.string().min(2).max(100),description:z.string().max(500).optional(),permissionKeys:z.array(z.string()).max(500),isSystem:z.boolean().default(false)});
 export async function createRole(db:Db,tenantId:string,actorId:string,input:unknown){
- const d=schema.parse(input),now=new Date(),doc={tenantId,roleId:newId("rol"),...d,...(d.description?{description:d.description}:{}),status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
+ const d=schema.parse(input),{description,...rest}=d,now=new Date(),doc={tenantId,roleId:newId("rol"),...rest,...(description?{description}:{}),status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await coreCollections(db).roles.insertOne(doc);return doc;
 }
 export async function permissionsForMembership(db:Db,tenantId:string,membershipId:string):Promise<string[]>{
