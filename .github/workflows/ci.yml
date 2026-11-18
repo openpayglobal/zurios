@@ -9,17 +9,6 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    services:
-      mongodb:
-        image: mongo:7.0
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 15
-        command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     env:
       MONGODB_TEST_URI: mongodb://localhost:27017/?replicaSet=rs0
     steps:
@@ -31,8 +20,15 @@ jobs:
         with:
           node-version: 20
       - run: pnpm install --no-frozen-lockfile
-      - name: Initialize MongoDB replica set
+      - name: Start MongoDB replica set
         run: |
+          docker run -d --name zuri-mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            if mongosh mongodb://localhost:27017/admin --quiet --eval 'db.adminCommand({ ping: 1 }).ok' 2>/dev/null | grep -q 1; then
+              break
+            fi
+            sleep 1
+          done
           mongosh mongodb://localhost:27017/admin --quiet --eval 'rs.initiate()'
           for i in $(seq 1 30); do
             if mongosh mongodb://localhost:27017/admin --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
@@ -41,6 +37,7 @@ jobs:
             sleep 1
           done
           echo "MongoDB replica set did not become primary"
+          docker logs zuri-mongo
           exit 1
       - run: pnpm typecheck
       - run: pnpm test
