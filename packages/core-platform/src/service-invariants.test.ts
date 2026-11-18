@@ -9,8 +9,10 @@ test("audit writer requires actor identity and redacts credential-like metadata"
  let written:any;
  const collection={insertOne:async(doc:any)=>{written=doc;return {acknowledged:true};}};
  const db={collection:()=>collection} as unknown as Db;
- await appendAuditEvent(db,{tenantId:"t1",actor:{userId:"u1"},action:"user.updated",resourceType:"user",outcome:"success",metadata:{password:"do-not-store",nested:{refreshToken:"secret",note:"safe"}}});
+ await appendAuditEvent(db,{tenantId:"t1",actor:{userId:"u1",ipHash:"hashed-ip",userAgent:"integration-test"},action:"user.updated",resourceType:"user",outcome:"success",metadata:{password:"do-not-store",nested:{refreshToken:"secret",note:"safe"}}});
  assert.equal(written.actor.userId,"u1");
+ assert.equal(written.actor.ipHash,"hashed-ip");
+ assert.equal(written.actor.userAgent,"integration-test");
  assert.equal(written.metadata.password,"[REDACTED]");
  assert.equal(written.metadata.nested.refreshToken,"[REDACTED]");
  assert.equal(written.metadata.nested.note,"safe");
