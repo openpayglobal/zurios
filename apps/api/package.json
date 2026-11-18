@@ -8,11 +8,12 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test src/platform/authorization.test.ts"
+    "test": "tsx --test src/platform/*.test.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
     "@fastify/helmet": "^12.0.1",
+    "@zuri/core-platform": "workspace:*",
     "argon2": "^0.41.1",
     "fastify": "^5.2.0",
     "jose": "^5.9.6",
