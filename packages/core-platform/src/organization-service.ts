@@ -7,6 +7,6 @@ export async function createOrganization(db:Db,tenantId:string,actorId:string,in
  const d=schema.parse(input),c=coreCollections(db);
  if(d.parentOrganizationId&&!await c.organizations.findOne({tenantId,organizationId:d.parentOrganizationId}))throw new Error("PARENT_ORGANIZATION_NOT_FOUND");
  const path=d.parentOrganizationId?(await c.organizations.findOne({tenantId,organizationId:d.parentOrganizationId}))!.path.concat(d.parentOrganizationId):[];
- const now=new Date(),doc={tenantId,organizationId:newId("org"),...d,path,status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
+ const now=new Date(),doc={tenantId,organizationId:newId("org"),...d,...(d.parentOrganizationId?{parentOrganizationId:d.parentOrganizationId}:{}),path,status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await c.organizations.insertOne(doc);return doc;
 }
