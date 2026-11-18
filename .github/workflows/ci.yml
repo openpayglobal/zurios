@@ -24,14 +24,14 @@ jobs:
         run: |
           docker run -d --name zuri-mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
           for i in $(seq 1 30); do
-            if mongosh mongodb://localhost:27017/admin --quiet --eval 'db.adminCommand({ ping: 1 }).ok' 2>/dev/null | grep -q 1; then
+            if docker exec zuri-mongo mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' 2>/dev/null | grep -q 1; then
               break
             fi
             sleep 1
           done
-          mongosh mongodb://localhost:27017/admin --quiet --eval 'rs.initiate()'
+          docker exec zuri-mongo mongosh --quiet --eval 'rs.initiate()'
           for i in $(seq 1 30); do
-            if mongosh mongodb://localhost:27017/admin --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
+            if docker exec zuri-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
               exit 0
             fi
             sleep 1
