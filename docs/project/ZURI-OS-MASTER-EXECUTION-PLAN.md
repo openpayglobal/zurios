@@ -294,15 +294,15 @@ The MVP must be end-to-end usable for a controlled test business before vertical
 - Current Vercel deployment quota had returned HTTP 402 for the free daily deployment limit; no paid upgrade is authorized.
 - Existing preview API environment variables were configured for the earlier tenant API. The new `MAC_JWT_SECRET` and one-time `MAC_BOOTSTRAP_TOKEN` are not yet provisioned; MAC authentication remains unavailable until both are configured alongside the existing MFA encryption key. The new frontend also requires `VITE_ZURI_API_URL` at build time or a manually entered API base URL.
 - Atlas network access still includes `0.0.0.0/0`; this is not acceptable for production. Do not claim production readiness.
-- The canonical MAC/MAD URL is documented. MAC has an initial authenticated read-only API and frontend integration in the feature branch; operator provisioning and API activation remain gated by separate secrets. Provider adapters, runtime configuration, approvals, deployments and full operational workflows remain unimplemented.
+- The canonical MAC/MAD URL is documented. MAC has authenticated read-only APIs and frontend workspaces for overview, tenants, audit, operators, sessions, provider registry and safe configuration metadata in the feature branch. Operator provisioning and API activation remain gated by separate secrets. Encrypted configuration writes, provider adapters, approvals, deployment controls and full operational workflows remain unimplemented.
 
 ## 10. Immediate next actions
 
 1. Complete CI validation for the current MAC operator authentication and frontend integration branch; resolve all failures and verify the MongoDB replica-set integration tests.
 2. Complete the global operator lifecycle: permission-grant approval workflows, two-person high-impact approvals, operator reactivation/recovery and full audit export/retention.
 3. Provision independent MAC signing, MAC MFA-encryption and one-time bootstrap secrets in Preview only after the owner approves the bootstrap handling; activate the initial operator without exposing secrets in chat, source or browser code.
-4. Complete MAC read-only APIs and connect all corresponding frontend workspaces; keep writes disabled until transactional audit and approval workflows pass.
-5. Implement the encrypted, versioned runtime configuration service and provider capability registry without paid infrastructure.
+4. Finish CI and security review for MAC read-only APIs and connected workspaces; keep all configuration/provider writes disabled.
+5. Implement the encrypted, versioned runtime configuration write service, provider credential adapters and provider lifecycle controls with approval and audit guarantees, without paid infrastructure.
 6. Complete the business MVP in dependency order: identity, tenant/workspace, catalogue, inventory, POS, payment recording/reconciliation, double-entry ledger and reporting.
 7. Add procurement, CRM, people/workforce, commerce, analytics, integrations and vertical applications.
 8. Add AI governance, agent/tool permissions, marketplace and developer capabilities after core controls are operational.
