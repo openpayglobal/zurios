@@ -29,7 +29,7 @@ export async function runAbacBackfill(db:Db,apply:boolean,target="unspecified"):
  }
  const grants=await db.collection("platform_operator_grants").find({status:"active"}).toArray();
  for(const grant of grants){
-  const actions=[...new Set(grant.permissionKeys??[])].sort();
+  const actions=[...new Set((grant.permissionKeys??[]) as string[])].sort();
   if(!actions.length){skipped++;continue;}
   plans.push({tenantId:"platform",input:{key:"platform-operator:"+grant.grantId,effect:"allow",priority:0,subject:{userId:grant.userId},resource:{resourceType:"platform_admin"},actions,conditions:{}}});
  }
