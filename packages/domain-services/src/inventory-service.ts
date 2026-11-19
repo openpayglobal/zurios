@@ -1,7 +1,7 @@
 import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {appendOutboxEvent,runIdempotentMutation} from "@zuri/core-platform";
-import {StockMovementSchema,StockReservationSchema} from "@zuri/domain-contracts";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema} from "@zuri/domain-contracts";
 
 type Balance={tenantId:string;warehouseId:string;sku:string;quantityOnHandMilli:number;quantityReservedMilli:number;quantityAvailableMilli:number;version:number;updatedAt:Date};
 type Reservation={tenantId:string;reservationId:string;orderId:string;warehouseId:string;lines:{sku:string;quantityMilli:number}[];status:"reserved"|"committed"|"released"|"expired";expiresAt:Date;createdAt:Date;updatedAt:Date};
@@ -34,6 +34,13 @@ async function applyDelta(db:Db,session:ClientSession,delta:Delta,tenantId:strin
  await changeBalance(db,session,tenantId,warehouseId,sku,delta.onHand,delta.reserved);
  await writeLedger(db,session,delta,tenantId,warehouseId,sku,quantityMilli);
 }
+export async function createWarehouse(db:Db,input:unknown,actorId:string){
+ const warehouse=WarehouseSchema.parse(input);
+ return runIdempotentMutation(db,{tenantId:warehouse.tenantId,actorId,operation:"inventory.warehouse.create",key:"warehouse-"+warehouse.warehouseId,request:warehouse},async session=>{
+  await db.collection("inventory_warehouses").insertOne({...warehouse,createdAt:new Date(),updatedAt:new Date(),createdBy:actorId},{session});
+  return {statusCode:201,body:{warehouseId:warehouse.warehouseId}};
+ });
+}
 export async function recordStockMovement(db:Db,input:unknown,actorId:string){
  const movement=StockMovementSchema.parse(input);
  if(!["receipt","issue","transfer","adjustment"].includes(movement.movementType))throw new Error("USE_RESERVATION_COMMAND_FOR_RESERVED_STOCK");
@@ -65,7 +72,8 @@ async function settleReservation(db:Db,session:ClientSession,tenantId:string,res
  for(const line of reservation.lines){
   await applyDelta(db,session,{onHand:action==="commit"?-line.quantityMilli:0,reserved:-line.quantityMilli,movementId,movementType:action==="commit"?"consume":"release",referenceType:"reservation",referenceId:reservationId,actorId,occurredAt:now,leg:line.sku},tenantId,reservation.warehouseId,line.sku,line.quantityMilli);
  }
- await c.updateOne({tenantId,reservationId,status:"reserved"},{$set:{status:action==="commit"?"committed":"released",updatedAt:now}},{session});
+ const update=await c.updateOne({tenantId,reservationId,status:"reserved"},{$set:{status:action==="commit"?"committed":"released",updatedAt:now}},{session});
+ if(update.matchedCount!==1)throw new Error("RESERVATION_CONCURRENT_MODIFICATION");
  await appendOutboxEvent(db,session,{tenantId,eventType:action==="commit"?"inventory.stock.consumed":"inventory.stock.reserved",aggregateType:"reservation",aggregateId:reservationId,payload:{reservationId,orderId:reservation.orderId,warehouseId:reservation.warehouseId,lines:reservation.lines}});
 }
 export async function reserveStock(db:Db,input:unknown,actorId:string){
