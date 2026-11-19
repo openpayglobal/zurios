@@ -16,6 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
+import {reasonSchema,approvalScopeSchema,approvalActionSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 type MutationResult={statusCode:number;body:unknown};
@@ -82,10 +83,7 @@ async function mutate(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principa
 async function emit(db:Db,session:ClientSession,tenantId:string,request:FastifyRequest,eventType:string,aggregateType:string,aggregateId:string,payload:Record<string,unknown>){
  await appendOutboxEvent(db,session,{tenantId,eventType,aggregateType,aggregateId,payload,correlationId:request.id});
 }
-const reasonSchema=z.string().min(20).max(2000);
-const auditExportFiltersSchema=z.object({action:z.string().optional(),actorUserId:z.string().optional(),resourceType:z.string().optional(),outcome:z.enum(["success","denied","failure"]).optional(),correlationId:z.string().optional(),from:z.string().datetime().optional(),to:z.string().datetime().optional(),limit:z.number().int().min(1).max(10000).default(10000)}).refine(value=>!value.from||!value.to||new Date(value.from)<=new Date(value.to),{message:"from must be earlier than to"});
-const approvalScopeSchema=z.enum(["tenant","platform"]);
-const approvalActionSchema=z.enum(["membership.suspend","membership.reactivate","membership.revoke","organization.deactivate","location.deactivate","policy.apply","feature_flag.set","break_glass.grant","tenant.activate","tenant.suspend","tenant.close"]);
+
 function validateApprovalPayload(action:string,payload:unknown){
  if(action==="membership.suspend"||action==="membership.reactivate"||action==="membership.revoke"||action==="organization.deactivate"||action==="location.deactivate")return z.object({}).strict().parse(payload??{});
  if(action==="policy.apply")return z.object({key:z.string().min(2).max(100),...upsertPolicySchema.shape}).parse(payload);
@@ -199,7 +197,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/approvals",{preHandler:tenantGuard(db,config.jwtSecret,"platform.approvals.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const body=z.object({action:approvalActionSchema,targetType:z.string().min(2).max(80),targetId:z.string().min(1).max(200),payload:z.record(z.unknown()).default({}),reason:reasonSchema,ttlSeconds:z.number().int().min(300).max(7*24*60*60).default(24*60*60)}).parse(request.body);
+    createApprovalRequestSchema.parse(request.body)
     const payload=validateApprovalPayload(body.action,body.payload);
     const requestPermission=body.action.startsWith("membership.")?"platform.memberships.manage.request":body.action==="organization.deactivate"?"platform.organizations.manage.request":body.action==="location.deactivate"?"platform.locations.manage.request":body.action==="policy.apply"?"platform.policies.write.request":body.action==="feature_flag.set"?"platform.feature-flags.write.request":"platform.breakglass.request";
     if(!p.permissions.includes(requestPermission))return reply.code(403).send({error:"APPROVAL_REQUEST_NOT_PERMITTED"});
@@ -274,7 +272,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/policies/simulate",{preHandler:tenantGuard(db,config.jwtSecret,"platform.policies.simulate")},async(request,reply)=>{
    try{
-    const body=z.object({subject:z.record(z.unknown()).default({}),resource:z.record(z.unknown()).default({}),action:z.string().min(1),environment:z.record(z.unknown()).default({})}).parse(request.body);
+    const body=policySimulationSchema.parse(request.body);
     const p=principal(request);
     return {data:await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,...body.subject},resource:{tenantId:p.tenantId,...body.resource},action:body.action,environment:body.environment})};
    }catch(error){return fail(error,reply);}
@@ -292,7 +290,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/audit-exports",{preHandler:tenantGuard(db,config.jwtSecret,"platform.audit.export")},async(request,reply)=>{
    const p=principal(request);try{
-    const body=z.object({filters:auditExportFiltersSchema.default({}),reason:reasonSchema}).parse(request.body);
+    const body=createAuditExportSchema.parse(request.body);
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.audit.export.request",async session=>{
      const now=new Date(),jobId="aex_"+randomUUID(),doc={jobId,tenantId:p.tenantId,filters:body.filters,reason:body.reason,requestedBy:p.userId,status:"queued",createdAt:now,updatedAt:now};
      await db.collection("audit_export_jobs").insertOne(doc,{session});
@@ -307,7 +305,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/break-glass/:grantId/revoke",{preHandler:tenantGuard(db,config.jwtSecret,"platform.breakglass.revoke")},async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({grantId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
+    const params=z.object({grantId:z.string().min(1)}).parse(request.params),body=breakGlassRevokeSchema.parse(request.body);
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.breakglass.revoke",async session=>{
      await revokeBreakGlassGrant(db,session,p.tenantId,params.grantId,p.userId);
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"platform.breakglass.revoked","break_glass_grant",params.grantId,"success",{reason:body.reason},session);
@@ -322,7 +320,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.put("/platform/admin/configuration/:key",{preHandler:tenantGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
    const p=principal(request);try{
     const params=z.object({key:z.enum(["defaultLocale","defaultCurrency","timezone","displayName"])}).parse(request.params);
-    const body=z.object({value:z.unknown(),reason:reasonSchema}).parse(request.body);
+    const body=configurationUpdateSchema.parse(request.body);
     const valueSchemas:Record<string,z.ZodTypeAny>={defaultLocale:z.string().min(2).max(20),defaultCurrency:z.string().length(3).transform(v=>v.toUpperCase()),timezone:z.string().min(1).max(80),displayName:z.string().min(2).max(100)};
     const value=valueSchemas[params.key]!.parse(body.value);
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.configuration.update",async session=>{
@@ -339,7 +337,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.provision")},async(request,reply)=>{
    const p=principal(request);try{
-    const body=z.object({slug:z.string().min(2).max(64).regex(/^[a-z0-9-]+$/),legalName:z.string().min(2).max(200),displayName:z.string().min(2).max(100),defaultLocale:z.string().default("en"),defaultCurrency:z.string().length(3).default("UGX"),timezone:z.string().default("Africa/Kampala"),owner:z.object({email:z.string().email().max(254),displayName:z.string().min(2).max(120),phoneE164:z.string().regex(/^\\+[1-9]\\d{7,14}$/).optional()}),reason:reasonSchema}).parse(request.body);
+    const body=provisionTenantSchema.parse(request.body);
     if(!config.mfaEncryptionKey)return reply.code(503).send({error:"INVITATION_ENCRYPTION_NOT_CONFIGURED"});
     return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.tenants.provision",async session=>{
      const reason=body.reason,tenantInput={slug:body.slug,legalName:body.legalName,displayName:body.displayName,defaultLocale:body.defaultLocale,defaultCurrency:body.defaultCurrency,timezone:body.timezone};
@@ -375,7 +373,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/organizations/:organizationId/lifecycle-requests",{preHandler:tenantGuard(db,config.jwtSecret,"platform.approvals.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({organizationId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
+    const params=z.object({organizationId:z.string().min(1)}).parse(request.params),body=lifecycleRequestSchema.parse(request.body);
     if(!p.permissions.includes("platform.organizations.manage.request"))return reply.code(403).send({error:"ORGANIZATION_LIFECYCLE_REQUEST_NOT_PERMITTED"});
     if((!p.permissions.includes("platform.organizations.manage.all")&&!orgIds(p).includes(params.organizationId))||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:params.organizationId,status:"active"}))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.organizations.lifecycle.request",async session=>{
@@ -401,7 +399,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/tenants/:tenantId/lifecycle-requests",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.lifecycle.request")},async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({tenantId:z.string().min(1)}).parse(request.params),body=z.object({action:z.enum(["tenant.activate","tenant.suspend","tenant.close"]),reason:reasonSchema}).parse(request.body);
+    const params=z.object({tenantId:z.string().min(1)}).parse(request.params),body=tenantLifecycleRequestSchema.parse(request.body);
     if(!await c.tenants.findOne({tenantId:params.tenantId}))return reply.code(404).send({error:"TENANT_NOT_FOUND"});
     return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.tenants.lifecycle.request",async session=>{
      const approval=await createApprovalRequest(db,session,{tenantId:"platform",scope:"platform",action:body.action,targetType:"tenant",targetId:params.tenantId,payload:{},reason:body.reason,requestedBy:p.userId,correlationId:request.id});
