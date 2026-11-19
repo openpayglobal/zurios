@@ -58,11 +58,21 @@ All platform-global records use explicit platform ownership. Do not fabricate `t
 ## Current implementation status
 
 Implemented in this phase:
-- Separate typed global-operator principal.
-- Pure default-deny permission evaluator.
-- Exact tenant-scope checks.
-- Approval-referenced, expiring elevation checks.
-- Unit tests for tenant/global separation, MFA, wildcard denial and elevation expiry.
+- Separate typed global-operator principal and default-deny permission evaluator.
+- Exact permission matching, explicit tenant-scope checks, MFA freshness and approval-referenced expiring elevation.
+- One-time owner bootstrap guarded by an out-of-band high-entropy token and a unique bootstrap-owner index.
+- Argon2id password hashing, TOTP enrollment/verification, replay prevention and AES-256-GCM encrypted TOTP secret storage.
+- Independent MAC JWT signing key, opaque refresh tokens stored only as SHA-256 hashes, refresh-token rotation and session revocation.
+- Login/bootstrap rate limiting and separate MongoDB collections/indexes for operators, sessions, global audit and rate limits.
+- Read-only MAC overview, tenant listing and administrative audit endpoints with permission checks.
+- OpenAPI 3.1 route contract and MongoDB replica-set integration coverage.
+
+Required preview configuration before the endpoints can operate:
+- `MAC_JWT_SECRET`: independent random signing secret, at least 32 characters.
+- `MAC_BOOTSTRAP_TOKEN`: high-entropy one-time bootstrap secret; remove after the initial operator is activated.
+- `MFA_ENCRYPTION_KEY`: existing 32-byte base64 key used only for TOTP secret encryption.
 
 Not implemented by this phase:
-- Operator login, MFA enrollment/verification, session storage/revocation, role-grant management, admin audit persistence, MAC HTTP routes, provider adapters or production deployment.
+- Additional operator invitations and lifecycle management, role-grant approvals, session administration, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters, production activation and end-to-end frontend login integration.
+
+The API remains unavailable when its required MAC secrets are absent. It does not silently fall back to tenant JWT credentials.
