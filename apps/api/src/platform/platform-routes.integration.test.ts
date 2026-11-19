@@ -25,9 +25,9 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   await db.collection("tenants").insertMany([{tenantId:"tenant-a",status:"active"},{tenantId:"tenant-b",status:"active"}]);
   await db.collection("users").insertMany([{userId:"operator-a",status:"active"},{userId:"target-user",status:"active"}]);
   await db.collection("organizations").insertMany([
-   {tenantId:"tenant-a",organizationId:"org-a",name:"Tenant A Org",status:"active"},
-   {tenantId:"tenant-a",organizationId:"org-b",name:"Tenant A Other Org",status:"active"},
-   {tenantId:"tenant-b",organizationId:"org-secret",name:"Tenant B Secret",status:"active"}
+   {tenantId:"tenant-a",organizationId:"org-a",code:"org-a",name:"Tenant A Org",path:[],status:"active"},
+   {tenantId:"tenant-a",organizationId:"org-b",code:"org-b",name:"Tenant A Other Org",path:[],status:"active"},
+   {tenantId:"tenant-b",organizationId:"org-secret",code:"secret",name:"Tenant B Secret",path:[],status:"active"}
   ]);
   await db.collection("locations").insertMany([
    {tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",name:"A Location",status:"active"},
@@ -35,7 +35,7 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   ]);
   await db.collection("roles").insertOne({
    tenantId:"tenant-a",roleId:"role-admin",key:"test.admin",
-   permissionKeys:["platform.organizations.read","platform.memberships.create"],status:"active"
+   permissionKeys:["platform.tenant.read","platform.organizations.read","platform.organizations.create","platform.locations.read","platform.locations.create","platform.memberships.read","platform.memberships.create","platform.roles.read","platform.roles.create","platform.policies.read","platform.policies.write","platform.feature-flags.read","platform.feature-flags.write","platform.sessions.read","platform.sessions.revoke","platform.sessions.revoke.all","platform.audit.read"],status:"active"
   });
   await db.collection("memberships").insertOne({
    tenantId:"tenant-a",membershipId:"membership-a",userId:"operator-a",
