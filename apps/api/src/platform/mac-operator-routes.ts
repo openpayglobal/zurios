@@ -226,6 +226,21 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    const items=await db.collection("platform_operator_sessions").find({expiresAt:{$gt:new Date()}},{projection:{_id:0,sessionId:1,operatorId:1,createdAt:1,lastUsedAt:1,expiresAt:1,revokedAt:1,revokedReason:1}}).sort({createdAt:-1}).limit(100).toArray();
    return {data:items};
   });
+  app.post("/mac/operators/:operatorId/suspend",{preHandler:[authenticated,permission("mac.operators.manage")]},async(request,reply)=>{
+   const params=z.object({operatorId:z.string().uuid()}).safeParse(request.params);
+   const body=z.object({reason:z.string().trim().min(10).max(300)}).safeParse(request.body);
+   if(!params.success||!body.success)return reply.code(400).send({error:"INVALID_REQUEST"});
+   const principal=request.macOperator!;
+   if(params.data.operatorId===principal.operatorId)return reply.code(409).send({error:"SELF_SUSPENSION_NOT_ALLOWED"});
+   const operators=db.collection("platform_operators"),target=await operators.findOne({operatorId:params.data.operatorId,status:"active"});
+   if(!target)return reply.code(404).send({error:"OPERATOR_NOT_FOUND"});
+   const now=new Date();
+   const suspended=await operators.updateOne({operatorId:target.operatorId,status:"active"},{$set:{status:"suspended",suspendedAt:now,suspendedBy:principal.operatorId,suspensionReason:body.data.reason,updatedAt:now}});
+   if(!suspended.modifiedCount)return reply.code(409).send({error:"OPERATOR_STATE_CHANGED"});
+   await db.collection("platform_operator_sessions").updateMany({operatorId:target.operatorId,revokedAt:{$exists:false}},{$set:{revokedAt:now,revokedReason:"operator_suspended",revokedBy:principal.operatorId}});
+   await writeAdminAudit(db,{actorId:principal.operatorId,action:"mac.operators.suspend",resourceType:"platform_operator",resourceId:target.operatorId,outcome:"success",request,metadata:{reason:body.data.reason}});
+   return reply.code(204).send();
+  });
   app.post("/mac/sessions/:sessionId/revoke",{preHandler:[authenticated,permission("mac.operators.manage")]},async(request,reply)=>{
    const paramsResult=z.object({sessionId:z.string().uuid()}).safeParse(request.params);
    const bodyResult=z.object({reason:z.string().trim().min(10).max(300)}).safeParse(request.body);
