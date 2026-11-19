@@ -43,9 +43,10 @@ async function checkTenantPermission(db:Db,secret:string,permission:string,reque
   reply.code(403).send({error:"FORBIDDEN"});return false;
  }
  const decision=await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},resource:{tenantId:p.tenantId,resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
- if(decision.reason==="EXPLICIT_DENY"){
-  await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,code:"ABAC_POLICY_DENIED"});
-  reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
+ if(!decision.allowed){
+  const code=decision.reason==="EXPLICIT_DENY"?"ABAC_POLICY_DENIED":"ABAC_POLICY_NO_MATCHING_ALLOW";
+  await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,code});
+  reply.code(403).send({error:code});return false;
  }
  return true;
 }
@@ -55,9 +56,10 @@ async function checkPlatformPermission(db:Db,secret:string,permission:string,req
   reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});return false;
  }
  const decision=await evaluatePolicy(db,"platform",{subject:{userId:p.userId},resource:{resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
- if(decision.reason==="EXPLICIT_DENY"){
-  await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code:"ABAC_POLICY_DENIED"});
-  reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
+ if(!decision.allowed){
+  const code=decision.reason==="EXPLICIT_DENY"?"ABAC_POLICY_DENIED":"ABAC_POLICY_NO_MATCHING_ALLOW";
+  await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code});
+  reply.code(403).send({error:code});return false;
  }
  return true;
 }
