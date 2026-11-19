@@ -7,3 +7,4 @@ export * from "./payroll-service.js";
 export * from "./payment-service.js";
 export * from "./commerce-service.js";
 export * from "./asset-service.js";
+export * from "./project-service.js";
