@@ -191,6 +191,13 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const body=z.object({action:approvalActionSchema,targetType:z.string().min(2).max(80),targetId:z.string().min(1).max(200),payload:z.record(z.unknown()).default({}),reason:reasonSchema,ttlSeconds:z.number().int().min(300).max(7*24*60*60).default(24*60*60)}).parse(request.body);
     const payload=validateApprovalPayload(body.action,body.payload);
+    const requestPermission=body.action.startsWith("membership.")?"platform.memberships.manage.request":body.action==="policy.apply"?"platform.policies.write.request":body.action==="feature_flag.set"?"platform.feature-flags.write.request":"platform.breakglass.request";
+    if(!p.permissions.includes(requestPermission))return reply.code(403).send({error:"APPROVAL_REQUEST_NOT_PERMITTED"});
+    if(body.action.startsWith("membership.")&&body.targetType!=="membership")return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
+    if(body.action==="policy.apply"&&(body.targetType!=="policy"||body.targetId!==(payload as {key:string}).key))return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
+    if(body.action==="feature_flag.set"&&(body.targetType!=="feature_flag"||body.targetId!==(payload as {key:string}).key))return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
+    if(body.action==="break_glass.grant"&&(body.targetType!=="user"||body.targetId!==(payload as {userId:string}).userId))return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
+
     if(body.action.startsWith("tenant."))return reply.code(403).send({error:"PLATFORM_SCOPE_REQUIRED"});
     if(body.action.startsWith("membership.")&&!await c.memberships.findOne({tenantId:p.tenantId,membershipId:body.targetId}))return reply.code(404).send({error:"MEMBERSHIP_NOT_FOUND"});
     if(body.action==="break_glass.grant"){
