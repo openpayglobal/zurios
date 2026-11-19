@@ -287,25 +287,26 @@ The MVP must be end-to-end usable for a controlled test business before vertical
 
 - Repository: `openpayglobal/zurios`.
 - PR #4: merged on 2026-11-19 into `feature/6a3-platform-api` after branch reconciliation; merge commit `b3abd3af7f6442a00b780eb755428c7aed492617`.
-- PR #6: open; carries the product/architecture/database/UX specifications and the first MAC/MAD web foundation. CI is being run and failures are being corrected before merge.
+- PR #6: open and unmerged; carries the product/architecture/database/UX specifications and initial MAC/MAD frontend foundation.
+- PR #7: draft and unmerged; stacked on PR #6. Adds a distinct global operator authorization boundary, independent MAC authentication bootstrap/login/MFA/session APIs, MongoDB operator/audit indexes, read-only MAC overview/tenant/audit APIs, OpenAPI coverage, integration tests and initial frontend API integration.
 - PR #4 reconciliation commit before squash merge: `ad252ca39fb50c3a0bef742a3b8200280ceaa9d5`.
 - Existing CI run on the earlier PR head passed frozen pnpm install, MongoDB replica-set startup, OpenAPI lint, typecheck, tests, builds and Fastify health smoke tests.
 - Current Vercel deployment quota had returned HTTP 402 for the free daily deployment limit; no paid upgrade is authorized.
-- Preview API environment variables have been configured, but the current deployment has not yet consumed the latest values.
+- Existing preview API environment variables were configured for the earlier tenant API. The new `MAC_JWT_SECRET` and one-time `MAC_BOOTSTRAP_TOKEN` are not yet provisioned; MAC authentication remains unavailable until both are configured alongside the existing MFA encryption key. The new frontend also requires `VITE_ZURI_API_URL` at build time or a manually entered API base URL.
 - Atlas network access still includes `0.0.0.0/0`; this is not acceptable for production. Do not claim production readiness.
-- The canonical MAC/MAD URL is documented. The complete MAC/MAD application is not yet implemented or production-verified.
+- The canonical MAC/MAD URL is documented. MAC has an initial authenticated read-only API and frontend integration in the feature branch; operator provisioning and API activation remain gated by separate secrets. Provider adapters, runtime configuration, approvals, deployments and full operational workflows remain unimplemented.
 
 ## 10. Immediate next actions
 
-1. Confirm CI on the reconciled PR head and resolve any failures without discarding the latest platform API work.
-2. Merge PR #4 after required checks are green and GitHub permits the merge.
-3. Create the authoritative requirements/architecture/UX/data blueprint documents as versioned repository artifacts.
-4. Establish the design system and platform foundation acceptance backlog.
-5. Implement platform foundation in small, testable PRs.
-6. Deliver the operational MVP in dependency order.
-7. Implement MAC/MAD and the secure runtime configuration plane.
-8. Add AI, marketplace and vertical applications after their platform dependencies.
-9. Complete release, security and recovery gates.
+1. Complete CI validation for the current MAC operator authentication and frontend integration branch; resolve all failures and verify the MongoDB replica-set integration tests.
+2. Complete the global operator lifecycle: additional operator invitations, least-privilege grants, approvals, suspension, session listing/revocation and recovery.
+3. Provision independent MAC signing and one-time bootstrap secrets in preview only after the owner approves the bootstrap handling; activate the initial operator without exposing secrets in chat, source or browser code.
+4. Complete MAC read-only APIs and connect all corresponding frontend workspaces; keep writes disabled until transactional audit and approval workflows pass.
+5. Implement the encrypted, versioned runtime configuration service and provider capability registry without paid infrastructure.
+6. Complete the business MVP in dependency order: identity, tenant/workspace, catalogue, inventory, POS, payment recording/reconciliation, double-entry ledger and reporting.
+7. Add procurement, CRM, people/workforce, commerce, analytics, integrations and vertical applications.
+8. Add AI governance, agent/tool permissions, marketplace and developer capabilities after core controls are operational.
+9. Complete security, tenant-isolation, financial-integrity, backup/restore, disaster-recovery and performance acceptance gates.
 10. Deploy only within available free-tier quotas and only after explicit production approval.
 
 ## 11. Change control
