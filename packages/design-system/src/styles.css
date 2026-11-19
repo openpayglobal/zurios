@@ -1,0 +1,80 @@
+:root {
+  color-scheme: dark;
+  --zui-font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  --zui-color-canvas: #091321;
+  --zui-color-surface: #111d2e;
+  --zui-color-surface-raised: #17263a;
+  --zui-color-border: rgba(226, 237, 250, .12);
+  --zui-color-text: #e8eef7;
+  --zui-color-muted: #91a1b7;
+  --zui-color-primary: #a5f3fc;
+  --zui-color-primary-ink: #083344;
+  --zui-color-danger: #fda4af;
+  --zui-color-success: #86efac;
+  --zui-color-warning: #fcd34d;
+  --zui-radius-control: .75rem;
+  --zui-radius-panel: 1rem;
+  --zui-focus-ring: 0 0 0 3px rgba(103, 232, 249, .28);
+}
+[data-theme="light"] {
+  color-scheme: light;
+  --zui-color-canvas: #f5f8fc;
+  --zui-color-surface: #ffffff;
+  --zui-color-surface-raised: #eef4fa;
+  --zui-color-border: rgba(25, 45, 70, .16);
+  --zui-color-text: #152235;
+  --zui-color-muted: #52647b;
+  --zui-color-primary: #0e7490;
+  --zui-color-primary-ink: #ffffff;
+  --zui-color-danger: #be123c;
+  --zui-color-success: #15803d;
+  --zui-color-warning: #a16207;
+  --zui-focus-ring: 0 0 0 3px rgba(14, 116, 144, .22);
+}
+.zui-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
+  border: 1px solid transparent; border-radius: var(--zui-radius-control);
+  font: 600 .75rem/1.2 var(--zui-font-family); cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, transform .15s ease;
+}
+.zui-button:focus-visible,.zui-input:focus-visible,.zui-select:focus-visible { outline: none; box-shadow: var(--zui-focus-ring); }
+.zui-button:disabled { cursor: not-allowed; opacity: .45; }
+.zui-button--sm { min-height: 2rem; padding: .4rem .7rem; }
+.zui-button--md { min-height: 2.5rem; padding: .625rem 1rem; }
+.zui-button--lg { min-height: 3rem; padding: .75rem 1.25rem; }
+.zui-button--primary { color: var(--zui-color-primary); background: color-mix(in srgb, var(--zui-color-primary) 12%, transparent); border-color: color-mix(in srgb, var(--zui-color-primary) 25%, transparent); }
+.zui-button--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--zui-color-primary) 19%, transparent); }
+.zui-button--secondary { color: var(--zui-color-text); background: color-mix(in srgb, var(--zui-color-text) 5%, transparent); border-color: var(--zui-color-border); }
+.zui-button--secondary:hover:not(:disabled),.zui-button--ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--zui-color-text) 10%, transparent); }
+.zui-button--danger { color: var(--zui-color-danger); background: color-mix(in srgb, var(--zui-color-danger) 9%, transparent); border-color: color-mix(in srgb, var(--zui-color-danger) 25%, transparent); }
+.zui-button--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--zui-color-danger) 16%, transparent); }
+.zui-button--ghost { color: var(--zui-color-text); background: transparent; }
+.zui-field { display: grid; gap: .45rem; min-width: 0; }
+.zui-field__label { color: var(--zui-color-muted); font: 500 .75rem/1.4 var(--zui-font-family); }
+.zui-field__required,.zui-field__error { color: var(--zui-color-danger); }
+.zui-input,.zui-select {
+  width: 100%; min-height: 2.75rem; padding: .7rem .875rem;
+  border: 1px solid var(--zui-color-border); border-radius: var(--zui-radius-control);
+  background: var(--zui-color-canvas); color: var(--zui-color-text);
+  font: 400 .875rem/1.4 var(--zui-font-family);
+}
+.zui-input::placeholder { color: var(--zui-color-muted); opacity: .7; }
+.zui-input--error { border-color: var(--zui-color-danger); }
+.zui-field__hint,.zui-field__error { margin: 0; font: 400 .7rem/1.45 var(--zui-font-family); }
+.zui-field__hint { color: var(--zui-color-muted); }
+.zui-card { min-width: 0; border: 1px solid var(--zui-color-border); border-radius: var(--zui-radius-panel); background: color-mix(in srgb, var(--zui-color-surface) 94%, transparent); box-shadow: 0 18px 55px rgba(0,0,0,.12); }
+.zui-badge { display: inline-flex; align-items: center; border: 1px solid var(--zui-color-border); border-radius: 999px; padding: .25rem .625rem; font: 500 .625rem/1.25 var(--zui-font-family); white-space: nowrap; }
+.zui-badge--neutral { color: var(--zui-color-muted); background: color-mix(in srgb, var(--zui-color-muted) 8%, transparent); }
+.zui-badge--success { color: var(--zui-color-success); background: color-mix(in srgb, var(--zui-color-success) 8%, transparent); border-color: color-mix(in srgb, var(--zui-color-success) 24%, transparent); }
+.zui-badge--warning { color: var(--zui-color-warning); background: color-mix(in srgb, var(--zui-color-warning) 8%, transparent); border-color: color-mix(in srgb, var(--zui-color-warning) 24%, transparent); }
+.zui-badge--danger { color: var(--zui-color-danger); background: color-mix(in srgb, var(--zui-color-danger) 8%, transparent); border-color: color-mix(in srgb, var(--zui-color-danger) 24%, transparent); }
+.zui-badge--info { color: var(--zui-color-primary); background: color-mix(in srgb, var(--zui-color-primary) 8%, transparent); border-color: color-mix(in srgb, var(--zui-color-primary) 24%, transparent); }
+.zui-alert { border: 1px solid var(--zui-color-border); border-radius: var(--zui-radius-control); padding: .75rem 1rem; font: 400 .75rem/1.5 var(--zui-font-family); }
+.zui-alert--info { color: var(--zui-color-primary); background: color-mix(in srgb, var(--zui-color-primary) 7%, transparent); }
+.zui-alert--success { color: var(--zui-color-success); background: color-mix(in srgb, var(--zui-color-success) 7%, transparent); }
+.zui-alert--warning { color: var(--zui-color-warning); background: color-mix(in srgb, var(--zui-color-warning) 7%, transparent); }
+.zui-alert--danger { color: var(--zui-color-danger); background: color-mix(in srgb, var(--zui-color-danger) 7%, transparent); }
+.zui-empty-state { display: grid; justify-items: center; gap: .4rem; padding: 2.5rem 1.25rem; text-align: center; color: var(--zui-color-muted); }
+.zui-empty-state h3 { margin: 0; color: var(--zui-color-text); font: 600 .875rem/1.4 var(--zui-font-family); }
+.zui-empty-state p { max-width: 38rem; margin: 0; font: 400 .75rem/1.5 var(--zui-font-family); }
+@media (prefers-reduced-motion: reduce) { .zui-button { transition: none; } }

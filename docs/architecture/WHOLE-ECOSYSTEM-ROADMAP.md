@@ -124,7 +124,9 @@ Complete and accept:
 
 ### 6A.5 Shared design system
 
-Create a separately versioned shared package consumed by all workspaces:
+**Initial implementation now present on `feature/6a5-shared-design-system`:** a separately versioned `@zuri/design-system` workspace package, semantic CSS tokens with dark/light theme variables, reduced-motion support, focus-visible styling, and shared Button, TextField, SelectField, Badge, Card, Alert and EmptyState primitives. The web shell imports the package stylesheet and delegates its common Button, Input, Panel and Status wrappers to the shared primitives. Server-rendered component tests cover button semantics, labelled and validated fields, select fields, badges, cards, alerts and empty states; the package typecheck and monorepo build passed in Actions run #640. Visual regression, keyboard-flow testing, complete form/table/dialog patterns and independent WCAG 2.2 AA review remain open.
+
+Continue and accept the package by completing:
 - design tokens: color, typography, spacing, density, elevation, motion and breakpoints;
 - primitives: button, input, select, checkbox, radio, switch, dialog, drawer, tabs, menu, tooltip, table, pagination, badge, alert and toast;
 - patterns: data table, search/filter toolbar, form layout, empty/loading/error states, confirmation, audit timeline and approval panel;
