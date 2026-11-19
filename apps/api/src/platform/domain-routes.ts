@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -124,6 +124,9 @@ function sendError(error:unknown,reply:FastifyReply){
  if(["PAYMENT_PROVIDER_NOT_CONFIGURED","PAYMENT_REFERENCE_TYPE_NOT_SUPPORTED"].includes(code))return reply.code(422).send({error:code});
  if(["COMMERCE_ACTIVE_STOCK_RESERVATION_REQUIRED","COMMERCE_PRODUCT_NOT_AVAILABLE","COMMERCE_ORDER_CURRENCY_MISMATCH"].includes(code))return reply.code(422).send({error:code});
  if(["MAINTENANCE_WORK_ORDER_VERSION_CONFLICT","MAINTENANCE_WORK_ORDER_NOT_ACTIVE"].includes(code))return reply.code(409).send({error:code});
+ if(["TIME_ENTRY_VERSION_CONFLICT","TIME_ENTRY_NOT_SUBMITTED","TIME_ENTRY_SELF_APPROVAL_DENIED"].includes(code))return reply.code(409).send({error:code});
+ if(["ACTIVE_PROJECT_NOT_FOUND","ACTIVE_PROJECT_EMPLOYEE_NOT_FOUND","PROJECT_TASK_NOT_FOUND"].includes(code))return reply.code(422).send({error:code});
+ if(["TIME_ENTRY_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  if(["ACTIVE_ASSET_NOT_FOUND","MAINTENANCE_WORK_ORDER_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  if(["INVOICE_NOT_PAYABLE","CAPTURED_PAYMENT_NOT_FOUND","PAYMENT_INTENT_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
@@ -784,6 +787,80 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
+  app.get("/projects",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"projects.project.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("projects").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({createdAt:-1}).limit(500).toArray()};
+  });
+  app.post("/projects",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"projects.project.create",scope);if(denied)return denied;
+    const body=ProjectSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createProject(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/projects/:projectId/tasks",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {projectId}=z.object({projectId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"projects.task.create",scope);if(denied)return denied;
+    const body=ProjectTaskSchema.parse({...raw,tenantId:p.tenantId,organizationId,projectId,status:"backlog"});
+    const result=await createProjectTask(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.get("/projects/:projectId/time-entries",async(request)=>{
+   const p=getPrincipal(request);
+   const {projectId}=z.object({projectId:z.string().min(1)}).parse(request.params);
+   const allowed=await authorizedOrganizationIds(db,request,p,"projects.time_entry.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("time_entries").find({tenantId:p.tenantId,organizationId:{$in:allowed},projectId},{projection:{_id:0}}).sort({workDate:-1}).limit(500).toArray()};
+  });
+  app.post("/projects/:projectId/time-entries",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {projectId}=z.object({projectId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"projects.time_entry.submit",scope);if(denied)return denied;
+    const body=TimeEntrySchema.parse({...raw,tenantId:p.tenantId,organizationId,projectId,status:"submitted"});
+    const result=await submitTimeEntry(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  const decideTime=async(request:FastifyRequest,reply:FastifyReply,decision:"approved"|"rejected")=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {timeEntryId}=z.object({timeEntryId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"projects.time_entry.approve",scope);if(denied)return denied;
+    const body=TimeEntryDecisionSchema.parse({...raw,tenantId:p.tenantId,organizationId,timeEntryId,decision});
+    const result=await decideTimeEntry(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  };
+  app.post("/projects/time-entries/:timeEntryId/approve",async(request,reply)=>decideTime(request,reply,"approved"));
+  app.post("/projects/time-entries/:timeEntryId/reject",async(request,reply)=>decideTime(request,reply,"rejected"));
 
  };
 }
