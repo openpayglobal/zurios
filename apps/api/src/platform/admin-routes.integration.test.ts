@@ -126,6 +126,23 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(locationDeactivation.statusCode,200);
   assert.equal((await db.collection("locations").findOne({locationId:"loc-unused"}))?.status,"inactive");
 
+  const organizationLifecycle=await app.inject({
+   method:"POST",url:"/platform/admin/organizations/org-a/lifecycle-requests",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"organization-deactivate-request-0001"},
+   payload:{reason:"Request organization closure after planned consolidation and dependency review."}
+  });
+  assert.equal(organizationLifecycle.statusCode,201);
+  const organizationApprovalId=organizationLifecycle.json().data.requestId;
+  const organizationDeactivation=await app.inject({
+   method:"POST",url:"/platform/admin/approvals/"+organizationApprovalId+"/approve",
+   headers:{authorization:"Bearer "+operatorB,"idempotency-key":"organization-deactivate-approve-0001"},
+   payload:{reason:"Review confirms active locations and memberships must be migrated first."}
+  });
+  assert.equal(organizationDeactivation.statusCode,422);
+  assert.equal(organizationDeactivation.json().error,"ORGANIZATION_HAS_ACTIVE_DEPENDENCIES");
+  assert.equal((await db.collection("organizations").findOne({organizationId:"org-a"}))?.status,"active");
+
+
 
   const emergencyRequest=await app.inject({
    method:"POST",url:"/platform/admin/approvals",
