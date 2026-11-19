@@ -33,7 +33,9 @@ test("Commerce orders use catalog prices and require matching stock reservations
   const stored=await db.collection<any>("commerce_orders").findOne({tenantId,orderId:"order-commerce-001"});
   assert.equal(stored.lines[0].unitPriceMinor,10000,"client cannot override catalog price");
   await assert.rejects(()=>createCommerceOrder(db,{...order,orderId:"order-wrong-reservation",reservationId:"reservation-commerce-001"},"commerce-user","commerce-order-002"),/COMMERCE_ACTIVE_STOCK_RESERVATION_REQUIRED/);
-  await assert.rejects(()=>createCommerceOrder(db,{...order,orderId:"order-no-product",reservationId:"reservation-commerce-001",lines:[{sku:"UNKNOWN",quantityMilli:1000}]},"commerce-user","commerce-order-003"),/COMMERCE_ACTIVE_STOCK_RESERVATION_REQUIRED|COMMERCE_PRODUCT_NOT_AVAILABLE/);
+  await assert.rejects(()=>createCommerceOrder(db,{...order,lines:[{sku:"SKU-001",quantityMilli:1000}]},"commerce-user","commerce-order-lines-mismatch"),/COMMERCE_RESERVATION_LINES_MISMATCH/);
+  await db.collection("inventory_reservations").insertOne({tenantId,reservationId:"reservation-unknown-sku",warehouseId:"warehouse-001",orderId:"order-no-product",lines:[{sku:"UNKNOWN",quantityMilli:1000}],status:"reserved"});
+  await assert.rejects(()=>createCommerceOrder(db,{...order,orderId:"order-no-product",reservationId:"reservation-unknown-sku",lines:[{sku:"UNKNOWN",quantityMilli:1000}]},"commerce-user","commerce-order-003"),/COMMERCE_PRODUCT_NOT_AVAILABLE/);
   assert.equal(await db.collection("commerce_orders").countDocuments({tenantId}),1);
   assert.ok(await db.collection("audit_events").countDocuments({tenantId})>=2);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId})>=2);
