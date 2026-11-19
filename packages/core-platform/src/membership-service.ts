@@ -4,7 +4,7 @@ import {newId} from "./ids.js";
 import {coreCollections} from "./repositories.js";
 const schema=z.object({userId:z.string().min(1),organizationIds:z.array(z.string().min(1)).default([]),locationIds:z.array(z.string().min(1)).default([]),roleIds:z.array(z.string().min(1)).default([])});
 function assertUnique(values:string[],code:string){if(new Set(values).size!==values.length)throw new Error(code);}
-export async function createMembership(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession,options?:{allowInvitedUser?:boolean}){
+export async function createMembership(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession,options?:{allowInvitedUser?:boolean;forceInvited?:boolean}){
  const d=schema.parse(input),c=coreCollections(db);
  assertUnique(d.organizationIds,"DUPLICATE_ORGANIZATION_SCOPE");assertUnique(d.locationIds,"DUPLICATE_LOCATION_SCOPE");assertUnique(d.roleIds,"DUPLICATE_ROLE_ASSIGNMENT");
  if(!await c.tenants.findOne({tenantId,status:"active"},session?{session}:{}))throw new Error("TENANT_NOT_ACTIVE");
@@ -19,7 +19,7 @@ export async function createMembership(db:Db,tenantId:string,actorId:string,inpu
  }
  if(d.roleIds.length&&await c.roles.countDocuments({tenantId,roleId:{$in:d.roleIds},status:"active"},session?{session}:{})!==d.roleIds.length)throw new Error("INVALID_ROLE_ASSIGNMENT");
  if(await c.memberships.findOne({tenantId,userId:d.userId,status:{$in:["invited","active","suspended"]}},session?{session}:{}))throw new Error("MEMBERSHIP_ALREADY_EXISTS");
- const now=new Date(),doc={tenantId,membershipId:newId("mem"),...d,status:(user.status==="invited"?"invited":"active") as "invited"|"active",createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
+ const now=new Date(),doc={tenantId,membershipId:newId("mem"),...d,status:(options?.forceInvited||user.status==="invited"?"invited":"active") as "invited"|"active",createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await c.memberships.insertOne(doc,session?{session}:{});return doc;
 }
 export async function revokeMembership(db:Db,tenantId:string,membershipId:string,actorId:string,session?:ClientSession){
