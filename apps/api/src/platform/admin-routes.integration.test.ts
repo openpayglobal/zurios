@@ -12,7 +12,7 @@ import type {AuthConfig} from "./auth-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 const permissionKeys=[
- "platform.admin.overview.read","platform.admin.overview.read.all",
+ "platform.admin.overview.read","platform.admin.overview.read.all","platform.organizations.manage","platform.organizations.manage.request","platform.locations.manage","platform.locations.manage.request",
  "platform.users.read","platform.users.read.all","platform.users.invite",
  "platform.memberships.read","platform.memberships.create","platform.memberships.assign.roles",
  "platform.memberships.manage.request","platform.memberships.manage",
