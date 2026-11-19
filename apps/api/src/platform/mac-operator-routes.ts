@@ -167,8 +167,10 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    return {data:items};
   });
   app.post("/mac/sessions/:sessionId/revoke",{preHandler:[authenticated,permission("mac.operators.manage")]},async(request,reply)=>{
-   const params=z.object({sessionId:z.string().uuid()}).parse(request.params);
-   const body=z.object({reason:z.string().trim().min(10).max(300)}).parse(request.body);
+   const paramsResult=z.object({sessionId:z.string().uuid()}).safeParse(request.params);
+   const bodyResult=z.object({reason:z.string().trim().min(10).max(300)}).safeParse(request.body);
+   if(!paramsResult.success||!bodyResult.success)return reply.code(400).send({error:"INVALID_REQUEST"});
+   const params=paramsResult.data,body=bodyResult.data;
    const principal=request.macOperator!;
    if(params.sessionId===principal.sessionId)return reply.code(409).send({error:"USE_LOGOUT_FOR_CURRENT_SESSION"});
    const result=await db.collection("platform_operator_sessions").updateOne({sessionId:params.sessionId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{revokedAt:new Date(),revokedReason:"operator_revoked",revokedBy:principal.operatorId}});
@@ -183,17 +185,21 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    ]);
    return {data:{tenants,activePlatformOperators:operators,activeOperatorSessions:sessions,providerConnections:"not_configured",deploymentTelemetry:"not_connected",generatedAt:new Date().toISOString()}};
   });
-  app.get("/mac/tenants",{preHandler:[authenticated,permission("mac.tenants.read")]},async request=>{
+  app.get("/mac/tenants",{preHandler:[authenticated,permission("mac.tenants.read")]},async(request,reply)=>{
+   const parsed=z.object({limit:z.coerce.number().int().min(1).max(100).default(25),after:z.string().optional()}).safeParse(request.query);
+   if(!parsed.success)return reply.code(400).send({error:"INVALID_REQUEST"});
    await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.tenants.read",resourceType:"tenant_inventory",outcome:"success",request});
-   const query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25),after:z.string().optional()}).parse(request.query);
+   const query=parsed.data;
    const filter=query.after?{tenantId:{$gt:query.after}}:{};
    const rows=await db.collection("tenants").find(filter,{projection:{_id:0,tenantId:1,slug:1,name:1,status:1,createdAt:1,updatedAt:1}}).sort({tenantId:1}).limit(query.limit+1).toArray();
    const hasMore=rows.length>query.limit,items=rows.slice(0,query.limit);
    return {data:items,page:{hasMore,nextCursor:hasMore?items[items.length-1]?.tenantId:null}};
   });
-  app.get("/mac/audit",{preHandler:[authenticated,permission("mac.audit.read")]},async request=>{
+  app.get("/mac/audit",{preHandler:[authenticated,permission("mac.audit.read")]},async(request,reply)=>{
+   const parsed=z.object({limit:z.coerce.number().int().min(1).max(100).default(25),before:z.coerce.date().optional()}).safeParse(request.query);
+   if(!parsed.success)return reply.code(400).send({error:"INVALID_REQUEST"});
    await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.audit.read",resourceType:"admin_audit_events",outcome:"success",request});
-   const query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25),before:z.coerce.date().optional()}).parse(request.query);
+   const query=parsed.data;
    const filter=query.before?{occurredAt:{$lt:query.before}}:{};
    const items=await db.collection("admin_audit_events").find(filter,{projection:{_id:0}}).sort({occurredAt:-1}).limit(query.limit).toArray();
    return {data:items};
