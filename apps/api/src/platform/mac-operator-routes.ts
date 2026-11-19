@@ -28,7 +28,8 @@ function sameSecret(actual:string|undefined,expected:string|undefined):boolean{
  const a=Buffer.from(actual),b=Buffer.from(expected);
  return a.length===b.length&&timingSafeEqual(a,b);
 }
-function unavailable(config:MacOperatorConfig){return !config.jwtSecret||!config.bootstrapToken||!config.mfaEncryptionKey;}
+function authUnavailable(config:MacOperatorConfig){return !config.jwtSecret||!config.mfaEncryptionKey;}
+function bootstrapUnavailable(config:MacOperatorConfig){return authUnavailable(config)||!config.bootstrapToken;}
 async function enforceMacRateLimit(db:Db,request:FastifyRequest,identity:string){
  const bucket=Math.floor(Date.now()/60_000),keyValue=createHash("sha256").update(identity+"|"+request.ip+"|"+bucket).digest("hex");
  await db.collection("mac_auth_rate_limits").updateOne({key:keyValue},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((bucket+2)*60_000)}},{upsert:true});
@@ -94,7 +95,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
   };
   app.post("/mac/auth/bootstrap",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(unavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+   if(bootstrapUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    if(!sameSecret(request.headers["x-mac-bootstrap-token"] as string|undefined,config.bootstrapToken))return reply.code(401).send({error:"UNAUTHENTICATED"});
    try{
     const body=bootstrapSchema.parse(request.body),collection=db.collection("platform_operators");\n    await enforceMacRateLimit(db,request,"bootstrap");
@@ -109,7 +110,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
   });
   app.post("/mac/auth/bootstrap/confirm",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(unavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+   if(bootstrapUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    if(!sameSecret(request.headers["x-mac-bootstrap-token"] as string|undefined,config.bootstrapToken))return reply.code(401).send({error:"UNAUTHENTICATED"});
    try{
     const body=confirmSchema.parse(request.body),email=normalized(body.email),collection=db.collection("platform_operators");
@@ -126,7 +127,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
   });
   app.post("/mac/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(unavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+   if(authUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    try{
     const body=loginSchema.parse(request.body),email=normalized(body.email);\n    await enforceMacRateLimit(db,request,email);\n    const operator=await db.collection("platform_operators").findOne({emailNormalized:email,status:"active",mfaEnabled:true});
     if(!operator?.passwordHash||!await verifyPassword(body.password,operator.passwordHash)||!operator.mfaSecretEncrypted)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
@@ -139,7 +140,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
   });
   app.post("/mac/auth/refresh",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(unavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+   if(authUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    try{
     const body=refreshSchema.parse(request.body),sessions=db.collection("platform_operator_sessions"),now=new Date();
     const session=await sessions.findOne({sessionId:body.sessionId,refreshTokenHash:hashOpaqueToken(body.refreshToken),revokedAt:{$exists:false},expiresAt:{$gt:now}});
