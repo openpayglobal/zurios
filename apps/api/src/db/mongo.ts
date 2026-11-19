@@ -102,6 +102,8 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("hr_leave_requests").createIndex({tenantId:1,leaveRequestId:1},{unique:true}),
   db.collection("hr_leave_requests").createIndex({tenantId:1,organizationId:1,status:1,startsAt:1}),
   db.collection("hr_leave_requests").createIndex({tenantId:1,organizationId:1,employeeId:1,startsAt:1,endsAt:1}),
+  db.collection("payroll_runs").createIndex({tenantId:1,payrollRunId:1},{unique:true}),
+  db.collection("payroll_runs").createIndex({tenantId:1,organizationId:1,periodStart:1,periodEnd:1,status:1}),
   db.collection("webhook_subscriptions").createIndex({tenantId:1,endpointId:1},{unique:true}),
   db.collection("webhook_subscriptions").createIndex({tenantId:1,status:1,eventTypes:1}),
   db.collection("webhook_deliveries").createIndex({tenantId:1,endpointId:1,eventId:1},{unique:true}),
