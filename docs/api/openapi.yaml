@@ -16,16 +16,27 @@ security:
   - bearerAuth: []
 tags:
   - name: Tenant
+    description: Tenant-scoped organization and operating context.
   - name: Organizations
+    description: Tenant organization hierarchy and assignments.
   - name: Locations
+    description: Physical and operational locations.
   - name: Memberships
+    description: Tenant membership lifecycle and scope.
   - name: Roles
+    description: Tenant role and permission catalogue.
   - name: Policies
+    description: Attribute-based access-control policies.
   - name: Feature flags
+    description: Tenant feature availability and rollout rules.
   - name: Sessions
+    description: Tenant-user session management.
   - name: Audit
+    description: Tenant-scoped audit event history.
   - name: MAC Authentication
+    description: Independent global platform-operator authentication and sessions.
   - name: MAC
+    description: Global platform command and administrative read APIs.
 paths:
   /platform/tenant:
     get:
@@ -396,6 +407,11 @@ paths:
       tags: [MAC Authentication]
       operationId: confirmPlatformOperatorBootstrap
       summary: Confirm initial operator MFA and activate the platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacBootstrapConfirmInput"}
       responses:
         "201": {description: Operator activated and initial session issued}
         "401": {$ref: "#/components/responses/Unauthenticated"}
@@ -681,6 +697,32 @@ components:
         expiresAt: {type: string, format: date-time}
         lastUsedAt: {type: string, format: date-time}
         revokedAt: {type: string, format: date-time}
+    MacBootstrapInput:
+      type: object
+      required: [email, displayName, password]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        displayName: {type: string, minLength: 2, maxLength: 120}
+        password: {type: string, minLength: 12, maxLength: 128}
+    MacBootstrapConfirmInput:
+      type: object
+      required: [email, code]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        code: {type: string, pattern: "^[0-9]{6}$"}
+    MacLoginInput:
+      type: object
+      required: [email, password, code]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        password: {type: string, maxLength: 128}
+        code: {type: string, pattern: "^[0-9]{6}$"}
+    MacRefreshInput:
+      type: object
+      required: [sessionId, refreshToken]
+      properties:
+        sessionId: {type: string, format: uuid}
+        refreshToken: {type: string, minLength: 40, maxLength: 200}
     AuditEvent:
       type: object
       properties:
