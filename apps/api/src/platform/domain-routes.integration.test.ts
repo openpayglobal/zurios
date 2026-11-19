@@ -50,7 +50,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "erp.invoice.read","erp.invoice.create","erp.invoice.payment.allocate","erp.journal.post",
    "crm.account.read","crm.account.create","crm.contact.read","crm.contact.create","crm.lead.read","crm.lead.create",
    "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create",
-   "hr.employee.read","hr.employee.create","hr.leave.read","hr.leave.request","hr.leave.approve"
+   "hr.employee.read","hr.employee.create","hr.leave.read","hr.leave.request","hr.leave.approve",
+   "payroll.run.read","payroll.run.create","payroll.run.approve"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -306,7 +307,28 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const hrLeaveList=await app.inject({method:"GET",url:"/v1/hr/leave-requests",headers:managerHeaders});
   assert.equal(hrLeaveList.statusCode,200);
   assert.equal(hrLeaveList.json().data[0].status,"approved");
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=27);
+  const payroll=await app.inject({
+   method:"POST",url:"/v1/payroll/runs",headers:{...headers,"idempotency-key":"payroll-api-001"},
+   payload:{organizationId:"org-a",payrollRunId:"payroll-api-001",periodStart:"2026-11-01T00:00:00.000Z",periodEnd:"2026-11-30T23:59:59.999Z",
+    jurisdiction:"UG",currency:"UGX",calculationProvider:"reviewed-calculation-adapter",rulesetVersion:"UG-2026-v1",calculatedAt:now.toISOString(),
+    lines:[{employeeId:"hr-employee-api-001",grossMinor:100000,statutoryDeductionMinor:10000,voluntaryDeductionMinor:5000,employerContributionMinor:8000,netMinor:85000}],
+    totalGrossMinor:100000,totalStatutoryDeductionsMinor:10000,totalVoluntaryDeductionsMinor:5000,totalEmployerContributionsMinor:8000,totalNetMinor:85000}
+  });
+  assert.equal(payroll.statusCode,201);
+  const payrollSelfApprove=await app.inject({
+   method:"POST",url:"/v1/payroll/runs/payroll-api-001/approve",headers:{...headers,"idempotency-key":"payroll-self-approve-api"},
+   payload:{organizationId:"org-a",reason:"The maker cannot approve their own payroll run",expectedVersion:0}
+  });
+  assert.equal(payrollSelfApprove.statusCode,409);
+  const payrollApproved=await app.inject({
+   method:"POST",url:"/v1/payroll/runs/payroll-api-001/approve",headers:{...managerHeaders,"idempotency-key":"payroll-approve-api-001"},
+   payload:{organizationId:"org-a",reason:"Independent review of reconciled payroll totals completed",expectedVersion:0}
+  });
+  assert.equal(payrollApproved.statusCode,200);
+  const payrollList=await app.inject({method:"GET",url:"/v1/payroll/runs",headers:managerHeaders});
+  assert.equal(payrollList.statusCode,200);
+  assert.equal(payrollList.json().data[0].status,"approved");
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=31);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
