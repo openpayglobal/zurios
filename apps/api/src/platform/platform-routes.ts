@@ -5,7 +5,7 @@ import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {z,ZodError} from "zod";
 import {
  coreCollections,createOrganization,createLocation,createMembership,createRole,
- upsertPolicy,setFeatureFlag,appendAuditEvent,appendOutboxEvent,runIdempotentMutation
+ upsertPolicy,setFeatureFlag,appendAuditEvent,appendOutboxEvent,runIdempotentMutation,evaluatePolicy
 } from "@zuri/core-platform";
 import {authenticate} from "./auth-middleware.js";
 import {authorize} from "./authorization.js";
@@ -37,7 +37,16 @@ async function auditFailure(db:Db,request:FastifyRequest,p:Principal,ipHashSecre
  const errorCode=error instanceof Error&&/^[A-Z0-9_]{3,100}$/.test(error.message)?error.message:"MUTATION_FAILED";
  await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:`${operation}.failed`,resourceType:"platform_api",resourceId:request.routeOptions.url,outcome:"failure",correlationId:request.id,metadata:{operation,errorCode}});
 }
-function permit(db:Db,ipHashSecret:string,permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{const p=principal(request);if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return denied(db,request,reply,p,ipHashSecret,"FORBIDDEN");};}
+function permit(db:Db,ipHashSecret:string,permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{
+ const p=principal(request);
+ if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return denied(db,request,reply,p,ipHashSecret,"FORBIDDEN");
+ const decision=await evaluatePolicy(db,p.tenantId,{
+  subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},
+  resource:{tenantId:p.tenantId,resourceType:"platform_api",path:request.routeOptions.url??"",method:request.method},
+  action:permission,environment:{}
+ });
+ if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,ipHashSecret,"ABAC_POLICY_DENIED");
+};}
 async function audit(db:Db,p:Principal,request:FastifyRequest,ipHashSecret:string,action:string,type:string,id:string|undefined,session:ClientSession){
  await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}},session);
 }
@@ -103,12 +112,21 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.get("/platform/memberships",{preHandler:permit(db,config.jwtSecret,"platform.memberships.read")},async request=>{
    const p=principal(request),ids=orgs(p);if(!ids.length)return {data:[]};
-   return {data:await c.memberships.find(scoped(p.tenantId,{organizationIds:{$in:ids}}),{projection:{_id:0}}).sort({createdAt:-1}).limit(200).toArray()};
+   const rows=await c.memberships.find(scoped(p.tenantId,{organizationIds:{$in:ids}}),{projection:{_id:0}}).sort({createdAt:-1}).limit(200).toArray();
+   const visibleOrganizations=new Set(ids),visibleLocations=new Set(locations(p));
+   return {data:rows.map(row=>({...row,organizationIds:row.organizationIds.filter(id=>visibleOrganizations.has(id)),locationIds:row.locationIds.filter(id=>visibleLocations.has(id))}))};
   });
   app.post("/platform/memberships",{preHandler:permit(db,config.jwtSecret,"platform.memberships.create")},async(request,reply)=>{
    const p=principal(request);try{
     const b=z.object({userId:z.string(),organizationIds:z.array(z.string()).min(1),locationIds:z.array(z.string()).default([]),roleIds:z.array(z.string()).default([])}).parse(request.body);
     if(b.organizationIds.some(x=>!orgs(p).includes(x))||b.locationIds.some(x=>!locations(p).includes(x)))return denied(db,request,reply,p,config.jwtSecret,"MEMBERSHIP_SCOPE_DENIED","membership");
+    if(b.roleIds.length&&!p.permissions.includes("platform.memberships.assign.roles"))return denied(db,request,reply,p,config.jwtSecret,"ROLE_ASSIGNMENT_NOT_PERMITTED","membership");
+    if(b.roleIds.length){
+     const assignedRoles=await c.roles.find({tenantId:p.tenantId,roleId:{$in:b.roleIds},status:"active"}).toArray();
+     const assignedPermissions=new Set(assignedRoles.flatMap(role=>role.permissionKeys));
+     const escalates=[...assignedPermissions].some(permission=>!p.permissions.includes(permission));
+     if(escalates&&!p.permissions.includes("platform.memberships.assign.privileged"))return denied(db,request,reply,p,config.jwtSecret,"ROLE_ASSIGNMENT_PRIVILEGE_ESCALATION_DENIED","membership");
+    }
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.memberships.create",async session=>{
      const result=await createMembership(db,p.tenantId,p.userId,b,session);
      await audit(db,p,request,config.jwtSecret,"platform.membership.created","membership",result.membershipId,session);
@@ -123,6 +141,8 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/platform/roles",{preHandler:permit(db,config.jwtSecret,"platform.roles.create")},async(request,reply)=>{
    const p=principal(request);try{
     const b=z.object({key:z.string(),name:z.string(),description:z.string().optional(),permissionKeys:z.array(z.string()).max(500),isSystem:z.boolean().default(false)}).parse(request.body);
+    if(b.isSystem&&!p.permissions.includes("platform.roles.create.system"))return denied(db,request,reply,p,config.jwtSecret,"SYSTEM_ROLE_CREATION_DENIED","role");
+    if(b.permissionKeys.some(permission=>!p.permissions.includes(permission))&&!p.permissions.includes("platform.roles.grant.privileged"))return denied(db,request,reply,p,config.jwtSecret,"ROLE_PERMISSION_ESCALATION_DENIED","role");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.roles.create",async session=>{
      const result=await createRole(db,p.tenantId,p.userId,b,session);
      await audit(db,p,request,config.jwtSecret,"platform.role.created","role",result.roleId,session);
@@ -138,6 +158,9 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({key:z.string().min(2).max(100)}).parse(request.params);
     const b=z.object({effect:z.enum(["allow","deny"]),priority:z.number().int().min(0).max(10000),subject:z.record(z.unknown()).default({}),resource:z.record(z.unknown()).default({}),actions:z.array(z.string()).min(1),conditions:z.record(z.unknown()).default({})}).parse(request.body);
+    if(b.effect==="allow"&&!p.permissions.includes("platform.policies.write.allow"))return denied(db,request,reply,p,config.jwtSecret,"POLICY_ALLOW_NOT_PERMITTED","policy");
+    if(b.effect==="deny"&&!p.permissions.includes("platform.policies.write.deny"))return denied(db,request,reply,p,config.jwtSecret,"POLICY_DENY_NOT_PERMITTED","policy");
+    if(!Object.keys(b.subject).length&&!Object.keys(b.resource).length&&!Object.keys(b.conditions).length&&!p.permissions.includes("platform.policies.write.global"))return denied(db,request,reply,p,config.jwtSecret,"GLOBAL_POLICY_NOT_PERMITTED","policy");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.policies.upsert",async session=>{
      const result=await upsertPolicy(db,p.tenantId,p.userId,{...b,key:params.key},session);
      await audit(db,p,request,config.jwtSecret,"platform.policy.upserted","policy",result?.policyId,session);
