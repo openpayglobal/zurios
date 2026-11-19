@@ -6,7 +6,10 @@ import {connectMongo,closeMongo} from "./db/mongo.js";
 import {authRoutes} from "./platform/auth-routes.js";
 import {platformRoutes} from "./platform/platform-routes.js";
 import type {AuthConfig} from "./platform/auth-service.js";
+import {createMongoEventBusPublisher,runOutboxWorker} from "@zuri/core-platform";
 const app=Fastify({logger:true,bodyLimit:1_048_576});
+const outboxAbortController=new AbortController();
+let outboxWorkerPromise:Promise<void>|undefined;
 await app.register(helmet);
 await app.register(cors,{origin:corsOrigins,credentials:true});
 app.get("/health/live",async()=>({status:"ok",service:"zuri-api"}));
@@ -19,6 +22,7 @@ try{
  await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(platformRoutes(db,authConfig));
  await app.listen({host:config.API_HOST,port:config.API_PORT});
+ outboxWorkerPromise=runOutboxWorker(db,createMongoEventBusPublisher(db),outboxAbortController.signal).catch(error=>{app.log.error({err:error},"Platform outbox worker stopped unexpectedly");});
 }catch(error){app.log.error(error);process.exitCode=1;}
-const shutdown=async()=>{await app.close();await closeMongo();};
+const shutdown=async()=>{outboxAbortController.abort();await app.close();await outboxWorkerPromise;await closeMongo();};
 process.on("SIGINT",shutdown);process.on("SIGTERM",shutdown);
