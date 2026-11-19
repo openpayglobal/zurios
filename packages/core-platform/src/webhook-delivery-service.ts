@@ -87,7 +87,7 @@ export async function runWebhookDeliveryWorker(db:Db,dependencies:{resolveSecret
  const poll=Math.max(250,options?.pollIntervalMs??2000);let failures=0;
  while(!signal.aborted){
   try{
-   const result=await dispatchWebhookBatch(db,dependencies,{workerId:options?.workerId,batchSize:options?.batchSize});
+   const result=await dispatchWebhookBatch(db,dependencies,{...(options?.workerId?{workerId:options.workerId}:{}),...(options?.batchSize?{batchSize:options.batchSize}:{})});
    failures=0;
    if(result.claimed===0)await waitForPoll(poll,signal);
   }catch(error){
