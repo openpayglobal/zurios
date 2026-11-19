@@ -97,7 +97,9 @@ test("auth HTTP routes validate and complete the complete identity lifecycle", {
 
   const invitedUser=await createUser(db,"route-test",{email:"invite-"+suffix+"@example.test",displayName:"Invited User"});
   const emailToken=await issueEmailVerification(db,invitedUser.userId);
-  const inviteEmail=await app.register(authRoutes(db,cfg)).then(()=>app.inject({method:"POST",url:"/auth/email/verify",payload:{userId:invitedUser.userId,token:emailToken}}));
+  await app.register(authRoutes(db,cfg));
+  await app.ready();
+  const inviteEmail=await app.inject({method:"POST",url:"/auth/email/verify",payload:{userId:invitedUser.userId,token:emailToken}});
   assert.equal(inviteEmail.statusCode,204);
   const inviteToken=await issueInvitation(db,invitedUser.userId);
   const acceptInvite=await app.inject({method:"POST",url:"/auth/invitations/"+invitedUser.userId+"/accept",payload:{token:inviteToken,password:"Invited-User-Password-123!"}});
