@@ -370,6 +370,24 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/memberships/{membershipId}/accept:
+    post:
+      tags: [Identity]
+      operationId: acceptTenantMembershipInvitation
+      summary: Accept a one-time tenant membership invitation
+      description: The invitation token is high entropy, one-time, stored only as a hash and expires. A password is required when activating a newly invited global user.
+      security: []
+      parameters:
+        - {name: membershipId, in: path, required: true, schema: {type: string, minLength: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AcceptMembershipInvitation"}
+      responses:
+        "204": {description: Membership activated}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "422": {description: Invitation is invalid, expired or user is not eligible}
   /platform/admin/overview:
     get:
       tags: [Administration]
@@ -971,3 +989,10 @@ components:
       properties:
         action: {type: string, enum: [tenant.activate, tenant.suspend, tenant.close]}
         reason: {type: string, minLength: 20, maxLength: 2000}
+
+    AcceptMembershipInvitation:
+      type: object
+      required: [token]
+      properties:
+        token: {type: string, minLength: 20}
+        password: {type: string, minLength: 12, maxLength: 128}
