@@ -90,8 +90,11 @@ export const PurchaseOrderSchema=z.object({
  lines:z.array(PurchaseOrderLineSchema).min(1),
  totalMinor:z.number().int().positive(),
  status:z.enum(["draft","submitted","approved","partially_received","received","cancelled"])
-}).refine(order=>!order.expectedAt||order.expectedAt>=order.orderedAt,{
- message:"Expected delivery cannot precede order creation",path:["expectedAt"]
+}).superRefine((order,ctx)=>{
+ if(order.expectedAt&&order.expectedAt<order.orderedAt)ctx.addIssue({code:z.ZodIssueCode.custom,path:["expectedAt"],message:"Expected delivery cannot precede order creation"});
+ const subtotal=order.lines.reduce((sum,line)=>sum+Math.round(line.quantityMilli*line.unitPriceMinor/1000),0);
+ const tax=order.lines.reduce((sum,line)=>sum+Math.round(Math.round(line.quantityMilli*line.unitPriceMinor/1000)*line.taxRateBps/10000),0);
+ if(order.totalMinor!==subtotal+tax)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalMinor"],message:"Purchase order total must reconcile to line value plus tax"});
 });
 export type PurchaseOrder=z.infer<typeof PurchaseOrderSchema>;
 
