@@ -7,7 +7,7 @@
 ## Programme summary
 
 - Product definition: **Complete** — name, owner, standalone model, all five objectives and MAC/MAD requirement recorded.
-- Repository foundation: **In progress** — product documentation and isolated React/Vite MAC/MAD web shell committed on a feature branch.
+- Repository foundation: **In progress** — product documentation, isolated React/Vite MAC/MAD web shell and Fastify API bootstrap committed on a feature branch.
 - Live Meta configuration: **Deferred by owner** — Business Portfolio and developer app will be created later.
 - Production readiness: **Not started**.
 
@@ -26,7 +26,7 @@
 | Phase | Name | Status | Exit gate |
 |---:|---|---|---|
 | 0 | External prerequisites & product governance | In progress (Meta setup deferred) | Meta account/app checklist ready; owner later completes external setup |
-| 1 | Standalone platform foundation | In progress | Product docs and frontend shell committed; next: install/build verification, API service, tenant auth, RBAC, audit and tests |
+| 1 | Standalone platform foundation | In progress | Product docs, frontend shell and API liveness/readiness bootstrap committed; next: install/build verification, MongoDB-backed tenant auth, RBAC, audit and tests |
 | 2 | Facebook & Instagram | Not started | Tested supported asset and publishing/messaging capabilities |
 | 3 | Advertising | Not started | Tested campaign lifecycle and spend controls |
 | 4 | WhatsApp | Not started | Tested WABA onboarding, messaging and webhooks |
