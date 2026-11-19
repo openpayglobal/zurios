@@ -49,7 +49,8 @@ export function Card({children,className,...props}:{children:ReactNode;className
  return <section {...props} className={cx("zui-card",className)}>{children}</section>;
 }
 
-export function Alert({variant="info",children,className}:{variant?:BadgeVariant;children:ReactNode;className?:string}){
+type AlertVariant=Exclude<BadgeVariant,"neutral">;
+export function Alert({variant="info",children,className}:{variant?:AlertVariant;children:ReactNode;className?:string}){
  return <div className={cx("zui-alert",`zui-alert--${variant}`,className)} role={variant==="danger"?"alert":"status"}>{children}</div>;
 }
 
