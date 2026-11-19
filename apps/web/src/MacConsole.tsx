@@ -133,10 +133,10 @@ export default function MacConsole(){
  const [section,setSection]=useState<Section>("Overview");
  const [session,setSession]=useState<MacSession|null>(null);
  const [apiBase,setApiBase]=useState((import.meta as any).env?.VITE_ZURI_API_URL??"");
- if(!session)return <MacLogin apiBase={apiBase} setApiBase={setApiBase} onLogin={setSession}/>;
  const [search,setSearch]=useState("");
  const [mobileNav,setMobileNav]=useState(false);
  const groups=useMemo(()=>Array.from(new Set(navigation.map(n=>n.group))),[]);
+ if(!session)return <MacLogin apiBase={apiBase} setApiBase={setApiBase} onLogin={setSession}/>;
  return <div className="min-h-screen bg-[#0a1220] text-slate-100">
   <aside className={`fixed inset-y-0 left-0 z-30 flex w-[270px] flex-col border-r border-white/[0.07] bg-[#0d1929] transition-transform xl:translate-x-0 ${mobileNav?"translate-x-0":"-translate-x-full"}`}>
    <div className="flex h-[76px] items-center gap-3 border-b border-white/[0.07] px-5"><div className="rounded-xl border border-cyan-200/20 bg-cyan-200/[0.07] p-2 text-cyan-200"><Command size={20}/></div><div><p className="font-semibold tracking-[0.16em] text-white">ZURI OS</p><p className="text-[9px] uppercase tracking-[0.2em] text-slate-500">Master Admin Console</p></div></div>
