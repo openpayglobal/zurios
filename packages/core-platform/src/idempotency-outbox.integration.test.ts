@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {MongoClient} from "mongodb";
 import {runIdempotentMutation,IdempotencyConflictError} from "./idempotency-service.js";
-import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent,consumeEventOnce,createMongoEventBusPublisher} from "./outbox-service.js";
+import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent,consumeEventOnce,createMongoEventBusPublisher,runOutboxWorker} from "./outbox-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 test("idempotency, audit-compatible outbox and delivery lifecycle are transactional",{skip:!uri},async()=>{
@@ -95,6 +95,29 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(await replayDeadLetterEvent(db,"dead-letter-event"),true);
   const replayed=await dispatchOutboxBatch(db,async()=>{}, {workerId:"worker-c",batchSize:1});
   assert.equal(replayed.published,1);
+
+  await db.collection("outbox_events").insertOne({
+   eventId:"worker-recovery-event",tenantId:"tenant-a",eventType:"resource.worker.recovery",aggregateType:"resource",
+   payload:{},occurredAt:new Date(),status:"pending",attempts:0,availableAt:new Date(),createdAt:new Date(),updatedAt:new Date()
+  });
+  const originalCollection=db.collection.bind(db);
+  let failFirstPoll=true,workerErrors=0,workerDelivered=0;
+  const transientDb=new Proxy(db,{get(target,property){
+   if(property==="collection")return (...args:unknown[])=>{
+    if(failFirstPoll){failFirstPoll=false;throw new Error("simulated transient Mongo poll failure");}
+    return (originalCollection as (...values:unknown[])=>unknown)(...args);
+   };
+   return Reflect.get(target,property,target);
+  }}) as any;
+  const controller=new AbortController();
+  await runOutboxWorker(transientDb,async event=>{
+   workerDelivered++;
+   await mongoPublisher(event);
+   controller.abort();
+  },controller.signal,{pollIntervalMs:250,onError:()=>{workerErrors++;}});
+  assert.equal(workerErrors,1);
+  assert.equal(workerDelivered,1);
+  assert.equal(await db.collection("outbox_events").countDocuments({eventId:"worker-recovery-event",status:"published"}),1);
  }finally{
   await db.dropDatabase();await client.close();
  }
