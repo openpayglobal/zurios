@@ -55,7 +55,7 @@ async function issueSession(db:Db,config:MacOperatorConfig,operator:any,request:
 }
 function authenticateMac(db:Db,config:MacOperatorConfig){
  return async(request:FastifyRequest,reply:FastifyReply)=>{
-  if(!config.jwtSecret)return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+  if(authUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
   const header=request.headers.authorization;
   if(typeof header!=="string"||!header.startsWith("Bearer "))return reply.code(401).send({error:"UNAUTHENTICATED"});
   try{
@@ -68,6 +68,7 @@ function authenticateMac(db:Db,config:MacOperatorConfig){
     db.collection("platform_operator_sessions").findOne({operatorId,sessionId,revokedAt:{$exists:false},expiresAt:{$gt:now}})
    ]);
    if(!operator||!session)throw new Error("INACTIVE_MAC_SESSION");
+   await db.collection("platform_operator_sessions").updateOne({sessionId,operatorId,revokedAt:{$exists:false}},{$set:{lastUsedAt:now}});
    request.macOperator={operatorId,sessionId,permissions:operator.permissions??[],tenantIds:operator.tenantIds??[],mfaVerifiedAt:session.mfaVerifiedAt,email:operator.emailNormalized,status:"active"};
   }catch{return reply.code(401).send({error:"UNAUTHENTICATED"});}
  };
