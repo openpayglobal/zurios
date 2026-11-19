@@ -377,3 +377,29 @@ export const CrmOpportunityStageUpdateSchema=z.object({
  expectedVersion:z.number().int().nonnegative()
 });
 export type CrmOpportunityStageUpdate=z.infer<typeof CrmOpportunityStageUpdateSchema>;
+
+
+export const HrEmployeeSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),employeeId:z.string().min(1),employeeNumber:z.string().min(1).max(40),
+ userId:z.string().min(1).optional(),firstName:z.string().min(1).max(80),lastName:z.string().min(1).max(80),
+ workEmail:z.string().email().max(254),departmentId:z.string().min(1),positionTitle:z.string().min(2).max(120),
+ managerEmployeeId:z.string().min(1).optional(),employmentType:z.enum(["permanent","contract","temporary","intern"]),
+ status:z.enum(["active","on_leave","suspended","terminated"]).default("active"),
+ startDate:z.string().datetime(),endDate:z.string().datetime().optional()
+}).superRefine((employee,ctx)=>{
+ if(employee.endDate&&employee.endDate<employee.startDate)ctx.addIssue({code:z.ZodIssueCode.custom,path:["endDate"],message:"Employment end date cannot precede start date"});
+});
+export type HrEmployee=z.infer<typeof HrEmployeeSchema>;
+
+export const HrLeaveRequestSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),leaveRequestId:z.string().min(1),employeeId:z.string().min(1),
+ leaveType:z.enum(["annual","sick","personal","parental","unpaid"]),startsAt:z.string().datetime(),endsAt:z.string().datetime(),
+ days:z.number().positive().max(366),reason:z.string().max(1000).optional(),status:z.literal("pending").default("pending")
+}).refine(request=>request.endsAt>=request.startsAt,{message:"Leave end must not precede leave start",path:["endsAt"]});
+export type HrLeaveRequest=z.infer<typeof HrLeaveRequestSchema>;
+
+export const HrLeaveDecisionSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),leaveRequestId:z.string().min(1),
+ decision:z.enum(["approved","rejected"]),reason:z.string().min(10).max(1000),expectedVersion:z.number().int().nonnegative()
+});
+export type HrLeaveDecision=z.infer<typeof HrLeaveDecisionSchema>;
