@@ -50,6 +50,30 @@ async function permit(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principa
  }
  return undefined;
 }
+async function authorizedLocationIds(db:Db,request:FastifyRequest,p:Principal,permission:string,locationIds:string[]):Promise<string[]>{
+ const locations=await db.collection<{tenantId:string;locationId:string;organizationId:string;status:string}>("locations")
+  .find({tenantId:p.tenantId,locationId:{$in:locationIds},status:"active"}).toArray();
+ const allowed:string[]=[];
+ for(const location of locations){
+  const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:location.organizationId,locationId:location.locationId};
+  if(!authorizeDomainResource(p,permission,scope)){
+   try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"authorization.denied",resourceType:"domain_api",resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{permission,locationId:location.locationId}});}
+   catch(error){request.log.error({err:error,correlationId:request.id},"Failed to persist domain list denial audit");}
+   continue;
+  }
+  const decision=await evaluatePolicy(db,p.tenantId,{
+   subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},
+   resource:{...scope,resourceType:"domain_api",path:request.routeOptions.url??"",method:request.method},
+   action:permission,environment:{}
+  });
+  if(decision.allowed)allowed.push(location.locationId);
+  else{
+   try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"authorization.denied",resourceType:"domain_api",resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{permission,locationId:location.locationId,reason:decision.reason}});}
+   catch(error){request.log.error({err:error,correlationId:request.id},"Failed to persist ABAC list denial audit");}
+  }
+ }
+ return allowed;
+}
 function sendError(error:unknown,reply:FastifyReply){
  if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST",issues:error.issues.map(issue=>({path:issue.path,message:issue.message}))});
  if(error&&typeof error==="object"&&"code" in error&&(error as {code?:number}).code===11000)return reply.code(409).send({error:"RESOURCE_CONFLICT"});
@@ -70,10 +94,9 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=getPrincipal(request);
    const locations=p.locationIds??[];
    if(!locations.length)return {data:[]};
-   const scope={tenantId:p.tenantId,locationId:locations[0]};
-   const denied=await permit(db,request,reply,p,"inventory.warehouse.read",scope);
-   if(denied)return denied;
-   const data=await db.collection("inventory_warehouses").find({tenantId:p.tenantId,locationId:{$in:locations},status:"active"},{projection:{_id:0}}).sort({name:1}).limit(500).toArray();
+   const allowedLocations=await authorizedLocationIds(db,request,p,"inventory.warehouse.read",locations);
+   if(!allowedLocations.length)return {data:[]};
+   const data=await db.collection("inventory_warehouses").find({tenantId:p.tenantId,locationId:{$in:allowedLocations},status:"active"},{projection:{_id:0}}).sort({name:1}).limit(500).toArray();
    return {data};
   });
 
@@ -145,7 +168,7 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const key=idempotencyKey(request);
     if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
     const reservation=await db.collection<{tenantId:string;reservationId:string;warehouseId:string;status:string}>("inventory_reservations")
-     .findOne({tenantId:p.tenantId,reservationId,status:"reserved"});
+     .findOne({tenantId:p.tenantId,reservationId});
     if(!reservation)return reply.code(404).send({error:"ACTIVE_RESERVATION_NOT_FOUND"});
     const scope=await resolveWarehouseScope(db,p.tenantId,reservation.warehouseId);
     if(!scope)return reply.code(404).send({error:"WAREHOUSE_NOT_FOUND"});
