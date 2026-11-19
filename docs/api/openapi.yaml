@@ -49,6 +49,8 @@ tags:
     description: Organization-scoped employee directory and segregated leave approvals
   - name: Payroll
     description: Externally calculated payroll drafts and maker-checker approval; no statutory engine or disbursement
+  - name: Payments
+    description: Provider-configured payment intents, verified event reconciliation and refund requests
 paths:
   /platform/tenant:
     get:
@@ -1277,6 +1279,48 @@ paths:
         "200": {description: Payroll run approved}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /payments/intents:
+    get:
+      tags: [Payments]
+      operationId: listPaymentIntents
+      summary: List payment intents in authorized organizations
+      responses:
+        "200": {description: Scoped payment intents}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Payments]
+      operationId: createPaymentIntent
+      summary: Create a payment intent for a payable invoice through an active provider configuration
+      description: Creates an internal intent only. No money is moved until a provider adapter confirms a signed event.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PaymentIntent"}
+      responses:
+        "201": {description: Payment intent created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {description: Provider is not configured or reference is unsupported}
+  /payments/refund-requests:
+    post:
+      tags: [Payments]
+      operationId: requestPaymentRefund
+      summary: Request a refund against a captured payment
+      description: Creates an auditable refund request only. Provider-side refund execution and settlement confirmation require a configured provider adapter.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PaymentRefundRequest"}
+      responses:
+        "202": {description: Refund request queued for review/provider processing}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -1710,6 +1754,28 @@ components:
         organizationId: {type: string}
         reason: {type: string, minLength: 20, maxLength: 2000}
         expectedVersion: {type: integer, minimum: 0}
+    PaymentIntent:
+      type: object
+      required: [organizationId, paymentId, providerId, referenceType, referenceId, amountMinor, currency]
+      properties:
+        organizationId: {type: string}
+        paymentId: {type: string}
+        providerId: {type: string}
+        referenceType: {type: string, enum: [invoice]}
+        referenceId: {type: string}
+        amountMinor: {type: integer, minimum: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        status: {type: string, enum: [pending]}
+    PaymentRefundRequest:
+      type: object
+      required: [organizationId, refundId, paymentId, amountMinor, reason]
+      properties:
+        organizationId: {type: string}
+        refundId: {type: string}
+        paymentId: {type: string}
+        amountMinor: {type: integer, minimum: 1}
+        reason: {type: string, minLength: 3, maxLength: 1000}
+        status: {type: string, enum: [pending]}
     Error:
       type: object
       required: [error]
