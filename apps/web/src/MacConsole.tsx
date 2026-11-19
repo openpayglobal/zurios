@@ -1,9 +1,9 @@
 import {useEffect,useMemo,useState} from "react";
 import type {FormEvent,ReactNode} from "react";
 import {
-  Activity,AlertTriangle,Blocks,Building2,CheckCircle2,ChevronRight,Cloud,
-  Command,Database,FileKey2,Globe2,KeyRound,LayoutDashboard,LockKeyhole,
-  Menu,RefreshCw,Search,Settings2,Shield,ShieldCheck,Workflow,LogOut
+  AlertTriangle,Blocks,Building2,CheckCircle2,ChevronRight,Cloud,
+  Command,FileKey2,Globe2,LayoutDashboard,LockKeyhole,
+  Menu,RefreshCw,Search,Settings2,ShieldCheck,Workflow,LogOut
 } from "lucide-react";
 
 type Section = "Overview"|"Ecosystems"|"Tenants"|"Environment & Secrets"|"Providers"|"Deployments"|"Security & Audit"|"Approvals"|"Settings";
@@ -34,32 +34,6 @@ const bootstrapVariables=[
 function StatePill({children,kind="neutral"}:{children:ReactNode;kind?:"neutral"|"warning"|"success"}) {
  const style=kind==="warning"?"border-amber-300/20 bg-amber-300/[0.07] text-amber-200":kind==="success"?"border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-200":"border-white/10 bg-white/[0.035] text-slate-400";
  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium ${style}`}><span className="h-1.5 w-1.5 rounded-full bg-current"/>{children}</span>;
-}
-
-function Overview(){
- const cards=[
-  {label:"Ecosystem services",value:"Unknown",hint:"No live registry connection",icon:Blocks},
-  {label:"Tenant environments",value:"Unknown",hint:"Awaiting platform API",icon:Building2},
-  {label:"Deployment health",value:"Unknown",hint:"Provider telemetry not connected",icon:Workflow},
-  {label:"Security posture",value:"Review required",hint:"Production controls not verified",icon:Shield}
- ];
- const queues=[
-  {title:"Platform API integration",detail:"Connect MAC overview to authenticated administrative endpoints",state:"Not connected"},
-  {title:"Provider capability discovery",detail:"Read project and deployment state through an approved provider adapter",state:"Pending"},
-  {title:"Runtime configuration service",detail:"Implement encrypted, versioned, server-side runtime configuration",state:"Not implemented"},
-  {title:"Production network perimeter",detail:"Replace unrestricted Atlas ingress before production use",state:"Action required"}
- ];
- return <div className="space-y-8">
-  <div className="flex flex-wrap items-end justify-between gap-4">
-   <div><p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-cyan-200">Global command centre</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">Master Admin Dashboard</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">A single operational view of the Zuri OS ecosystem. Live health and resource data will appear only after authenticated platform telemetry is connected.</p></div>
-   <StatePill kind="warning">Development · telemetry not connected</StatePill>
-  </div>
-  <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">{cards.map(({label,value,hint,icon:Icon})=><article key={label} className="rounded-2xl border border-white/[0.08] bg-[#111d2e] p-5"><div className="flex items-center justify-between"><span className="text-xs text-slate-400">{label}</span><Icon size={17} className="text-cyan-200/70"/></div><p className="mt-4 text-2xl font-semibold text-slate-200">{value}</p><p className="mt-1 text-[11px] text-slate-500">{hint}</p></article>)}</div>
-  <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
-   <section className="rounded-2xl border border-white/[0.08] bg-[#111d2e] p-5 md:p-6"><div className="flex items-center justify-between"><div><h2 className="font-semibold text-white">Operational attention</h2><p className="mt-1 text-xs text-slate-500">Verified implementation and infrastructure blockers</p></div><AlertTriangle size={18} className="text-amber-200"/></div><div className="mt-5 space-y-3">{queues.map(q=><div key={q.title} className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4"><div><p className="text-sm font-medium text-slate-200">{q.title}</p><p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{q.detail}</p></div><StatePill kind="warning">{q.state}</StatePill></div>)}</div></section>
-   <section className="rounded-2xl border border-white/[0.08] bg-[#111d2e] p-5 md:p-6"><h2 className="font-semibold text-white">Control plane architecture</h2><p className="mt-1 text-xs text-slate-500">Global governance and operational visibility</p><div className="mt-5 space-y-4">{[{icon:ShieldCheck,title:"MAC · Management plane",desc:"Policies, configuration, approvals and controlled execution"},{icon:Activity,title:"MAD · Operational picture",desc:"Health, activity, risk, capacity and exceptions"},{icon:Database,title:"MongoDB · Platform data",desc:"Tenant-scoped application records and administrative metadata"},{icon:KeyRound,title:"Secrets · Bootstrap boundary",desc:"Server-side credentials; never exposed to browser clients"}].map(({icon:Icon,title,desc})=><div key={title} className="flex gap-3"><div className="rounded-lg border border-cyan-200/10 bg-cyan-200/[0.05] p-2 text-cyan-200"><Icon size={16}/></div><div><p className="text-sm font-medium text-slate-200">{title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{desc}</p></div></div>)}</div></section>
-  </div>
- </div>;
 }
 
 function EnvironmentSecrets(){
