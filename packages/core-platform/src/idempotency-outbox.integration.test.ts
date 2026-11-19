@@ -28,7 +28,23 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(replay.replayed,true);
   assert.deepEqual(replay.body,first.body);
   assert.equal(executions,1);
-  assert.equal(await db.collection("test_resources").countDocuments({}),1);
+
+  const concurrentInput={...input,key:"idem-concurrent-001",operation:"tenant.resource.concurrent"};
+  let concurrentExecutions=0;
+  const concurrentWork=async(session:any)=>{
+   concurrentExecutions++;
+   await new Promise(resolve=>setTimeout(resolve,25));
+   await db.collection("test_resources").insertOne({tenantId:"tenant-a",name:"Concurrent"},{session});
+   await appendOutboxEvent(db,session,{tenantId:"tenant-a",eventType:"resource.concurrent",aggregateType:"resource",aggregateId:"resource-concurrent",payload:{}});
+   return {statusCode:201,body:{data:{resourceId:"resource-concurrent"}}};
+  };
+  const concurrent=await Promise.all(Array.from({length:5},()=>runIdempotentMutation(db,concurrentInput,concurrentWork)));
+  assert.equal(concurrentExecutions,1);
+  assert.equal(concurrent.filter(result=>result.replayed).length,4);
+  assert.equal(await db.collection("test_resources").countDocuments({name:"Concurrent"}),1);
+  assert.equal(await db.collection("outbox_events").countDocuments({eventType:"resource.concurrent"}),1);
+
+  assert.equal(await db.collection("test_resources").countDocuments({}),2);
   assert.equal(await db.collection("outbox_events").countDocuments({}),1);
   await assert.rejects(
    ()=>runIdempotentMutation(db,{...input,request:{name:"Different"}},work),
