@@ -18,8 +18,8 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 ## Bootstrap sequence
 
 1. Confirm the API is a non-production Preview deployment and the database is the intended Zuri OS preview database.
-2. Generate independent random values for `MAC_JWT_SECRET` and `MAC_BOOTSTRAP_TOKEN` using a trusted password manager or operating-system cryptographic generator.
-3. Add both as encrypted Preview environment variables. Never commit, paste into source, or place them in a browser form.
+2. Generate independent random values for `MAC_JWT_SECRET`, `MAC_BOOTSTRAP_TOKEN` and `MAC_MFA_ENCRYPTION_KEY` using a trusted password manager or operating-system cryptographic generator.
+3. Add all three as encrypted Preview environment variables. Never commit, paste into source, or place them in a browser form.
 4. Deploy only when the Vercel free-tier quota permits. Environment updates do not change an already-running deployment.
 5. Send a TLS-protected POST request to `/v1/mac/auth/bootstrap` with the `x-mac-bootstrap-token` header and JSON containing the owner email, display name and a strong password.
 6. The response contains the TOTP enrollment secret exactly once. Transfer it directly into an authenticator app; do not log, screenshot, email or paste it into chat.
