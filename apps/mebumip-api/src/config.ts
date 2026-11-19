@@ -7,6 +7,8 @@ const envSchema = z.object({
   MONGODB_URI: z.string().url().optional(),
   MONGODB_DATABASE: z.string().min(1).default("zuri_mebumip"),
   CORS_ORIGINS: z.string().default("http://localhost:5174"),
+  SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
