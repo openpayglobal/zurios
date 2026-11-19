@@ -85,6 +85,11 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("pos_refunds").createIndex({tenantId:1,saleId:1,status:1}),,
   db.collection("pos_offline_commands").createIndex({tenantId:1,terminalId:1,commandId:1},{unique:true}),,
   db.collection("pos_offline_commands").createIndex({tenantId:1,terminalId:1,sequence:1},{unique:true}),
+  db.collection("webhook_subscriptions").createIndex({tenantId:1,endpointId:1},{unique:true}),
+  db.collection("webhook_subscriptions").createIndex({tenantId:1,status:1,eventTypes:1}),
+  db.collection("webhook_deliveries").createIndex({tenantId:1,endpointId:1,eventId:1},{unique:true}),
+  db.collection("webhook_deliveries").createIndex({status:1,availableAt:1,createdAt:1}),
+  db.collection("webhook_deliveries").createIndex({status:1,leaseUntil:1}),
   db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
 }
