@@ -34,3 +34,38 @@ test("Domain events carry tenant, version, correlation and idempotency identity"
  assert.equal(DomainEventEnvelopeSchema.safeParse(event).success,true);
  assert.equal(DomainEventEnvelopeSchema.safeParse({...event,idempotencyKey:"short"}).success,false);
 });
+
+import {CashierShiftSchema,InvoiceSchema,PosRefundSchema,StockBalanceSchema,InventoryValuationSchema,ReorderPolicySchema} from "./index.js";
+
+test("ERP invoices reconcile line totals and dates",()=>{
+ const invoice={tenantId:"tenant-a",idempotencyKey:"invoice-000001",invoiceId:"invoice-1",invoiceNumber:"INV-1",invoiceType:"sales",partyId:"customer-1",currency:"UGX",issuedAt:"2026-11-19T08:00:00.000Z",dueAt:"2026-12-19T08:00:00.000Z",lines:[{description:"Item",quantityMilli:1000,unitPriceMinor:2000,discountMinor:0,taxRateBps:0}],subtotalMinor:2000,taxMinor:0,totalMinor:2000,status:"issued"};
+ assert.equal(InvoiceSchema.safeParse(invoice).success,true);
+ assert.equal(InvoiceSchema.safeParse({...invoice,totalMinor:3000}).success,false);
+});
+
+test("POS closed cashier shifts require reconciliation values",()=>{
+ const shift={tenantId:"tenant-a",shiftId:"shift-1",terminalId:"terminal-1",cashierId:"cashier-1",currency:"UGX",openedAt:"2026-11-19T08:00:00.000Z",openingFloatMinor:10000,status:"closed",expectedCashMinor:25000,closingCountedMinor:25000,closedAt:"2026-11-19T18:00:00.000Z"};
+ assert.equal(CashierShiftSchema.safeParse(shift).success,true);
+ assert.equal(CashierShiftSchema.safeParse({...shift,closedAt:undefined}).success,false);
+});
+
+test("POS refunds require reason and cannot exceed original sale value",()=>{
+ const refund={tenantId:"tenant-a",idempotencyKey:"refund-000001",refundId:"refund-1",saleId:"sale-1",originalSaleTotalMinor:5000,amountMinor:2000,currency:"UGX",reason:"Returned damaged item",status:"completed",completedAt:"2026-11-19T10:00:00.000Z"};
+ assert.equal(PosRefundSchema.safeParse(refund).success,true);
+ assert.equal(PosRefundSchema.safeParse({...refund,amountMinor:6000}).success,false);
+});
+
+test("Inventory stock balance reconciles available and reserved quantities",()=>{
+ const balance={tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-1",quantityOnHandMilli:10000,quantityReservedMilli:2500,quantityAvailableMilli:7500,version:1};
+ assert.equal(StockBalanceSchema.safeParse(balance).success,true);
+ assert.equal(StockBalanceSchema.safeParse({...balance,quantityAvailableMilli:8000}).success,false);
+});
+
+test("Inventory valuation and reorder levels preserve arithmetic invariants",()=>{
+ const valuation={tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-1",costingMethod:"weighted_average",quantityMilli:2000,unitCostMinor:500,totalValueMinor:1000,currency:"UGX"};
+ assert.equal(InventoryValuationSchema.safeParse(valuation).success,true);
+ assert.equal(InventoryValuationSchema.safeParse({...valuation,totalValueMinor:1200}).success,false);
+ const policy={tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-1",minimumQuantityMilli:1000,reorderQuantityMilli:3000,maximumQuantityMilli:5000,leadTimeDays:7};
+ assert.equal(ReorderPolicySchema.safeParse(policy).success,true);
+ assert.equal(ReorderPolicySchema.safeParse({...policy,reorderQuantityMilli:6000}).success,false);
+});
