@@ -59,6 +59,10 @@ test("administration workspace enforces invitation, two-person approval and brea
    {tenantId:"tenant-a",sessionId:"session-emergency",userId:"emergency-user",membershipId:"membership-emergency",expiresAt:new Date(now.getTime()+300_000),lastUsedAt:now},
    {tenantId:"tenant-a",sessionId:"session-emergency-revoke",userId:"emergency-user",membershipId:"membership-emergency",expiresAt:new Date(now.getTime()+300_000),lastUsedAt:now}
   ]);
+  await db.collection("platform_operator_grants").insertMany([
+   {grantId:"operator-grant-a",userId:"operator-a",permissionKeys:["platform.tenants.read","platform.tenants.provision","platform.tenants.lifecycle.request","platform.tenants.lifecycle.approve","platform.approvals.read","platform.approvals.approve"],status:"active",validFrom:now,createdAt:now,updatedAt:now,createdBy:"test",reason:"Integration test platform operator grant."},
+   {grantId:"operator-grant-b",userId:"operator-b",permissionKeys:["platform.tenants.read","platform.tenants.provision","platform.tenants.lifecycle.request","platform.tenants.lifecycle.approve","platform.approvals.read","platform.approvals.approve"],status:"active",validFrom:now,createdAt:now,updatedAt:now,createdBy:"test",reason:"Integration test platform operator grant."}
+  ]);
   await app.register(platformRoutes(db,config));
   await app.register(adminRoutes(db,config));
   await app.ready();
@@ -69,6 +73,28 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(overview.statusCode,200);
   assert.equal(overview.json().data.tenant.tenantId,"tenant-a");
   assert.equal(overview.json().data.counts.organizations,1);
+
+  const configUpdate=await app.inject({
+   method:"PUT",url:"/platform/admin/configuration/defaultCurrency",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"config-update-currency-0001"},
+   payload:{value:"UGX",reason:"Set the tenant's approved default transaction currency."}
+  });
+  assert.equal(configUpdate.statusCode,200);
+  assert.equal(configUpdate.json().data.value,"UGX");
+  const exportJob=await app.inject({
+   method:"POST",url:"/platform/admin/audit-exports",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"audit-export-request-0001"},
+   payload:{filters:{limit:1000},reason:"Export the tenant audit trail for scheduled compliance review."}
+  });
+  assert.equal(exportJob.statusCode,202);
+  assert.equal((await app.inject({method:"GET",url:"/platform/admin/audit-exports",headers:{authorization:"Bearer "+operatorA}})).statusCode,200);
+  const simulation=await app.inject({
+   method:"POST",url:"/platform/admin/policies/simulate",
+   headers:{authorization:"Bearer "+operatorA},
+   payload:{subject:{userId:"operator-a"},resource:{resourceType:"membership"},action:"platform.memberships.read",environment:{}}
+  });
+  assert.equal(simulation.statusCode,200);
+
 
   const invitation=await app.inject({
    method:"POST",url:"/platform/admin/users/invitations",
@@ -177,6 +203,40 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(revokeGrant.statusCode,200);
   const afterRevoke=await app.inject({method:"GET",url:"/platform/admin/audit-events",headers:{authorization:"Bearer "+emergencyToken}});
   assert.equal(afterRevoke.statusCode,403);
+
+  const tenantDirectory=await app.inject({method:"GET",url:"/platform/admin/tenants",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(tenantDirectory.statusCode,200);
+  const provisionedTenant=await app.inject({
+   method:"POST",url:"/platform/admin/tenants",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"tenant-provision-0001"},
+   payload:{slug:"new-customer",legalName:"New Customer Limited",displayName:"New Customer",defaultLocale:"en",defaultCurrency:"UGX",timezone:"Africa/Kampala",owner:{email:"owner@new-customer.example",displayName:"New Customer Owner"},reason:"Provision a new customer tenant and invite its first owner administrator."}
+  });
+  assert.equal(provisionedTenant.statusCode,201);
+  assert.equal(provisionedTenant.json().data.ownerInvitationStatus,"queued");
+  const newTenantId=provisionedTenant.json().data.tenantId;
+  const ownerMembership=await db.collection("memberships").findOne({tenantId:newTenantId,status:"invited"});
+  assert.ok(ownerMembership);
+  const lifecycle=await app.inject({
+   method:"POST",url:"/platform/admin/tenants/tenant-a/lifecycle-requests",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"tenant-suspend-request-0001"},
+   payload:{action:"tenant.suspend",reason:"Suspend the tenant after an approved controlled lifecycle review."}
+  });
+  assert.equal(lifecycle.statusCode,201);
+  const platformApprovalId=lifecycle.json().data.requestId;
+  const platformSelfApproval=await app.inject({
+   method:"POST",url:"/platform/admin/approvals/"+platformApprovalId+"/approve?scope=platform",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"platform-self-approval-0001"},
+   payload:{reason:"I independently approve the requested tenant lifecycle action."}
+  });
+  assert.equal(platformSelfApproval.statusCode,409);
+  const platformApproval=await app.inject({
+   method:"POST",url:"/platform/admin/approvals/"+platformApprovalId+"/approve?scope=platform",
+   headers:{authorization:"Bearer "+operatorB,"idempotency-key":"platform-tenant-suspend-approve-0001"},
+   payload:{reason:"A second platform operator independently approved the tenant suspension."}
+  });
+  assert.equal(platformApproval.statusCode,200);
+  assert.equal((await db.collection("tenants").findOne({tenantId:"tenant-a"}))?.status,"suspended");
+
  }finally{
   await app.close();await db.dropDatabase();await client.close();
  }
