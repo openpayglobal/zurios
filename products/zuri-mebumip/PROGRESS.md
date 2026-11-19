@@ -8,6 +8,8 @@
 
 - Product definition: **Complete** — name, owner, standalone model, all five objectives and MAC/MAD requirement recorded.
 - Repository foundation: **In progress** — product documentation, isolated React/Vite MAC/MAD web shell and Fastify API bootstrap committed on a feature branch.
+- Phase 1 security primitives: **In progress** — separate platform/tenant RBAC maps, active-membership tenant checks, opaque token/hash utilities, constrained audit-event builder, MongoDB foundation indexes and security tests added.
+- API authentication/session lifecycle: **Not complete** — must be implemented before tenant or administrative endpoints are exposed.
 - Live Meta configuration: **Deferred by owner** — Business Portfolio and developer app will be created later.
 - Production readiness: **Not started**.
 
@@ -26,7 +28,7 @@
 | Phase | Name | Status | Exit gate |
 |---:|---|---|---|
 | 0 | External prerequisites & product governance | In progress (Meta setup deferred) | Meta account/app checklist ready; owner later completes external setup |
-| 1 | Standalone platform foundation | In progress | Product docs, frontend shell and API liveness/readiness bootstrap committed; next: install/build verification, MongoDB-backed tenant auth, RBAC, audit and tests |
+| 1 | Standalone platform foundation | In progress | Product docs, frontend shell, API bootstrap, RBAC/tenant-scope primitives, audit-event builder, MongoDB indexes and initial security tests committed; next: authenticated sessions, bootstrap governance, persistence, route guards, rate limits, CSRF and test execution |
 | 2 | Facebook & Instagram | Not started | Tested supported asset and publishing/messaging capabilities |
 | 3 | Advertising | Not started | Tested campaign lifecycle and spend controls |
 | 4 | WhatsApp | Not started | Tested WABA onboarding, messaging and webhooks |
@@ -38,9 +40,9 @@
 
 | Component | Planned phase | Status | Acceptance requirement |
 |---|---:|---|---|
-| MAC — Master Admin Console | 1 | In progress (UI shell) | Navigation and module placeholders created; backend authorization, controls and audit trail remain to be implemented |
-| MAD — Master Admin Dashboard | 1 | In progress (UI shell) | Operational overview, five objectives and phase roadmap rendered with clearly labelled placeholder values; live telemetry remains unconnected |
-| MAC/MAD shared authorization | 1 | Not started | No UI-only security; API authorization tests pass |
+| MAC — Master Admin Console | 1 | In progress (UI shell + authorization foundation) | Navigation and module placeholders created; backend authentication, protected administrative routes, step-up controls and persisted audit trail remain |
+| MAD — Master Admin Dashboard | 1 | In progress (UI shell) | Operational overview, five objectives and phase roadmap rendered with clearly labelled placeholder values; authenticated read-only aggregate services and live telemetry remain |
+| MAC/MAD shared authorization | 1 | In progress (RBAC primitives) | Separate platform roles and tenant roles; default-deny checks and tenant isolation tests committed; route integration and test execution remain |
 
 ## Change control
 
