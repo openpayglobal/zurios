@@ -9,7 +9,7 @@ const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)
 const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path));
 const missingFromContract=[...routePaths].filter(path=>!contractPaths.has(path));
 const undocumentedRoutes=[...contractPaths].filter(path=>!routePaths.has(path));
-const mutatingRoutes=routeDefinitions.filter(([,method,,path])=>method!=="get"&&!(method==="post"&&path.endsWith("/simulate"))).length;
+const mutatingRoutes=routeDefinitions.filter(([,method,path])=>method!=="get"&&!(method==="post"&&path.endsWith("/simulate"))).length;
 const idempotencyRefs=(contract.match(/\$ref: "#\/components\/parameters\/IdempotencyKey"/g)??[]).length;
 const failures:string[]=[];
 if(!contract.startsWith("openapi: 3.1."))failures.push("OpenAPI document must use 3.1");
