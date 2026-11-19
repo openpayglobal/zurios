@@ -34,6 +34,7 @@ export const lifecycleRequestSchema=z.object({reason:reasonSchema});
 export const tenantLifecycleRequestSchema=z.object({action:z.enum(["tenant.activate","tenant.suspend","tenant.close"]),reason:reasonSchema});
 export const ADMIN_BODY_CONTRACTS=[
  {method:"post",path:"/platform/admin/users/invitations",schemaName:"InviteUser",schema:inviteUserSchema},
+ {method:"post",path:"/platform/admin/users/invitations/{membershipId}/resend",schemaName:"LifecycleRequest",schema:lifecycleRequestSchema},
  {method:"post",path:"/platform/admin/approvals",schemaName:"CreateApprovalRequest",schema:createApprovalRequestSchema},
  {method:"post",path:"/platform/admin/approvals/{requestId}/approve",schemaName:"ApprovalDecision",schema:approvalDecisionSchema},
  {method:"post",path:"/platform/admin/approvals/{requestId}/reject",schemaName:"ApprovalDecision",schema:approvalDecisionSchema},
