@@ -43,6 +43,8 @@ tags:
     description: Scoped POS terminals, cashier shifts, checkout, refunds and offline command intake
   - name: ERP & Accounting
     description: Organization-scoped purchasing, invoicing, fiscal periods and double-entry posting
+  - name: CRM
+    description: Organization-scoped customer accounts, contacts, leads, opportunities and activities
 paths:
   /platform/tenant:
     get:
@@ -1021,6 +1023,135 @@ paths:
         "201": {description: Journal entry posted}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /crm/accounts:
+    get:
+      tags: [CRM]
+      operationId: listCrmAccounts
+      summary: List CRM accounts in authorized organizations
+      responses:
+        "200": {description: Scoped CRM accounts}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [CRM]
+      operationId: createCrmAccount
+      summary: Create a CRM account in an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmAccount"}
+      responses:
+        "201": {description: CRM account created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/contacts:
+    get:
+      tags: [CRM]
+      operationId: listCrmContacts
+      summary: List CRM contacts in authorized organizations
+      responses:
+        "200": {description: Scoped CRM contacts}
+    post:
+      tags: [CRM]
+      operationId: createCrmContact
+      summary: Create a contact with explicit consent evidence where required
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmContact"}
+      responses:
+        "201": {description: CRM contact created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/leads:
+    get:
+      tags: [CRM]
+      operationId: listCrmLeads
+      summary: List leads in authorized organizations
+      responses:
+        "200": {description: Scoped CRM leads}
+    post:
+      tags: [CRM]
+      operationId: createCrmLead
+      summary: Capture a lead with source and marketing consent status
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmLead"}
+      responses:
+        "201": {description: CRM lead created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/opportunities:
+    get:
+      tags: [CRM]
+      operationId: listCrmOpportunities
+      summary: List pipeline opportunities in authorized organizations
+      responses:
+        "200": {description: Scoped CRM opportunities}
+    post:
+      tags: [CRM]
+      operationId: createCrmOpportunity
+      summary: Create a pipeline opportunity with a versioned stage
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmOpportunity"}
+      responses:
+        "201": {description: CRM opportunity created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/activities:
+    get:
+      tags: [CRM]
+      operationId: listCrmActivities
+      summary: List customer activities in authorized organizations
+      responses:
+        "200": {description: Scoped CRM activities}
+    post:
+      tags: [CRM]
+      operationId: recordCrmActivity
+      summary: Record an activity linked to an organization-owned CRM resource
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmActivity"}
+      responses:
+        "201": {description: CRM activity recorded}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Related CRM resource not found}
+  /crm/opportunities/{opportunityId}/stage:
+    patch:
+      tags: [CRM]
+      operationId: updateCrmOpportunityStage
+      summary: Move an opportunity through the sales pipeline using optimistic concurrency
+      parameters:
+        - {name: opportunityId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmOpportunityStageUpdate"}
+      responses:
+        "200": {description: Opportunity stage updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Opportunity not found}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -1298,6 +1429,86 @@ components:
               memo: {type: string}
         status: {type: string, enum: [posted]}
         postedAt: {type: string, format: date-time}
+    CrmAccount:
+      type: object
+      required: [organizationId, accountId, name, accountType]
+      properties:
+        organizationId: {type: string}
+        accountId: {type: string}
+        name: {type: string, minLength: 2, maxLength: 160}
+        accountType: {type: string, enum: [prospect, customer, partner]}
+        industry: {type: string}
+        website: {type: string, format: uri}
+        ownerUserId: {type: string}
+        status: {type: string, enum: [active, inactive], default: active}
+    CrmContact:
+      type: object
+      required: [organizationId, contactId, firstName, lastName]
+      properties:
+        organizationId: {type: string}
+        contactId: {type: string}
+        accountId: {type: string}
+        firstName: {type: string, maxLength: 80}
+        lastName: {type: string, maxLength: 80}
+        email: {type: string, format: email}
+        phoneE164: {type: string}
+        jobTitle: {type: string}
+        marketingConsent: {type: string, enum: [granted, denied, unknown], default: unknown}
+        consentCapturedAt: {type: string, format: date-time}
+        consentSource: {type: string}
+        status: {type: string, enum: [active, inactive], default: active}
+    CrmLead:
+      type: object
+      required: [organizationId, leadId, firstName, lastName, source]
+      properties:
+        organizationId: {type: string}
+        leadId: {type: string}
+        firstName: {type: string}
+        lastName: {type: string}
+        email: {type: string, format: email}
+        phoneE164: {type: string}
+        companyName: {type: string}
+        source: {type: string, enum: [website, referral, campaign, partner, walk_in, import, other]}
+        status: {type: string, enum: [new, qualified, converted, disqualified], default: new}
+        assignedTo: {type: string}
+        marketingConsent: {type: string, enum: [granted, denied, unknown], default: unknown}
+        consentCapturedAt: {type: string, format: date-time}
+        consentSource: {type: string}
+    CrmOpportunity:
+      type: object
+      required: [organizationId, opportunityId, name, stage, amountMinor, currency, expectedCloseAt, ownerUserId]
+      properties:
+        organizationId: {type: string}
+        opportunityId: {type: string}
+        accountId: {type: string}
+        contactId: {type: string}
+        name: {type: string}
+        stage: {type: string, enum: [prospecting, qualification, proposal, negotiation, won, lost]}
+        amountMinor: {type: integer, minimum: 0}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        expectedCloseAt: {type: string, format: date-time}
+        ownerUserId: {type: string}
+        version: {type: integer, minimum: 0, default: 0}
+    CrmActivity:
+      type: object
+      required: [organizationId, activityId, relatedType, relatedId, activityType, subject, occurredAt, status]
+      properties:
+        organizationId: {type: string}
+        activityId: {type: string}
+        relatedType: {type: string, enum: [account, contact, lead, opportunity]}
+        relatedId: {type: string}
+        activityType: {type: string, enum: [call, email, meeting, task, note]}
+        subject: {type: string}
+        occurredAt: {type: string, format: date-time}
+        status: {type: string, enum: [planned, completed, cancelled]}
+        description: {type: string, maxLength: 4000}
+    CrmOpportunityStageUpdate:
+      type: object
+      required: [organizationId, stage, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        stage: {type: string, enum: [prospecting, qualification, proposal, negotiation, won, lost]}
+        expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
       required: [error]
