@@ -15,7 +15,7 @@ export async function ensureCoreIndexes(db:Db):Promise<void>{
   ["platform_events",{eventId:1},{unique:true}],["platform_events",{tenantId:1,occurredAt:1}],["platform_events",{eventType:1,occurredAt:1}],
   ["approval_requests",{requestId:1},{unique:true}],["approval_requests",{tenantId:1,status:1,createdAt:-1}],["approval_requests",{expiresAt:1}],
   ["break_glass_grants",{grantId:1},{unique:true}],["break_glass_grants",{tenantId:1,userId:1,status:1,expiresAt:1}],
-  ["platform_operator_grants",{grantId:1},{unique:true}],["platform_operator_grants",{userId:1,status:1,validUntil:1}],["platform_operator_grants",{userId:1},{unique:true,partialFilterExpression:{status:"active"}}]
+  ["platform_operator_grants",{grantId:1},{unique:true}],["platform_operator_grants",{userId:1,status:1,validUntil:1}],["platform_operator_grants",{userId:1},{unique:true,partialFilterExpression:{status:"active"}}],["tenant_config",{tenantId:1,key:1},{unique:true}],["audit_export_jobs",{jobId:1},{unique:true}],["audit_export_jobs",{tenantId:1,createdAt:-1}]
  ];
  await Promise.all(specs.map(([name,key,options])=>db.collection(name).createIndex(key,options)));
 }
