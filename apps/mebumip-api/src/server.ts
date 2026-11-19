@@ -42,8 +42,9 @@ app.get("/health/ready", async (_request, reply) => {
 });
 
 // Authentication/bootstrap routes are registered only after MongoDB indexes are ready.
-// Tenant, Meta, MAC mutation and MAD data routes remain disabled until route-level
-// authorization, verified tenant resolution and complete audit persistence are wired.
+// Tenant and Meta product routes remain disabled until tenant-scoped authorization
+// and provider-specific audit/webhook controls are implemented. MAC/MAD routes are
+// registered with platform permission checks in admin.ts.
 app.setNotFoundHandler((_request, reply) => {
   return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
