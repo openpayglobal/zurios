@@ -1,6 +1,6 @@
 # Zuri domain services
 
-This package implements the first transactional service layer for Inventory (6D), ERP (6B) and POS (6C). All commands are tenant-scoped, idempotent and execute domain writes, audit records and outbox writes in a MongoDB transaction. It is a service foundation, not a production-complete business suite.
+This package implements the first transactional service layer for Inventory (6D), ERP (6B) and POS (6C). All commands are tenant-scoped, idempotent and execute domain writes, audit records and outbox writes in a MongoDB transaction. The current service boundary does not yet enforce organization/location-level scope; no public Fastify routes are registered until those scope contracts, ABAC resource attributes and authorization tests are added. It is a service foundation, not a production-complete business suite.
 
 ## Inventory
 
