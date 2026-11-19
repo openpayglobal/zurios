@@ -39,6 +39,8 @@ tags:
     description: Global identity and tenant membership lifecycle
   - name: Inventory
     description: Scoped warehouse, stock ledger, balance and reservation operations
+  - name: Point of Sale
+    description: Scoped POS terminals, cashier shifts, checkout, refunds and offline command intake
 paths:
   /platform/tenant:
     get:
@@ -801,6 +803,104 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {description: Active reservation not found}
         "409": {$ref: "#/components/responses/Conflict"}
+  /pos/terminals:
+    post:
+      tags: [Point of Sale]
+      operationId: registerPosTerminal
+      summary: Register a POS terminal at an assigned active location
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosTerminal"}
+      responses:
+        "201": {description: POS terminal registered}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/shifts/open:
+    post:
+      tags: [Point of Sale]
+      operationId: openPosCashierShift
+      summary: Open a cashier shift on an assigned active terminal
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosShiftOpen"}
+      responses:
+        "201": {description: Cashier shift opened}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/shifts/{shiftId}/close:
+    post:
+      tags: [Point of Sale]
+      operationId: closePosCashierShift
+      summary: Close and reconcile a cashier shift
+      parameters:
+        - {name: shiftId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosShiftClose"}
+      responses:
+        "200": {description: Shift closed with cash variance}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Shift not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/sales/complete:
+    post:
+      tags: [Point of Sale]
+      operationId: completePosSale
+      summary: Complete a tender-reconciled POS sale
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosSale"}
+      responses:
+        "201": {description: Sale completed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/refunds:
+    post:
+      tags: [Point of Sale]
+      operationId: refundPosSale
+      summary: Complete a partial or full refund against a completed sale
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosRefund"}
+      responses:
+        "201": {description: Refund completed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/offline-commands:
+    post:
+      tags: [Point of Sale]
+      operationId: acceptPosOfflineCommand
+      summary: Accept an idempotent sequenced offline terminal command
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosOfflineCommand"}
+      responses:
+        "202": {description: Offline command accepted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -887,6 +987,93 @@ components:
               quantityMilli: {type: integer, minimum: 1}
         status: {type: string, enum: [reserved]}
         expiresAt: {type: string, format: date-time}
+    PosTerminal:
+      type: object
+      required: [terminalId, code, locationId, deviceId, status]
+      properties:
+        terminalId: {type: string, minLength: 1}
+        code: {type: string, minLength: 1, maxLength: 32}
+        locationId: {type: string, minLength: 1}
+        deviceId: {type: string, minLength: 1}
+        status: {type: string, enum: [active, inactive, maintenance]}
+    PosShiftOpen:
+      type: object
+      required: [shiftId, terminalId, cashierId, currency, openedAt, openingFloatMinor, status]
+      properties:
+        shiftId: {type: string, minLength: 1}
+        terminalId: {type: string, minLength: 1}
+        cashierId: {type: string, minLength: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        openedAt: {type: string, format: date-time}
+        openingFloatMinor: {type: integer, minimum: 0}
+        status: {type: string, enum: [open]}
+    PosShiftClose:
+      type: object
+      required: [expectedCashMinor, countedCashMinor]
+      properties:
+        expectedCashMinor: {type: integer, minimum: 0}
+        countedCashMinor: {type: integer, minimum: 0}
+    PosSale:
+      type: object
+      required: [saleId, terminalId, cashierId, currency, lines, subtotalMinor, taxMinor, totalMinor, status, completedAt]
+      properties:
+        saleId: {type: string, minLength: 1}
+        reservationId: {type: string}
+        terminalId: {type: string, minLength: 1}
+        cashierId: {type: string, minLength: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, description, quantityMilli, unitPriceMinor, taxRateBps]
+            properties:
+              sku: {type: string}
+              description: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
+              unitPriceMinor: {type: integer, minimum: 0}
+              discountMinor: {type: integer, minimum: 0, default: 0}
+              taxRateBps: {type: integer, minimum: 0, maximum: 10000}
+        subtotalMinor: {type: integer, minimum: 0}
+        taxMinor: {type: integer, minimum: 0}
+        totalMinor: {type: integer, minimum: 1}
+        tenders:
+          type: array
+          items:
+            type: object
+            required: [tenderId, method, amountMinor, currency, status]
+            properties:
+              tenderId: {type: string}
+              method: {type: string, enum: [cash, card, mobile_money, store_credit, voucher]}
+              amountMinor: {type: integer, minimum: 1}
+              currency: {type: string}
+              status: {type: string, enum: [pending, authorized, captured, failed, refunded]}
+              providerReference: {type: string}
+        status: {type: string, enum: [completed]}
+        completedAt: {type: string, format: date-time}
+    PosRefund:
+      type: object
+      required: [refundId, saleId, originalSaleTotalMinor, amountMinor, currency, reason, status]
+      properties:
+        refundId: {type: string}
+        saleId: {type: string}
+        originalSaleTotalMinor: {type: integer, minimum: 1}
+        amountMinor: {type: integer, minimum: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        reason: {type: string, minLength: 3, maxLength: 500}
+        status: {type: string, enum: [completed]}
+        completedAt: {type: string, format: date-time}
+    PosOfflineCommand:
+      type: object
+      required: [terminalId, commandId, sequence, commandType, payload, issuedAt]
+      properties:
+        terminalId: {type: string}
+        commandId: {type: string, minLength: 8}
+        sequence: {type: integer, minimum: 1}
+        commandType: {type: string, minLength: 1, maxLength: 80}
+        payload: {type: object, additionalProperties: true}
+        issuedAt: {type: string, format: date-time}
     Error:
       type: object
       required: [error]
