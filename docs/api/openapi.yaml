@@ -55,6 +55,8 @@ tags:
     description: Organization-scoped catalog and inventory-reservation-backed orders
   - name: Assets & Maintenance
     description: Asset register, straight-line depreciation inputs and maintenance work orders
+  - name: Project Management
+    description: Organization-scoped projects, tasks and approved timesheets
 paths:
   /platform/tenant:
     get:
@@ -1432,6 +1434,104 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {description: Work order not found}
         "409": {$ref: "#/components/responses/Conflict"}
+  /projects:
+    get:
+      tags: [Project Management]
+      operationId: listProjects
+      summary: List projects in authorized organizations
+      responses:
+        "200": {description: Scoped projects}
+    post:
+      tags: [Project Management]
+      operationId: createProject
+      summary: Create a project with budget and delivery dates
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Project"}
+      responses:
+        "201": {description: Project created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /projects/{projectId}/tasks:
+    post:
+      tags: [Project Management]
+      operationId: createProjectTask
+      summary: Create a task under an active project
+      parameters:
+        - {name: projectId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTask"}
+      responses:
+        "201": {description: Project task created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Active project not found}
+  /projects/{projectId}/time-entries:
+    get:
+      tags: [Project Management]
+      operationId: listProjectTimeEntries
+      summary: List project time entries in authorized organizations
+      parameters:
+        - {name: projectId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Scoped project time entries}
+    post:
+      tags: [Project Management]
+      operationId: submitProjectTimeEntry
+      summary: Submit employee time against an organization-owned project task
+      parameters:
+        - {name: projectId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTimeEntry"}
+      responses:
+        "201": {description: Time entry submitted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Employee or task not found}
+  /projects/time-entries/{timeEntryId}/approve:
+    post:
+      tags: [Project Management]
+      operationId: approveProjectTimeEntry
+      summary: Approve submitted time with requester/approver separation
+      parameters:
+        - {name: timeEntryId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTimeEntryDecision"}
+      responses:
+        "200": {description: Time entry approved}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /projects/time-entries/{timeEntryId}/reject:
+    post:
+      tags: [Project Management]
+      operationId: rejectProjectTimeEntry
+      summary: Reject submitted time with an auditable reason
+      parameters:
+        - {name: timeEntryId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTimeEntryDecision"}
+      responses:
+        "200": {description: Time entry rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -1956,6 +2056,54 @@ components:
         organizationId: {type: string}
         actualCostMinor: {type: integer, minimum: 0}
         completionNotes: {type: string, minLength: 5, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 0}
+    Project:
+      type: object
+      required: [organizationId, projectId, projectCode, name, managerUserId, startsAt, budgetMinor, currency]
+      properties:
+        organizationId: {type: string}
+        projectId: {type: string}
+        projectCode: {type: string, maxLength: 40}
+        name: {type: string, minLength: 2, maxLength: 180}
+        description: {type: string, maxLength: 3000}
+        customerId: {type: string}
+        managerUserId: {type: string}
+        startsAt: {type: string, format: date-time}
+        dueAt: {type: string, format: date-time}
+        budgetMinor: {type: integer, minimum: 0}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        status: {type: string, enum: [active, on_hold, completed, cancelled]}
+    ProjectTask:
+      type: object
+      required: [organizationId, taskId, name, priority, estimatedMinutes]
+      properties:
+        organizationId: {type: string}
+        taskId: {type: string}
+        name: {type: string}
+        description: {type: string}
+        assignedToUserId: {type: string}
+        priority: {type: string, enum: [low, normal, high, critical]}
+        estimatedMinutes: {type: integer, minimum: 0}
+        dueAt: {type: string, format: date-time}
+        status: {type: string, enum: [backlog]}
+    ProjectTimeEntry:
+      type: object
+      required: [organizationId, timeEntryId, taskId, employeeId, workDate, minutes, billable, description]
+      properties:
+        organizationId: {type: string}
+        timeEntryId: {type: string}
+        taskId: {type: string}
+        employeeId: {type: string}
+        workDate: {type: string, format: date-time}
+        minutes: {type: integer, minimum: 1, maximum: 1440}
+        billable: {type: boolean}
+        description: {type: string, maxLength: 2000}
+    ProjectTimeEntryDecision:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 10, maxLength: 1000}
         expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
