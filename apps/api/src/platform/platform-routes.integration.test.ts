@@ -64,6 +64,11 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   assert.deepEqual(body.data.map(item=>item.organizationId).sort(),["org-a","org-b"]);
   assert.ok(body.data.every(item=>item.tenantId==="tenant-a"));
 
+  const legacy=await app.inject({method:"GET",url:"/platform/organizations",headers:{authorization:`Bearer ${token}`}});
+  assert.equal(legacy.statusCode,200);
+  assert.equal(legacy.headers.deprecation,"true");
+  assert.equal(legacy.headers.link,'</v1/platform>; rel="successor-version"');
+
   await db.collection("policies").insertOne({
    tenantId:"tenant-a",policyId:"policy-deny-org-read",key:"deny-org-read",effect:"deny",priority:100,
    subject:{userId:"operator-a"},resource:{resourceType:"platform_api"},actions:["platform.organizations.read"],conditions:{},status:"active"
@@ -72,11 +77,6 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   assert.equal(abacDenied.statusCode,403);
   assert.equal(abacDenied.json().error,"ABAC_POLICY_DENIED");
 
-
-  const legacy=await app.inject({method:"GET",url:"/platform/organizations",headers:{authorization:`Bearer ${token}`}});
-  assert.equal(legacy.statusCode,200);
-  assert.equal(legacy.headers.deprecation,"true");
-  assert.equal(legacy.headers.link,'</v1/platform>; rel="successor-version"');
 
   const invalidMembership=await app.inject({
    method:"POST",url:"/v1/platform/memberships",
