@@ -67,18 +67,8 @@ function authenticateMac(db:Db,config:MacOperatorConfig){
     db.collection("platform_operator_sessions").findOne({operatorId,sessionId,revokedAt:{$exists:false},expiresAt:{$gt:now}})
    ]);
    if(!operator||!session)throw new Error("INACTIVE_MAC_SESSION");
-   request.macOperator={operatorId,sessionId,permissions:operator.permissions??[],tenantIds:operator.tenantIds??[],mfaVerifiedAt:session.mfaVerifiedAt,email:operator.emailNormalized};
+   request.macOperator={operatorId,sessionId,permissions:operator.permissions??[],tenantIds:operator.tenantIds??[],mfaVerifiedAt:session.mfaVerifiedAt,email:operator.emailNormalized,status:"active"};
   }catch{return reply.code(401).send({error:"UNAUTHENTICATED"});}
- };
-}
-function requireMacPermission(permission:string){
- return async(request:FastifyRequest,reply:FastifyReply)=>{
-  const principal=request.macOperator;
-  const decision=authorizePlatformOperator(principal,{permission,mfaMaxAgeSeconds:configurableMfaWindowSeconds});
-  if(!decision.allowed){
-   try{await writeAdminAudit((request as any).server?.mongoDb, {actorId:principal?.operatorId,action:"mac.authorization.denied",resourceType:"route",resourceId:request.routeOptions.url,outcome:"denied",request,metadata:{permission,reason:decision.reason}});}catch{}
-   return reply.code(403).send({error:"FORBIDDEN",reason:decision.reason});
-  }
  };
 }
 const configurableMfaWindowSeconds=8*60*60;
@@ -89,7 +79,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    const principal=request.macOperator;
    const decision=authorizePlatformOperator(principal,{permission:name,mfaMaxAgeSeconds:configurableMfaWindowSeconds});
    if(!decision.allowed){
-    try{await writeAdminAudit(db,{actorId:principal?.operatorId,action:"mac.authorization.denied",resourceType:"route",resourceId:request.routeOptions.url,outcome:"denied",request,metadata:{permission:name,reason:decision.reason}});}catch(error){request.log.error({err:error},"Failed to persist MAC authorization audit");}
+    try{await writeAdminAudit(db,{...(principal?.operatorId?{actorId:principal.operatorId}:{}),action:"mac.authorization.denied",resourceType:"route",...(request.routeOptions.url?{resourceId:request.routeOptions.url}:{}),outcome:"denied",request,metadata:{permission:name,reason:decision.reason}});}catch(error){request.log.error({err:error},"Failed to persist MAC authorization audit");}
     return reply.code(403).send({error:"FORBIDDEN",reason:decision.reason});
    }
   };
