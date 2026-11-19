@@ -386,7 +386,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/locations/:locationId/lifecycle-requests",{preHandler:tenantGuard(db,config.jwtSecret,"platform.approvals.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({locationId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
+    const params=z.object({locationId:z.string().min(1)}).parse(request.params),body=lifecycleRequestSchema.parse(request.body);
     if(!p.permissions.includes("platform.locations.manage.request"))return reply.code(403).send({error:"LOCATION_LIFECYCLE_REQUEST_NOT_PERMITTED"});
     if((!p.permissions.includes("platform.locations.manage.all")&&!locIds(p).includes(params.locationId))||!await c.locations.findOne({tenantId:p.tenantId,locationId:params.locationId,status:"active"}))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.locations.lifecycle.request",async session=>{
