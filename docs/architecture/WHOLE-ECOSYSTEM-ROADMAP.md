@@ -1,6 +1,6 @@
 # Zuri OS — Whole-Ecosystem Implementation Roadmap
 
-**Roadmap baseline:** original `main` baseline `cf863dc5bc19e6e84114d21e863f329df393c9e6`; active PR #8 head `296c095b1b80ba7854c5772f0171e469626577c3` (not merged). Stacked design-system PR #9 head `627e20c13d5279bae17dda1507b3416162aab9da` (not merged).
+**Roadmap baseline:** original `main` baseline `cf863dc5bc19e6e84114d21e863f329df393c9e6`; active PR #8 head `668e2e53710417ec9172fb3711b6292f6bfe0b8a` (not merged). PR #9 is stacked on the latest PR #8 branch and remains unmerged.
 
 **Status vocabulary**
 - **Implemented in source:** code or contract exists in the repository; this does not imply acceptance.
@@ -124,7 +124,9 @@ Complete and accept:
 
 ### 6A.5 Shared design system
 
-Create a separately versioned shared package consumed by all workspaces:
+**Initial implementation now present on `feature/6a5-shared-design-system`:** a separately versioned `@zuri/design-system` workspace package, semantic CSS tokens with dark/light theme variables, reduced-motion support, focus-visible styling, and shared Button, TextField, SelectField, Badge, Card, Alert and EmptyState primitives. The web shell imports the package stylesheet and delegates its common Button, Input, Panel and Status wrappers to the shared primitives. Server-rendered component tests cover button semantics, labelled and validated fields, select fields, badges, cards, alerts and empty states; the package typecheck and monorepo build passed in Actions run #640. Visual regression, keyboard-flow testing, complete form/table/dialog patterns and independent WCAG 2.2 AA review remain open.
+
+Continue and accept the package by completing:
 - design tokens: color, typography, spacing, density, elevation, motion and breakpoints;
 - primitives: button, input, select, checkbox, radio, switch, dialog, drawer, tabs, menu, tooltip, table, pagination, badge, alert and toast;
 - patterns: data table, search/filter toolbar, form layout, empty/loading/error states, confirmation, audit timeline and approval panel;
