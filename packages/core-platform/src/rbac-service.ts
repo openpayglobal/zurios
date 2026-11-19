@@ -1,11 +1,11 @@
-import type {Db} from "mongodb";
+import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
 import {coreCollections} from "./repositories.js";
 const schema=z.object({key:z.string().min(2).max(80).regex(/^[a-z][a-z0-9._-]*$/),name:z.string().min(2).max(100),description:z.string().max(500).optional(),permissionKeys:z.array(z.string().min(1).refine(v=>v!=="*",{message:"Wildcard permissions are prohibited"})).max(500).refine(v=>new Set(v).size===v.length,{message:"Duplicate permissions are not allowed"}),isSystem:z.boolean().default(false)});
-export async function createRole(db:Db,tenantId:string,actorId:string,input:unknown){
+export async function createRole(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession){
  const d=schema.parse(input),{description,...rest}=d,now=new Date(),doc={tenantId,roleId:newId("rol"),...rest,...(description?{description}:{}),status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
- await coreCollections(db).roles.insertOne(doc);return doc;
+ await coreCollections(db).roles.insertOne(doc,session?{session}:{});return doc;
 }
 export async function permissionsForMembership(db:Db,tenantId:string,membershipId:string):Promise<string[]>{
  const c=coreCollections(db),m=await c.memberships.findOne({tenantId,membershipId,status:"active"});

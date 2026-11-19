@@ -1,4 +1,5 @@
 import {Activity,ArrowUpRight,Blocks,Building2,ChevronDown,CircleHelp,Command,Grid2X2,Layers3,LockKeyhole,Search,Settings2,ShieldCheck,Users,Warehouse} from "lucide-react";
+import MacConsole from "./MacConsole";
 
 const modules=[
  {icon:Building2,name:"Tenant & workspace",detail:"Tenant lifecycle and workspace setup",status:"Core service",tone:"text-cyan-300"},
@@ -10,6 +11,7 @@ const modules=[
 ];
 const metrics=[{label:"Platform services",value:"10",hint:"Foundation scope"},{label:"Business ecosystems",value:"0",hint:"Activation follows core"},{label:"Governance model",value:"RBAC + ABAC",hint:"Default-deny access"}];
 export default function App(){
+ if (window.location.pathname === "/mac" || window.location.pathname.startsWith("/mac/")) return <MacConsole/>;
  return <div className="min-h-screen bg-[#0b1220] text-slate-100">
   <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-white/[0.07] bg-[#0e1828] xl:flex">
    <div className="flex h-[76px] items-center gap-3 border-b border-white/[0.07] px-6"><div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-2 text-cyan-200"><Command size={21}/></div><div><p className="font-semibold tracking-[0.16em]">ZURI OS</p><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Operating platform</p></div></div>
@@ -20,7 +22,7 @@ export default function App(){
   <div className="xl:pl-64">
    <header className="sticky top-0 z-10 flex h-[76px] items-center justify-between border-b border-white/[0.07] bg-[#0b1220]/90 px-5 backdrop-blur-xl md:px-9">
     <div><p className="text-xs text-slate-500">Platform / <span className="text-slate-300">Overview</span></p><p className="mt-1 text-sm font-medium">Good day. Welcome to Zuri OS.</p></div>
-    <div className="flex items-center gap-3"><button className="hidden items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 sm:flex"><Search size={14}/> Search platform <span className="ml-4 text-slate-600">⌘ K</span></button><button className="rounded-lg border border-white/10 p-2 text-slate-400"><CircleHelp size={17}/></button><div className="grid h-9 w-9 place-items-center rounded-full border border-cyan-200/20 bg-cyan-200/10 text-xs font-semibold text-cyan-100">ZO</div></div>
+    <div className="flex items-center gap-3"><button className="hidden items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 sm:flex"><Search size={14}/> Search platform <span className="ml-4 text-slate-600">⌘ K</span></button><a href="/mac" className="hidden items-center gap-2 rounded-lg border border-cyan-200/20 bg-cyan-200/[0.06] px-3 py-2 text-xs text-cyan-100 sm:flex"><ShieldCheck size={14}/> MAC / MAD</a><button className="rounded-lg border border-white/10 p-2 text-slate-400"><CircleHelp size={17}/></button><div className="grid h-9 w-9 place-items-center rounded-full border border-cyan-200/20 bg-cyan-200/10 text-xs font-semibold text-cyan-100">ZO</div></div>
    </header>
    <main className="mx-auto max-w-[1500px] px-5 py-9 md:px-9 md:py-12">
     <div className="flex flex-wrap items-end justify-between gap-5"><div><div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-300/[0.06] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.17em] text-cyan-200"><span className="h-1.5 w-1.5 rounded-full bg-cyan-300"/> Platform foundation</div><h1 className="mt-5 text-3xl font-semibold tracking-tight md:text-[42px]">Your operations, <span className="bg-gradient-to-r from-cyan-200 to-blue-300 bg-clip-text text-transparent">connected.</span></h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 md:text-base">A unified command layer for organizations, people, permissions and business ecosystems.</p></div><button className="flex items-center gap-2 rounded-xl border border-cyan-200/20 bg-cyan-200/[0.08] px-4 py-2.5 text-xs font-medium text-cyan-100">Foundation roadmap <ArrowUpRight size={15}/></button></div>

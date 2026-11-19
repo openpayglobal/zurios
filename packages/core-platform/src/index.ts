@@ -19,3 +19,7 @@ export * from "./migrate.js";
 export * from "./seed.js";
 
 export * from "./migration-registry.js";
+export * from "./idempotency-service.js";
+export * from "./outbox-service.js";
+
+export * from "./inventory-service.js";
