@@ -16,7 +16,8 @@ const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIEN
 try{
  const db=await connectMongo();
  await app.register(authRoutes(db,authConfig));
- await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});\n await app.register(platformRoutes(db,authConfig));
+ await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
+ await app.register(platformRoutes(db,authConfig));
  await app.listen({host:config.API_HOST,port:config.API_PORT});
 }catch(error){app.log.error(error);process.exitCode=1;}
 const shutdown=async()=>{await app.close();await closeMongo();};
