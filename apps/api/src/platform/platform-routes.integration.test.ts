@@ -37,6 +37,7 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
    tenantId:"tenant-a",roleId:"role-admin",key:"test.admin",
    permissionKeys:["platform.tenant.read","platform.organizations.read","platform.organizations.create","platform.locations.read","platform.locations.create","platform.memberships.read","platform.memberships.create","platform.memberships.assign.roles","platform.roles.read","platform.roles.create","platform.policies.read","platform.policies.write","platform.policies.write.allow","platform.policies.write.deny","platform.policies.write.global","platform.feature-flags.read","platform.feature-flags.write","platform.sessions.read","platform.sessions.revoke","platform.sessions.revoke.all","platform.audit.read"],status:"active"
   });
+  await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"role-super",key:"test.super",permissionKeys:["platform.superuser"],status:"active"});
   await db.collection("memberships").insertOne({
    tenantId:"tenant-a",membershipId:"membership-a",userId:"operator-a",
    organizationIds:["org-a","org-b"],locationIds:["loc-a","loc-b"],roleIds:["role-admin"],status:"active"
