@@ -1,4 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from "react";
+import {Badge as SharedBadge,Button as SharedButton,Card as SharedCard,TextField as SharedTextField} from "@zuri/design-system";
 import {
  ArrowDownToLine,ArrowRight,Blocks,Building2,Check,ChevronDown,Command,FileSearch,Grid2X2,
  KeyRound,Layers3,LockKeyhole,LogOut,Menu,RefreshCw,Settings2,ShieldCheck,UserPlus,Users,
@@ -26,22 +27,21 @@ const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:str
 ];
 function cn(...values:Array<string|false|undefined>){return values.filter(Boolean).join(" ");}
 function Panel({children,className=""}:{children:ReactNode;className?:string}){
- return <section className={cn("rounded-2xl border border-white/[0.08] bg-[#111d2e]/85 shadow-[0_18px_55px_rgba(0,0,0,.12)]",className)}>{children}</section>;
+ return <SharedCard className={cn("rounded-2xl border border-white/[0.08] bg-[#111d2e]/85 shadow-[0_18px_55px_rgba(0,0,0,.12)]",className)}>{children}</SharedCard>;
 }
 function SectionTitle({eyebrow,title,description,action}:{eyebrow:string;title:string;description:string;action?:ReactNode}){
  return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200/80">{eyebrow}</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-100 md:text-3xl">{title}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{description}</p></div>{action}</div>;
 }
-function Button({children,onClick,disabled=false,variant="primary",type="button"}:{children:ReactNode;onClick?:()=>void;disabled?:boolean;variant?:"primary"|"secondary"|"danger";type?:"button"|"submit"}){
- const styles={primary:"border-cyan-200/20 bg-cyan-200/[0.12] text-cyan-100 hover:bg-cyan-200/[0.18]",secondary:"border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",danger:"border-rose-300/20 bg-rose-300/[0.08] text-rose-200 hover:bg-rose-300/[0.14]"};
- return <button type={type} onClick={onClick} disabled={disabled} className={cn("inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40",styles[variant])}>{children}</button>;
+function Button({children,onClick,disabled=false,variant="primary",type="button"}:{children:ReactNode;onClick?:()=>void;disabled?:boolean;variant?:"primary"|"secondary"|"danger"|"ghost";type?:"button"|"submit"}){
+ return <SharedButton type={type} onClick={onClick} disabled={disabled} variant={variant}>{children}</SharedButton>;
 }
-function Input({label,value,onChange,placeholder="",type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;placeholder?:string;type?:string;required?:boolean}){
- return <label className="block"><span className="mb-2 block text-xs font-medium text-slate-400">{label}</span><input type={type} required={required} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-200/40 focus:ring-2 focus:ring-cyan-200/10"/></label>;
+function Input({label,value,onChange,placeholder="",type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;placeholder?:string;type?:"text"|"email"|"password";required?:boolean}){
+ return <SharedTextField label={label} value={value} onChange={event=>onChange(event.currentTarget.value)} placeholder={placeholder} type={type} required={required}/>;
 }
 function Status({value}:{value:string}){
  const good=["active","executed","approved","sent","published"].includes(value.toLowerCase());
  const bad=["failed","rejected","revoked","dead_letter","suspended","expired"].includes(value.toLowerCase());
- return <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium",good?"border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-200":bad?"border-rose-300/20 bg-rose-300/[0.07] text-rose-200":"border-amber-200/15 bg-amber-200/[0.06] text-amber-100")}>{value.replaceAll("_"," ")}</span>;
+ return <SharedBadge variant={good?"success":bad?"danger":"warning"}>{value.replaceAll("_"," ")}</SharedBadge>;
 }
 function Empty({label}:{label:string}){return <div className="rounded-xl border border-dashed border-white/10 px-5 py-10 text-center text-sm text-slate-500">{label}</div>;}
 function ErrorBanner({message}:{message:string}){return message?<div className="mb-5 flex items-start gap-2 rounded-xl border border-rose-300/20 bg-rose-300/[0.06] px-4 py-3 text-xs leading-5 text-rose-200"><AlertTriangle size={15} className="mt-0.5 shrink-0"/>{message}</div>:null;}
