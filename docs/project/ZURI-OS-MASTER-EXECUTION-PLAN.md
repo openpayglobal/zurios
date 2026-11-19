@@ -299,8 +299,8 @@ The MVP must be end-to-end usable for a controlled test business before vertical
 ## 10. Immediate next actions
 
 1. Complete CI validation for the current MAC operator authentication and frontend integration branch; resolve all failures and verify the MongoDB replica-set integration tests.
-2. Complete the global operator lifecycle: additional operator invitations, least-privilege grants, approvals, suspension, session listing/revocation and recovery.
-3. Provision independent MAC signing and one-time bootstrap secrets in preview only after the owner approves the bootstrap handling; activate the initial operator without exposing secrets in chat, source or browser code.
+2. Complete the global operator lifecycle: permission-grant approval workflows, two-person high-impact approvals, operator reactivation/recovery and full audit export/retention.
+3. Provision independent MAC signing, MAC MFA-encryption and one-time bootstrap secrets in Preview only after the owner approves the bootstrap handling; activate the initial operator without exposing secrets in chat, source or browser code.
 4. Complete MAC read-only APIs and connect all corresponding frontend workspaces; keep writes disabled until transactional audit and approval workflows pass.
 5. Implement the encrypted, versioned runtime configuration service and provider capability registry without paid infrastructure.
 6. Complete the business MVP in dependency order: identity, tenant/workspace, catalogue, inventory, POS, payment recording/reconciliation, double-entry ledger and reporting.
