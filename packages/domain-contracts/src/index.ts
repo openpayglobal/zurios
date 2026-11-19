@@ -446,3 +446,26 @@ export const PayrollApprovalSchema=z.object({
  reason:z.string().min(20).max(2000),expectedVersion:z.number().int().nonnegative()
 });
 export type PayrollApproval=z.infer<typeof PayrollApprovalSchema>;
+
+
+export const PaymentIntentSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),paymentId:z.string().min(1),providerId:z.string().min(1),
+ referenceType:z.enum(["invoice","pos_sale"]),referenceId:z.string().min(1),
+ amountMinor:z.number().int().positive(),currency:z.string().regex(/^[A-Z]{3}$/),
+ status:z.literal("pending").default("pending")
+});
+export type PaymentIntent=z.infer<typeof PaymentIntentSchema>;
+
+export const PaymentProviderEventSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),providerId:z.string().min(1),providerEventId:z.string().min(1),
+ paymentId:z.string().min(1),eventType:z.enum(["authorized","captured","failed","cancelled"]),
+ amountMinor:z.number().int().positive(),currency:z.string().regex(/^[A-Z]{3}$/),
+ occurredAt:z.string().datetime(),providerReference:z.string().max(200).optional()
+});
+export type PaymentProviderEvent=z.infer<typeof PaymentProviderEventSchema>;
+
+export const PaymentRefundRequestSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),refundId:z.string().min(1),paymentId:z.string().min(1),
+ amountMinor:z.number().int().positive(),reason:z.string().min(3).max(1000),status:z.literal("pending").default("pending")
+});
+export type PaymentRefundRequest=z.infer<typeof PaymentRefundRequestSchema>;
