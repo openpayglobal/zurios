@@ -550,7 +550,7 @@ paths:
           name: lotId
           schema: {type: string}
       responses:
-        "200": {description: Decimal quantity on hand, reserved, in transit and available}
+        "200": {description: "Decimal quantity on hand, reserved, in transit and available"}
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
