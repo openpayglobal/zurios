@@ -322,7 +322,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.provision")},async(request,reply)=>{
    const p=principal(request);try{
     const body=z.object({slug:z.string().min(2).max(64).regex(/^[a-z0-9-]+$/),legalName:z.string().min(2).max(200),displayName:z.string().min(2).max(100),defaultLocale:z.string().default("en"),defaultCurrency:z.string().length(3).default("UGX"),timezone:z.string().default("Africa/Kampala"),owner:z.object({email:z.string().email().max(254),displayName:z.string().min(2).max(120),phoneE164:z.string().regex(/^\\+[1-9]\\d{7,14}$/).optional()}),reason:reasonSchema}).parse(request.body);
-    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"INVITATION_ENCRYPTION_NOT_CONFIGURED"});\n    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.tenants.provision",async session=>{
+    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"INVITATION_ENCRYPTION_NOT_CONFIGURED"});
+    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.tenants.provision",async session=>{
      const reason=body.reason,tenantInput={slug:body.slug,legalName:body.legalName,displayName:body.displayName,defaultLocale:body.defaultLocale,defaultCurrency:body.defaultCurrency,timezone:body.timezone};
      const tenant=await provisionTenant(db,p.userId,tenantInput,session);
      const root=await createOrganization(db,tenant.tenantId,p.userId,{code:"ROOT",name:tenant.displayName,type:"company"},session);
