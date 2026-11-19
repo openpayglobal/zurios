@@ -1,8 +1,8 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from "react";
 import {
- Activity,ArrowDownToLine,ArrowLeft,ArrowRight,Blocks,Building2,Check,ChevronDown,Command,
- FileSearch,Grid2X2,KeyRound,Layers3,LockKeyhole,LogOut,Menu,RefreshCw,Search,Settings2,
- ShieldCheck,UserPlus,Users,Warehouse,X,AlertTriangle,Clock3,Mail,CheckCircle2
+ ArrowDownToLine,ArrowRight,Blocks,Building2,Check,ChevronDown,Command,FileSearch,Grid2X2,
+ KeyRound,Layers3,LockKeyhole,LogOut,Menu,RefreshCw,Settings2,ShieldCheck,UserPlus,Users,
+ X,AlertTriangle,Mail,CheckCircle2
 } from "lucide-react";
 
 declare global {
@@ -14,7 +14,6 @@ const API_BASE=import.meta.env.VITE_API_BASE_URL??"";
 type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"tenants";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
 type Session={accessToken:string;refreshToken:string;sessionId:string};
-type ApiResult<T=Record<string,unknown>>={data:T};
 const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:string;platform?:string}>= [
  {id:"overview",label:"Overview",icon:Grid2X2,permission:"platform.admin.overview.read"},
  {id:"organizations",label:"Organizations",icon:Building2,permission:"platform.organizations.read"},
