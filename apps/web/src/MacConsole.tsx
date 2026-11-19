@@ -54,7 +54,7 @@ function EnvironmentSecrets(){
  </div>;
 }
 
-function Placeholder({section}:{section:Exclude<Section,"Overview"|"Environment & Secrets">}){
+function Placeholder({section}:{section:Exclude<Section,"Overview"|"Environment & Secrets"|"Operators"|"Sessions">}){
  const content:Record<Exclude<Section,"Overview"|"Environment & Secrets">,{icon:typeof Blocks;description:string;items:string[]}> = {
   "Ecosystems":{icon:Blocks,description:"Registry of Zuri OS products, modules, services, versions and entitlements.",items:["Product and module lifecycle","Service ownership and dependencies","Feature entitlements and activation"]},
   "Tenants":{icon:Building2,description:"Global tenant and environment inventory with strict separation from tenant-level administration.",items:["Tenant lifecycle and status","Organization and workspace structure","Environment and regional configuration"]},
