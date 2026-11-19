@@ -25,7 +25,7 @@ try{
  await app.register(platformRoutes(db,authConfig));
  await app.register(adminRoutes(db,authConfig));
  await app.listen({host:config.API_HOST,port:config.API_PORT});
- outboxWorkerPromise=runOutboxWorker(db,createMongoEventBusPublisher(db),outboxAbortController.signal).catch(error=>{app.log.error({err:error},"Platform outbox worker stopped unexpectedly");});
+ outboxWorkerPromise=runOutboxWorker(db,createMongoEventBusPublisher(db),outboxAbortController.signal,{onError:error=>app.log.error({err:error},"Platform outbox polling failed; retrying")}).catch(error=>{app.log.error({err:error},"Platform outbox worker stopped unexpectedly");});
 }catch(error){app.log.error(error);process.exitCode=1;}
 const shutdown=async()=>{outboxAbortController.abort();await app.close();await outboxWorkerPromise;await closeMongo();};
 process.on("SIGINT",shutdown);process.on("SIGTERM",shutdown);
