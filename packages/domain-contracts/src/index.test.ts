@@ -26,7 +26,7 @@ test("Inventory transfers require distinct source and destination warehouses",()
 test("Inventory adjustments require an auditable reason",()=>{
  const movement={tenantId:"tenant-a",idempotencyKey:"stock-adjust-0001",movementId:"movement-2",movementType:"adjustment",sku:"SKU-1",warehouseId:"warehouse-a",quantityMilli:1000,referenceType:"count",referenceId:"count-1",occurredAt:"2026-11-19T08:00:00.000Z"};
  assert.equal(StockMovementSchema.safeParse(movement).success,false);
- assert.equal(StockMovementSchema.safeParse({...movement,reason:"Cycle count variance"}).success,true);
+ assert.equal(StockMovementSchema.safeParse({...movement,reason:"Cycle count variance",adjustmentDirection:"increase"}).success,true);
 });
 
 test("Domain events carry tenant, version, correlation and idempotency identity",()=>{
