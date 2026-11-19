@@ -44,7 +44,7 @@ Mutations use Zod validation and emit audit events. Session responses explicitly
 - All state-changing platform API operations require an `Idempotency-Key` header (8–128 characters).
 - Idempotency scope is tenant + actor + operation + key. The canonical request hash prevents key reuse with a different payload. Completed responses are replayed for 24 hours; key reuse with a different request returns 409.
 - Domain mutation, success audit event, idempotency response and outbox event are committed in one MongoDB transaction.
-- The outbox dispatcher uses atomic leases, at-least-once delivery, bounded exponential retry, dead-letter state and explicit replay. Consumers must deduplicate by `eventId`.
+- The outbox dispatcher and abortable worker loop use atomic leases, at-least-once delivery, bounded exponential retry, dead-letter state and explicit replay. Transactional consumer receipts allow consumers to deduplicate by `eventId` while committing their local side effect.
 - The OpenAPI 3.1 contract is at `docs/api/openapi.yaml`; CI validates it and checks route inventory drift against Fastify route declarations.
 - Event envelope and initial event registry are documented in `docs/architecture/6A.3-EVENT-CONTRACTS.md`.
 
