@@ -64,8 +64,9 @@ Implemented in this phase:
 - Argon2id password hashing, TOTP enrollment/verification, replay prevention and AES-256-GCM encrypted TOTP secret storage.
 - Independent MAC JWT signing key, opaque refresh tokens stored only as SHA-256 hashes, refresh-token rotation and session revocation.
 - Login/bootstrap rate limiting and separate MongoDB collections/indexes for operators, sessions, global audit and rate limits.
+- Sanitized operator inventory, session inventory and audited revocation of other operator sessions.
 - Read-only MAC overview, tenant listing and administrative audit endpoints with permission checks.
-- OpenAPI 3.1 route contract and MongoDB replica-set integration coverage.
+- OpenAPI 3.1 route contract and MongoDB replica-set integration coverage, including session revocation and invalid-input handling.
 
 Required preview configuration before the endpoints can operate:
 - `MAC_JWT_SECRET`: independent random signing secret, at least 32 characters.
@@ -73,6 +74,6 @@ Required preview configuration before the endpoints can operate:
 - `MFA_ENCRYPTION_KEY`: existing 32-byte base64 key used only for TOTP secret encryption.
 
 Not implemented by this phase:
-- Additional operator invitations and lifecycle management, role-grant approvals, session administration, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters, production activation and end-to-end frontend login integration.
+- Additional operator invitations and lifecycle management, role-grant approvals, operator suspension/recovery, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters and production activation.
 
 The API remains unavailable when its required MAC secrets are absent. It does not silently fall back to tenant JWT credentials.
