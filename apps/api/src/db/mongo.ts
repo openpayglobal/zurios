@@ -64,7 +64,11 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("platform_operator_invitations").createIndex({invitationId:1},{unique:true}),
   db.collection("platform_operator_invitations").createIndex({tokenHash:1},{unique:true}),
   db.collection("platform_operator_invitations").createIndex({emailNormalized:1},{unique:true,partialFilterExpression:{status:{$in:["pending","pending_mfa"]}}}),
-  db.collection("platform_operator_invitations").createIndex({expiresAt:1},{expireAfterSeconds:0})
+  db.collection("platform_operator_invitations").createIndex({expiresAt:1},{expireAfterSeconds:0}),
+  db.collection("platform_configurations").createIndex({configId:1},{unique:true}),
+  db.collection("platform_configurations").createIndex({scope:1,tenantId:1,key:1,version:1},{unique:true}),
+  db.collection("provider_registry").createIndex({providerId:1},{unique:true}),
+  db.collection("provider_registry").createIndex({name:1},{unique:true})
  ]);
 }
 export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
