@@ -2,11 +2,11 @@ import {useEffect,useMemo,useState} from "react";
 import type {FormEvent,ReactNode} from "react";
 import {
   AlertTriangle,Blocks,Building2,CheckCircle2,ChevronRight,Cloud,
-  Command,FileKey2,Globe2,LayoutDashboard,LockKeyhole,
-  Menu,RefreshCw,Search,Settings2,ShieldCheck,Workflow,LogOut
+  Command,FileKey2,Globe2,LayoutDashboard,LockKeyhole,MonitorSmartphone,
+  Menu,RefreshCw,Search,Settings2,ShieldCheck,Workflow,LogOut,Users
 } from "lucide-react";
 
-type Section = "Overview"|"Ecosystems"|"Tenants"|"Environment & Secrets"|"Providers"|"Deployments"|"Security & Audit"|"Approvals"|"Settings";
+type Section = "Overview"|"Ecosystems"|"Tenants"|"Environment & Secrets"|"Providers"|"Deployments"|"Security & Audit"|"Operators"|"Sessions"|"Approvals"|"Settings";
 
 const navigation:{label:string;icon:typeof LayoutDashboard;group:string}[]=[
  {label:"Overview",icon:LayoutDashboard,group:"Command"},
@@ -16,6 +16,8 @@ const navigation:{label:string;icon:typeof LayoutDashboard;group:string}[]=[
  {label:"Providers",icon:Cloud,group:"Infrastructure"},
  {label:"Deployments",icon:Workflow,group:"Infrastructure"},
  {label:"Security & Audit",icon:ShieldCheck,group:"Governance"},
+ {label:"Operators",icon:Users,group:"Governance"},
+ {label:"Sessions",icon:MonitorSmartphone,group:"Governance"},
  {label:"Approvals",icon:CheckCircle2,group:"Governance"},
  {label:"Settings",icon:Settings2,group:"Governance"}
 ];
@@ -103,6 +105,20 @@ function LiveAudit({base,token}:{base:string;token:string}){
  return <div className="space-y-5"><div><h1 className="text-3xl font-semibold text-white">Security & Audit</h1><p className="mt-2 text-sm text-slate-400">Global administrative audit stream · append-only records.</p></div>{error&&<p className="text-sm text-rose-200">{error}</p>}<div className="space-y-2">{rows.map(row=><article key={row.eventId} className="rounded-xl border border-white/[0.08] bg-[#111d2e] p-4"><div className="flex flex-wrap justify-between gap-2"><p className="text-sm font-medium text-slate-200">{row.action}</p><StatePill kind={row.outcome==="success"?"success":"warning"}>{row.outcome}</StatePill></div><p className="mt-2 text-xs text-slate-400">{row.resourceType} {row.resourceId??""}</p><p className="mt-2 text-[10px] text-slate-600">{new Date(row.occurredAt).toLocaleString()} · {row.eventId}</p></article>)}{!rows.length&&<div className="rounded-xl border border-white/10 bg-[#111d2e] p-6 text-sm text-slate-500">No global administrative events yet.</div>}</div></div>;
 }
 
+
+function LiveOperators({base,token}:{base:string;token:string}){
+ const [rows,setRows]=useState<any[]>([]);const [error,setError]=useState("");
+ useEffect(()=>{let active=true;macRequest<{data:any[]}>(base,token,"/mac/operators").then(v=>{if(active)setRows(v.data);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[base,token]);
+ return <div className="space-y-5"><div><h1 className="text-3xl font-semibold text-white">Platform operators</h1><p className="mt-2 text-sm text-slate-400">Global identities and explicit permission grants. Credentials are never returned.</p></div>{error&&<p className="text-sm text-rose-200">{error}</p>}<div className="overflow-x-auto rounded-2xl border border-white/10 bg-[#111d2e]"><table className="w-full min-w-[700px] text-left text-xs"><thead className="text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="p-4">Operator</th><th className="p-4">Status</th><th className="p-4">MFA</th><th className="p-4">Permissions</th></tr></thead><tbody>{rows.map(row=><tr key={row.operatorId} className="border-t border-white/[0.06]"><td className="p-4"><p className="font-medium text-slate-200">{row.displayName}</p><p className="mt-1 text-slate-500">{row.emailNormalized??row.email}</p></td><td className="p-4"><StatePill kind={row.status==="active"?"success":"warning"}>{row.status}</StatePill></td><td className="p-4">{row.mfaEnabled?"Enabled":"Not enabled"}</td><td className="p-4 text-slate-400">{(row.permissions??[]).join(", ")}</td></tr>)}{!rows.length&&<tr><td colSpan={4} className="p-6 text-center text-slate-500">No platform operators returned.</td></tr>}</tbody></table></div></div>;
+}
+function LiveSessions({base,token,currentSessionId}:{base:string;token:string;currentSessionId:string}){
+ const [rows,setRows]=useState<any[]>([]);const [error,setError]=useState("");const [busy,setBusy]=useState("");
+ const load=()=>macRequest<{data:any[]}>(base,token,"/mac/sessions").then(v=>setRows(v.data)).catch(e=>setError(e.message));
+ useEffect(()=>{let active=true;macRequest<{data:any[]}>(base,token,"/mac/sessions").then(v=>{if(active)setRows(v.data);}).catch(e=>{if(active)setError(e.message);});return()=>{active=false;};},[base,token]);
+ async function revoke(sessionId:string){setBusy(sessionId);setError("");try{const response=await fetch(apiRoot(base)+"/v1/mac/sessions/"+sessionId+"/revoke",{method:"POST",headers:{authorization:"Bearer "+token,"content-type":"application/json"},body:JSON.stringify({reason:"Revoked by platform operator through MAC session administration"})});if(!response.ok)throw new Error("Session revocation failed ("+response.status+").");await load();}catch(e){setError(e instanceof Error?e.message:"Unable to revoke session.");}finally{setBusy("");}}
+ return <div className="space-y-5"><div><h1 className="text-3xl font-semibold text-white">Operator sessions</h1><p className="mt-2 text-sm text-slate-400">Review session activity and revoke another operator session. Your current session is protected from this action.</p></div>{error&&<p className="text-sm text-rose-200">{error}</p>}<div className="space-y-2">{rows.map(row=><article key={row.sessionId} className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/[0.08] bg-[#111d2e] p-4"><div><p className="font-mono text-xs text-slate-200">{row.sessionId}</p><p className="mt-1 text-[11px] text-slate-500">Operator {row.operatorId} · last used {row.lastUsedAt?new Date(row.lastUsedAt).toLocaleString():"unknown"}</p><p className="mt-1 text-[10px] text-slate-600">Expires {row.expiresAt?new Date(row.expiresAt).toLocaleString():"unknown"}</p></div>{row.revokedAt?<StatePill kind="warning">Revoked</StatePill>:row.sessionId===currentSessionId?<StatePill kind="success">Current session</StatePill>:<button disabled={busy===row.sessionId} onClick={()=>revoke(row.sessionId)} className="rounded-lg border border-rose-300/20 px-3 py-2 text-xs text-rose-200 hover:bg-rose-300/[0.06] disabled:opacity-50">{busy===row.sessionId?"Revoking…":"Revoke session"}</button>}</article>)}{!rows.length&&<div className="rounded-xl border border-white/10 bg-[#111d2e] p-6 text-sm text-slate-500">No operator sessions returned.</div>}</div></div>;
+}
+
 export default function MacConsole(){
  const [section,setSection]=useState<Section>("Overview");
  const [session,setSession]=useState<MacSession|null>(null);
@@ -125,7 +141,7 @@ export default function MacConsole(){
     <div className="flex items-center gap-2 md:gap-3"><span className="hidden text-[10px] text-slate-400 md:block">{session.operator.email}</span><button onClick={async()=>{try{await fetch(apiRoot(apiBase)+"/v1/mac/auth/logout",{method:"POST",headers:{authorization:"Bearer "+session.accessToken}});}finally{setSession(null);}}} className="rounded-lg border border-white/10 p-2 text-slate-400 hover:text-white" aria-label="Sign out"><LogOut size={15}/></button><label className="hidden items-center gap-2 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2 sm:flex"><Search size={13} className="text-slate-500"/><input aria-label="Search console" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search console" className="w-28 bg-transparent text-xs text-slate-200 outline-none placeholder:text-slate-600 md:w-40"/></label><span className="hidden items-center gap-1.5 text-[10px] text-slate-500 md:flex"><Globe2 size={13}/> Global scope</span><div className="grid h-8 w-8 place-items-center rounded-full border border-cyan-200/20 bg-cyan-200/[0.07] text-[10px] font-semibold text-cyan-100">ZO</div></div>
    </header>
    <main className="mx-auto max-w-[1500px] px-4 py-7 md:px-8 md:py-10">
-    {section==="Overview"?<LiveOverview base={apiBase} token={session.accessToken}/>:section==="Tenants"?<LiveTenants base={apiBase} token={session.accessToken}/>:section==="Security & Audit"?<LiveAudit base={apiBase} token={session.accessToken}/>:section==="Environment & Secrets"?<EnvironmentSecrets/>:<Placeholder section={section}/>}
+    {section==="Overview"?<LiveOverview base={apiBase} token={session.accessToken}/>:section==="Tenants"?<LiveTenants base={apiBase} token={session.accessToken}/>:section==="Security & Audit"?<LiveAudit base={apiBase} token={session.accessToken}/>:section==="Operators"?<LiveOperators base={apiBase} token={session.accessToken}/>:section==="Sessions"?<LiveSessions base={apiBase} token={session.accessToken} currentSessionId={session.sessionId}/>:section==="Environment & Secrets"?<EnvironmentSecrets/>:<Placeholder section={section}/>}
     <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-5 text-[9px] text-slate-600"><span>ZURI OS · MAC/MAD · Development foundation</span><span>Global operator session · authenticated APIs</span></footer>
    </main>
   </div>
