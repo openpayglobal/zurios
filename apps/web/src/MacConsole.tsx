@@ -29,7 +29,12 @@ const bootstrapVariables=[
  {name:"JWT_ISSUER",classification:"Identity configuration",exposure:"Non-secret"},
  {name:"JWT_AUDIENCE",classification:"Identity configuration",exposure:"Non-secret"},
  {name:"JWT_SECRET",classification:"Signing key",exposure:"Secret"},
- {name:"MFA_ENCRYPTION_KEY",classification:"Encryption key",exposure:"Secret"},
+ {name:"MFA_ENCRYPTION_KEY",classification:"Tenant MFA encryption key",exposure:"Secret"},
+ {name:"MAC_JWT_SECRET",classification:"Independent MAC signing key",exposure:"Secret"},
+ {name:"MAC_MFA_ENCRYPTION_KEY",classification:"Independent MAC MFA encryption key",exposure:"Secret"},
+ {name:"MAC_BOOTSTRAP_TOKEN",classification:"One-time owner bootstrap token",exposure:"Secret"},
+ {name:"MAC_SESSION_TTL_SECONDS",classification:"MAC session policy",exposure:"Non-secret"},
+ {name:"VITE_ZURI_API_URL",classification:"Frontend API origin",exposure:"Non-secret"},
  {name:"CORS_ORIGINS",classification:"Network policy",exposure:"Non-secret"}
 ];
 
@@ -58,8 +63,8 @@ function EnvironmentSecrets({base,session,onRefresh}:{base:string;session:MacSes
    <article className="rounded-2xl border border-white/[0.08] bg-[#111d2e] p-5"><div className="flex items-center gap-2"><RefreshCw size={17} className="text-cyan-200"/><h2 className="font-semibold text-white">Live runtime configuration</h2></div><p className="mt-2 text-xs leading-5 text-slate-500">Approved non-bootstrap settings served server-side from a versioned, encrypted configuration service with bounded cache freshness.</p><div className="mt-4"><StatePill kind="warning">Service not implemented</StatePill></div></article>
   </div>
   <section className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[#111d2e]">
-   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] p-5"><div><h2 className="font-semibold text-white">API bootstrap variable schema</h2><p className="mt-1 text-xs text-slate-500">Names and classifications only · values are intentionally not displayed</p></div><StatePill>8 required keys</StatePill></div>
-   <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="bg-white/[0.025] text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3 font-medium">Variable</th><th className="px-5 py-3 font-medium">Classification</th><th className="px-5 py-3 font-medium">Handling</th><th className="px-5 py-3 font-medium">Management state</th></tr></thead><tbody>{bootstrapVariables.map(v=><tr key={v.name} className="border-t border-white/[0.05]"><td className="px-5 py-3 font-mono text-slate-200">{v.name}</td><td className="px-5 py-3 text-slate-400">{v.classification}</td><td className="px-5 py-3">{v.exposure==="Secret"?<span className="inline-flex items-center gap-1.5 text-amber-200"><LockKeyhole size={12}/> Secret</span>:<span className="text-slate-400">Configuration</span>}</td><td className="px-5 py-3"><StatePill kind="warning">API not connected</StatePill></td></tr>)}</tbody></table></div>
+   <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.07] p-5"><div><h2 className="font-semibold text-white">API bootstrap variable schema</h2><p className="mt-1 text-xs text-slate-500">Names and classifications only · values are intentionally not displayed</p></div><StatePill>13 schema entries</StatePill></div>
+   <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-xs"><thead className="bg-white/[0.025] text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3 font-medium">Variable</th><th className="px-5 py-3 font-medium">Classification</th><th className="px-5 py-3 font-medium">Handling</th><th className="px-5 py-3 font-medium">Management state</th></tr></thead><tbody>{bootstrapVariables.map(v=><tr key={v.name} className="border-t border-white/[0.05]"><td className="px-5 py-3 font-mono text-slate-200">{v.name}</td><td className="px-5 py-3 text-slate-400">{v.classification}</td><td className="px-5 py-3">{v.exposure==="Secret"?<span className="inline-flex items-center gap-1.5 text-amber-200"><LockKeyhole size={12}/> Secret</span>:<span className="text-slate-400">Configuration</span>}</td><td className="px-5 py-3"><StatePill kind="warning">Provider adapter pending</StatePill></td></tr>)}</tbody></table></div>
    <div className="border-t border-white/[0.07] p-4 text-[11px] leading-5 text-slate-500">A successful provider write must be followed by a deployment and configuration-consumption verification. Bootstrap credentials cannot be stored solely inside the runtime service they are required to unlock.</div>
   </section>
  </div>;
