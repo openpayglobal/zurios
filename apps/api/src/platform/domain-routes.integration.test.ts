@@ -307,7 +307,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    method:"POST",url:"/v1/hr/leave-requests/hr-leave-api-001/approve",headers:{...managerHeaders,"idempotency-key":"hr-leave-approve-api-001"},
    payload:{organizationId:"org-a",reason:"Coverage confirmed and approval recorded",expectedVersion:0}
   });
-  assert.equal(approvedLeave.statusCode,200);
+  assert.equal(approvedLeave.statusCode,200,JSON.stringify(approvedLeave.json()));
   const hrLeaveList=await app.inject({method:"GET",url:"/v1/hr/leave-requests",headers:managerHeaders});
   assert.equal(hrLeaveList.statusCode,200);
   assert.equal(hrLeaveList.json().data[0].status,"approved");
