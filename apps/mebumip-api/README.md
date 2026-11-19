@@ -1,28 +1,56 @@
-# Zuri MeBuMIP API Workspace
+# Zuri MeBuMIP API
 
-Fastify API service for the standalone Zuri MeBuMIP product.
+Fastify API workspace for Zuri MeBuMIP.
 
-## Development
+## Local configuration
 
-From the monorepo root:
+- `MONGODB_URI`: MongoDB connection URI.
+- `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
+- `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
+- `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
+- `CORS_ORIGINS`: comma-separated exact web origins.
 
-```bash
-pnpm install
-pnpm --filter @zuri/mebumip-api dev
+The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
+
+## Initial owner bootstrap
+
+Configure `PLATFORM_BOOTSTRAP_TOKEN` securely, start the API with MongoDB available, then call:
+
+```http
+POST /v1/platform/bootstrap
+Content-Type: application/json
+
+{
+  "bootstrapToken": "<secret>",
+  "email": "platform-owner@example.com",
+  "password": "<at-least-12-character-password>",
+  "displayName": "Platform Owner",
+  "companyName": "Blockchain Innovations LTD",
+  "tenantSlug": "blockchain-innovations"
+}
 ```
 
-Default port: `4100`.
+Bootstrap creates the first platform owner, the company tenant and its tenant-owner membership. The database enforces a single platform-owner record. Subsequent owner creation is refused. Keep the bootstrap secret out of source control and remove it from the deployment environment after successful setup.
 
-Environment:
-- `API_HOST` (default `0.0.0.0`)
-- `API_PORT` (default `4100`)
-- `NODE_ENV` (default `development`)
-- `MONGODB_URI` (required for readiness)
-- `MONGODB_DATABASE` (default `zuri_mebumip`)
-- `CORS_ORIGINS` (comma-separated exact origins; default `http://localhost:5174`)
+## Authentication endpoints
 
-Health:
-- `GET /health/live` — process liveness.
-- `GET /health/ready` — returns ready only when MongoDB is configured and reachable.
+- `POST /v1/auth/login`: returns a short-lived opaque bearer token.
+- `GET /v1/auth/me`: returns the authenticated user's platform role and active tenant memberships.
+- `POST /v1/auth/logout`: revokes the current bearer session.
 
-No tenant or Meta resource endpoints are exposed yet. Authentication, tenant resolution, authorization, audit middleware, webhook signature verification and rate limits must be implemented before protected API routes are added. Do not deploy as a production business API in this state.
+Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persisted. Passwords use salted scrypt hashes.
+
+## MAC and MAD endpoints
+
+- `GET /v1/mad/overview`: authenticated platform metrics read; read-only aggregates only.
+- `GET /v1/mac/tenants`: platform tenant directory read.
+- `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
+- `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded.
+
+MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control.
+
+## Current limitations — not production-ready
+
+This is an implementation foundation, not a complete identity/security programme. Before public launch, add distributed rate limiting and abuse controls, email verification and recovery, tenant invitations, session rotation/device management, step-up/MFA for privileged actions, stricter audit retention/immutability, backup/restore verification, security review and automated integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
+
+Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
