@@ -118,8 +118,21 @@ export function inventoryRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     if(!destination)return reply.code(404).send({error:"DESTINATION_STOCK_LOCATION_NOT_FOUND"});
     if(!authorize(p,{permission:"inventory.movements.create",resourceTenantId:p.tenantId,organizationId:destination.organizationId}))return denied(db,request,reply,p,config.jwtSecret,"DESTINATION_LOCATION_SCOPE_DENIED");
    }
-   if(scope.data.movementType==="transfer"&&!p.permissions.includes("inventory.transfers.create"))return denied(db,request,reply,p,config.jwtSecret,"FORBIDDEN");
-   if(scope.data.movementType.startsWith("adjustment_")&&!p.permissions.includes("inventory.adjustments.approve"))return denied(db,request,reply,p,config.jwtSecret,"FORBIDDEN");
+   if(scope.data.movementType==="transfer"){
+    const permission="inventory.transfers.create";
+    if(!authorize(p,{permission,resourceTenantId:p.tenantId,organizationId:source.organizationId})||
+      !scope.data.destinationStockLocationId||
+      !authorize(p,{permission,resourceTenantId:p.tenantId,organizationId:(await db.collection("stock_locations").findOne({tenantId:p.tenantId,stockLocationId:scope.data.destinationStockLocationId,status:"active"}))!.organizationId}))
+      return denied(db,request,reply,p,config.jwtSecret,"FORBIDDEN");
+    const decision=await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},resource:{tenantId:p.tenantId,resourceType:"inventory_transfer",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
+    if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,config.jwtSecret,"ABAC_POLICY_DENIED");
+   }
+   if(scope.data.movementType.startsWith("adjustment_")){
+    const permission="inventory.adjustments.approve";
+    if(!authorize(p,{permission,resourceTenantId:p.tenantId,organizationId:source.organizationId}))return denied(db,request,reply,p,config.jwtSecret,"FORBIDDEN");
+    const decision=await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},resource:{tenantId:p.tenantId,resourceType:"inventory_adjustment",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
+    if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,config.jwtSecret,"ABAC_POLICY_DENIED");
+   }
    const idempotencyKey=request.headers["idempotency-key"];
    if(typeof idempotencyKey!=="string"||idempotencyKey.length<8||idempotencyKey.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
    const input={...(request.body as Record<string,unknown>),idempotencyKey};
