@@ -386,6 +386,9 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /auth/memberships/{membershipId}/accept:
+    servers:
+      - url: /
+        description: Authentication endpoints are mounted outside the versioned platform prefix
     post:
       tags: [Identity]
       operationId: acceptTenantMembershipInvitation
