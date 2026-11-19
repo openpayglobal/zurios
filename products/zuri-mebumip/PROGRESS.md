@@ -9,7 +9,7 @@
 - Product definition: **Complete** — name, owner, standalone model, all five objectives and MAC/MAD requirement recorded.
 - Repository foundation: **In progress** — product documentation, isolated React/Vite MAC/MAD web shell and Fastify API bootstrap committed on a feature branch.
 - Phase 1 security primitives: **In progress** — separate platform/tenant RBAC maps, active-membership tenant checks, opaque token/hash utilities, scrypt password hashing/verification, constrained audit-event builder, MongoDB foundation indexes and security tests added.
-- API authentication/session lifecycle: **Not complete** — must be implemented before tenant or administrative endpoints are exposed.
+- API authentication/session lifecycle: **In progress** — one-time owner bootstrap, scrypt password verification, opaque bearer sessions, expiry/revocation and current-user endpoint committed; production rate limiting, recovery, invitation acceptance and stronger operational hardening remain.
 - Live Meta configuration: **Deferred by owner** — Business Portfolio and developer app will be created later.
 - Production readiness: **Not started**.
 
@@ -28,7 +28,7 @@
 | Phase | Name | Status | Exit gate |
 |---:|---|---|---|
 | 0 | External prerequisites & product governance | In progress (Meta setup deferred) | Meta account/app checklist ready; owner later completes external setup |
-| 1 | Standalone platform foundation | In progress | Product docs, frontend shell, API bootstrap, RBAC/tenant-scope primitives, audit-event builder, MongoDB indexes and initial security tests committed; next: authenticated session issuance/validation, bootstrap governance, persisted audit writes, route guards, rate limits, CSRF and test execution |
+| 1 | Standalone platform foundation | In progress | Product docs, frontend shell, API bootstrap, RBAC/tenant-scope primitives, audit-event builder, MongoDB indexes and initial security tests committed; next: session issuance/validation and revocation, protected MAC/MAD endpoints, owner bootstrap, tenant provisioning with audit event, MongoDB owner uniqueness and initial security tests committed; next: invitations, robust rate limiting, audit coverage, tenant-level API routes, CSRF/session transport review and test/build execution |
 | 2 | Facebook & Instagram | Not started | Tested supported asset and publishing/messaging capabilities |
 | 3 | Advertising | Not started | Tested campaign lifecycle and spend controls |
 | 4 | WhatsApp | Not started | Tested WABA onboarding, messaging and webhooks |
@@ -40,9 +40,9 @@
 
 | Component | Planned phase | Status | Acceptance requirement |
 |---|---:|---|---|
-| MAC — Master Admin Console | 1 | In progress (UI shell + authorization foundation) | Navigation and module placeholders created; backend authentication, protected administrative routes, step-up controls and persisted audit trail remain |
-| MAD — Master Admin Dashboard | 1 | In progress (UI shell) | Operational overview, five objectives and phase roadmap rendered with clearly labelled placeholder values; authenticated read-only aggregate services and live telemetry remain |
-| MAC/MAD shared authorization | 1 | In progress (RBAC primitives) | Separate platform roles and tenant roles; default-deny checks and tenant isolation tests committed; route integration and test execution remain |
+| MAC — Master Admin Console | 1 | In progress (UI shell + authorization foundation) | Navigation and module placeholders created; backend authentication and read-only tenant/audit views now exist; audited tenant provisioning is implemented; step-up verification, administrator lifecycle, settings mutations and full audit coverage remain |
+| MAD — Master Admin Dashboard | 1 | In progress (UI shell) | Operational overview, five objectives and phase roadmap rendered with clearly labelled placeholder values; authenticated read-only MongoDB aggregate service now exists; live API/webhook health telemetry, usage/revenue billing metrics and alerting remain |
+| MAC/MAD shared authorization | 1 | In progress (RBAC primitives) | Separate platform roles and tenant roles; default-deny checks and tenant isolation tests committed; route integration now protects MAC/MAD reads and tenant provisioning; automated execution and broader negative authorization tests remain |
 
 ## Change control
 
