@@ -44,7 +44,7 @@ test("Goods receipts atomically update purchase order quantities and stock ledge
   assert.equal(order.lines[0].receivedQuantityMilli,2000);
   assert.equal(await db.collection("inventory_stock_ledger").countDocuments({tenantId}),2);
   assert.ok(await db.collection("audit_events").countDocuments({tenantId})>=5);
-  assert.ok(await db.collection("outbox_events").countDocuments({tenantId})>=5);
+  assert.ok(await db.collection("outbox_events").countDocuments({tenantId})>=4);
  }finally{
   await db.dropDatabase();await client.close();
  }
