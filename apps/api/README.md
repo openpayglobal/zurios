@@ -4,20 +4,23 @@ Fastify-based MongoDB platform API. The API is deployed separately from the Vite
 
 ## Vercel deployment
 
-The Vercel project `zurios-api` is linked to the repository root with:
+Vercel has native zero-configuration Fastify support. The API project uses the existing Fastify entrypoint `src/server.ts`, which registers the application routes and starts Fastify with `app.listen()`. Vercel packages the Fastify application as a single Function and routes requests through Fastify's router.
+
+Project configuration:
+- Project: `zurios-api`
 - Root directory: `apps/api`
 - Framework: Fastify
 - Node runtime: 22.x
 - Package manager: pnpm 9.15.4 through Corepack
-- Install: `corepack pnpm install --frozen-lockfile`
-- Build: `corepack pnpm --filter @zuri/api build`
-- Serverless handler: `api/index.ts`
+- Install command: `cd ../.. && corepack pnpm install --frozen-lockfile`
+- Build command: `cd ../.. && corepack pnpm --filter @zuri/api... build`
+- Fastify entrypoint: `src/server.ts`
 
-Vercel invokes the exported Fastify request handler in `api/index.ts`. The regular `src/server.ts` remains the local long-running development entrypoint. Do not call `app.listen()` in the Vercel serverless handler.
+The root-relative commands explicitly return to the monorepo workspace so the committed root lockfile and `@zuri/core-platform` workspace dependency are included. Do not add a second `api/index.ts` handler; Vercel's Fastify adapter detects `src/server.ts`.
 
 ## Environment variables
 
-Set these as encrypted Vercel project environment variables before deploying the API:
+Set these as encrypted Vercel project environment variables before the API is deployed:
 
 | Variable | Requirement |
 |---|---|
@@ -45,6 +48,6 @@ Run from repository root:
 ```bash
 corepack pnpm install --frozen-lockfile
 corepack pnpm --filter @zuri/api typecheck
-corepack pnpm --filter @zuri/api build
+corepack pnpm --filter @zuri/api... build
 corepack pnpm --filter @zuri/api test
 ```
