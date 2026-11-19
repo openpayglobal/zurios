@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
   title: Zuri OS Platform API
-  version: 0.1.0
+  version: 1.0.0
   summary: Shared multi-tenant platform control-plane API
   description: |
-    Initial 6A.3 contract for the shared Zuri OS platform API.
+    Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
     Tenant context is derived from the authenticated principal; callers cannot
     select a tenant by supplying a tenant identifier. All platform modules
     consume these shared identity, organization, authorization, configuration,
@@ -45,7 +45,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/organizations:
-    get:
+    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Organizations]
       operationId: listOrganizations
       summary: List organizations within the authenticated membership scope
@@ -83,7 +83,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/InvalidReference"}
   /platform/locations:
-    get:
+    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Locations]
       operationId: listLocations
       summary: List locations within the authenticated location scope
@@ -123,7 +123,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "422": {$ref: "#/components/responses/InvalidReference"}
   /platform/memberships:
-    get:
+    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Memberships]
       operationId: listMemberships
       summary: List memberships intersecting the caller's organization scope
@@ -165,7 +165,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/InvalidReference"}
   /platform/roles:
-    get:
+    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Roles]
       operationId: listRoles
       summary: List active tenant roles
@@ -223,7 +223,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/policies/{key}:
-    put:
+    put:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Policies]
       operationId: upsertPolicy
       summary: Create or replace a tenant policy
@@ -265,7 +265,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/feature-flags/{key}:
-    put:
+    put:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Feature flags]
       operationId: setFeatureFlag
       summary: Set a tenant feature flag
@@ -317,7 +317,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/sessions/{sessionId}/revoke:
-    post:
+    post:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Sessions]
       operationId: revokeSession
       summary: Revoke a permitted active session
