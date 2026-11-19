@@ -462,6 +462,95 @@ paths:
       responses:
         "200": {description: Current operator identity and permissions}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/operators/invitations:
+    post:
+      tags: [MAC]
+      operationId: createMacOperatorInvitation
+      summary: Create a least-privilege read-only operator invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, displayName]
+              properties:
+                email: {type: string, format: email}
+                displayName: {type: string, minLength: 2, maxLength: 120}
+                tenantIds: {type: array, maxItems: 50, items: {type: string}}
+      responses:
+        "201": {description: One-time invitation token returned once for secure manual transfer}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {description: Operator already exists or invitation is pending}
+  /mac/auth/invitations/accept:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: acceptMacOperatorInvitation
+      summary: Accept a one-time operator invitation and enroll TOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteToken, password]
+              properties:
+                inviteToken: {type: string, minLength: 40, maxLength: 100}
+                password: {type: string, minLength: 12, maxLength: 128}
+      responses:
+        "201": {description: Pending operator created; TOTP enrollment secret returned once}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {description: Invitation invalid or expired}
+        "429": {description: Rate limit exceeded}
+  /mac/auth/invitations/confirm:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: confirmMacOperatorInvitation
+      summary: Verify TOTP and activate an invited operator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteToken, code]
+              properties:
+                inviteToken: {type: string, minLength: 40, maxLength: 100}
+                code: {type: string, pattern: "^[0-9]{6}$"}
+      responses:
+        "201": {description: Operator activated and MAC session issued}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {description: Invitation invalid or MFA verification failed}
+  /mac/operators/{operatorId}/suspend:
+    post:
+      tags: [MAC]
+      operationId: suspendMacOperator
+      summary: Suspend an operator and revoke all their active sessions
+      parameters:
+        - in: path
+          name: operatorId
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 10, maxLength: 300}
+      responses:
+        "204": {description: Operator suspended and sessions revoked}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active operator not found}
+        "409": {description: Self-suspension is not allowed or operator state changed}
   /mac/operators:
     get:
       tags: [MAC]
