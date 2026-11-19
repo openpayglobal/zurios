@@ -10,7 +10,7 @@ export async function createAccount(db:Db,tenantId:string,actorId:string,input:u
   return {statusCode:201,body:{accountCode:account.accountCode}};
  });
 }
-export async function createFiscalPeriod(db:Db,tenantId:string,actorId:string,input:unknown){
+export async function createFiscalPeriod(db:Db,tenantId:string,actorId:string,input:Record<string,unknown>){
  const period=FiscalPeriodSchema.parse({...input,tenantId});
  return runIdempotentMutation(db,{tenantId,actorId,operation:"erp.fiscal_period.create",key:"period-"+tenantId+"-"+period.periodId,request:period},async session=>{
   const overlap=await db.collection("erp_fiscal_periods").findOne({tenantId,status:"open",startsAt:{$lte:new Date(period.endsAt)},endsAt:{$gte:new Date(period.startsAt)}},{session});
