@@ -234,6 +234,8 @@ test("administration workspace enforces invitation, two-person approval and brea
   const newTenantId=provisionedTenant.json().data.tenantId;
   const ownerMembership=await db.collection("memberships").findOne({tenantId:newTenantId,status:"invited"});
   assert.ok(ownerMembership);
+  const ownerPolicy=await db.collection("policies").findOne({tenantId:newTenantId,key:"membership-role:"+ownerMembership!.membershipId});
+  assert.ok(ownerPolicy,"tenant provisioning must create the initial owner ABAC allow policy");
   const lifecycle=await app.inject({
    method:"POST",url:"/platform/admin/tenants/tenant-a/lifecycle-requests",
    headers:{authorization:"Bearer "+operatorA,"idempotency-key":"tenant-suspend-request-0001"},
