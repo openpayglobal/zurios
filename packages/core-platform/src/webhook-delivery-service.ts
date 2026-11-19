@@ -75,16 +75,24 @@ export async function replayDeadLetterWebhookDelivery(db:Db,deliveryId:string){
  const now=new Date(),result=await db.collection<Delivery>("webhook_deliveries").updateOne({deliveryId,status:"dead_letter"},{$set:{status:"pending",attempts:0,availableAt:now,updatedAt:now},$unset:{lastError:"",leaseOwner:"",leaseUntil:""}});
  return result.modifiedCount===1;
 }
+function waitForPoll(milliseconds:number,signal:AbortSignal):Promise<void>{
+ return new Promise(resolve=>{
+  if(signal.aborted){resolve();return;}
+  const finish=()=>{clearTimeout(timer);signal.removeEventListener("abort",finish);resolve();};
+  const timer=setTimeout(finish,milliseconds);
+  signal.addEventListener("abort",finish,{once:true});
+ });
+}
 export async function runWebhookDeliveryWorker(db:Db,dependencies:{resolveSecret:WebhookSecretResolver;fetch?:WebhookFetch},signal:AbortSignal,options?:{workerId?:string;batchSize?:number;pollIntervalMs?:number;onError?:(error:unknown)=>void}){
  const poll=Math.max(250,options?.pollIntervalMs??2000);let failures=0;
  while(!signal.aborted){
   try{
    const result=await dispatchWebhookBatch(db,dependencies,{workerId:options?.workerId,batchSize:options?.batchSize});
    failures=0;
-   if(result.claimed===0)await new Promise<void>(resolve=>{const timer=setTimeout(resolve,poll);signal.addEventListener("abort",()=>{clearTimeout(timer);resolve();},{once:true});});
+   if(result.claimed===0)await waitForPoll(poll,signal);
   }catch(error){
    failures++;try{options?.onError?.(error);}catch{/* telemetry must not stop the worker */}
-   await new Promise<void>(resolve=>{const timer=setTimeout(resolve,Math.min(60000,poll*2**Math.min(failures,5)));signal.addEventListener("abort",()=>{clearTimeout(timer);resolve();},{once:true});});
+   await waitForPoll(Math.min(60000,poll*2**Math.min(failures,5)),signal);
   }
  }
 }
