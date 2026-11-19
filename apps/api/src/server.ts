@@ -6,6 +6,7 @@ import {connectMongo,closeMongo} from "./db/mongo.js";
 import {authRoutes} from "./platform/auth-routes.js";
 import {platformRoutes} from "./platform/platform-routes.js";
 import {adminRoutes} from "./platform/admin-routes.js";
+import {domainRoutes} from "./platform/domain-routes.js";
 import type {AuthConfig} from "./platform/auth-service.js";
 import {createMongoEventBusPublisher,runOutboxWorker} from "@zuri/core-platform";
 const app=Fastify({logger:true,bodyLimit:1_048_576});
@@ -22,6 +23,7 @@ try{
  await app.register(authRoutes(db,authConfig));
  await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(adminRoutes(db,authConfig),{prefix:"/v1"});
+ await app.register(domainRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(platformRoutes(db,authConfig));
  await app.register(adminRoutes(db,authConfig));
  await app.listen({host:config.API_HOST,port:config.API_PORT});
