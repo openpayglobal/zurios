@@ -69,6 +69,8 @@ export async function refundPosSale(db:Db,input:unknown,actorId:string){
   const now=new Date();
   const refundGuard=await db.collection("pos_sales").updateOne({tenantId:refund.tenantId,saleId:refund.saleId,status:"completed",$or:[{refundedMinor:{$exists:false}},{refundedMinor:{$lte:sale.totalMinor-refund.amountMinor}}]},{$inc:{refundedMinor:refund.amountMinor},$set:{updatedAt:now}},{session});
   if(refundGuard.matchedCount!==1)throw new Error("REFUNDS_EXCEED_SALE_TOTAL");
+  const nextRefunded=(sale.refundedMinor??0)+refund.amountMinor;
+  await db.collection("pos_sales").updateOne({tenantId:refund.tenantId,saleId:refund.saleId},{$set:{refundedMinor:nextRefunded,status:nextRefunded===sale.totalMinor?"refunded":"completed",updatedAt:now}},{session});
   await db.collection("pos_refunds").insertOne({...refund,completedAt:refund.completedAt?new Date(refund.completedAt):now,createdAt:now,createdBy:actorId},{session});
   await auditDomainMutation(db,session,refund.tenantId,actorId,"pos.refund.completed","pos_refund",refund.refundId,{saleId:refund.saleId,amountMinor:refund.amountMinor,currency:refund.currency});
   await appendOutboxEvent(db,session,{tenantId:refund.tenantId,eventType:"pos.refund.completed",aggregateType:"pos_refund",aggregateId:refund.refundId,payload:{refundId:refund.refundId,saleId:refund.saleId,amountMinor:refund.amountMinor,currency:refund.currency,reason:refund.reason}});
