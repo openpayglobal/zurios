@@ -3,8 +3,14 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { MongoClient } from "mongodb";
 import { config, corsOrigins } from "./config.js";
+import { ensureMeBuMIPIndexes } from "./database.js";
 
-const app = Fastify({ logger: true, bodyLimit: 1_048_576 });
+const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) => {
+  const supplied = request.headers["x-correlation-id"];
+  return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
+    ? supplied
+    : crypto.randomUUID();
+} });
 let mongo: MongoClient | undefined;
 let databaseReady = false;
 
@@ -13,6 +19,7 @@ await app.register(cors, {
   origin: corsOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["content-type", "authorization", "x-correlation-id"],
 });
 
 app.get("/health/live", async () => ({
@@ -31,26 +38,29 @@ app.get("/health/ready", async (_request, reply) => {
   return { status: "ready", database: "connected" };
 });
 
-// No tenant or Meta resource endpoints are exposed until authentication,
-// tenant resolution, authorization and audit middleware are implemented.
+// No tenant, Meta, MAC mutation, or MAD data endpoints are exposed until
+// authentication, verified tenant resolution, authorization and audit persistence
+// are wired. Security primitives live in security.ts and are covered by tests.
 app.setNotFoundHandler((_request, reply) => {
-  return reply.code(404).send({ error: "NOT_FOUND" });
+  return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
 
 app.setErrorHandler((error, request, reply) => {
-  request.log.error({ err: error }, "Unhandled API error");
-  return reply.code(500).send({ error: "INTERNAL_SERVER_ERROR" });
+  request.log.error({ err: error, correlationId: request.id }, "Unhandled API error");
+  return reply.code(500).send({ error: "INTERNAL_SERVER_ERROR", correlationId: request.id });
 });
 
 if (config.MONGODB_URI) {
   mongo = new MongoClient(config.MONGODB_URI, { serverSelectionTimeoutMS: 5_000 });
   try {
     await mongo.connect();
-    await mongo.db(config.MONGODB_DATABASE).command({ ping: 1 });
+    const db = mongo.db(config.MONGODB_DATABASE);
+    await db.command({ ping: 1 });
+    await ensureMeBuMIPIndexes(db);
     databaseReady = true;
-    app.log.info("MeBuMIP database connection established");
+    app.log.info("MeBuMIP database connection and foundation indexes established");
   } catch (error) {
-    app.log.error({ err: error }, "Database connection unavailable; API will remain unready");
+    app.log.error({ err: error }, "Database initialization unavailable; API will remain unready");
   }
 } else {
   app.log.warn("MONGODB_URI is not configured; readiness will remain unavailable");
