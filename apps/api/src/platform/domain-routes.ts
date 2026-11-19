@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -123,6 +123,8 @@ function sendError(error:unknown,reply:FastifyReply){
  if(["PAYMENT_EXCEEDS_INVOICE_BALANCE","REFUNDS_EXCEED_CAPTURED_PAYMENT","PAYMENT_STATE_TRANSITION_INVALID","PAYMENT_EVENT_AMOUNT_MISMATCH"].includes(code))return reply.code(409).send({error:code});
  if(["PAYMENT_PROVIDER_NOT_CONFIGURED","PAYMENT_REFERENCE_TYPE_NOT_SUPPORTED"].includes(code))return reply.code(422).send({error:code});
  if(["COMMERCE_ACTIVE_STOCK_RESERVATION_REQUIRED","COMMERCE_PRODUCT_NOT_AVAILABLE","COMMERCE_ORDER_CURRENCY_MISMATCH"].includes(code))return reply.code(422).send({error:code});
+ if(["MAINTENANCE_WORK_ORDER_VERSION_CONFLICT","MAINTENANCE_WORK_ORDER_NOT_ACTIVE"].includes(code))return reply.code(409).send({error:code});
+ if(["ACTIVE_ASSET_NOT_FOUND","MAINTENANCE_WORK_ORDER_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  if(["INVOICE_NOT_PAYABLE","CAPTURED_PAYMENT_NOT_FOUND","PAYMENT_INTENT_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
@@ -724,6 +726,61 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const denied=await permit(db,request,reply,p,"commerce.order.create",scope);if(denied)return denied;
     const body=CommerceOrderRequestSchema.parse({...raw,tenantId:p.tenantId,organizationId:scope.organizationId,status:"placed"});
     const result=await createCommerceOrder(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.get("/assets",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"assets.asset.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("assets").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({assetTag:1}).limit(500).toArray()};
+  });
+  app.post("/assets",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"assets.asset.create",scope);if(denied)return denied;
+    const body=AssetSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createAsset(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.get("/assets/maintenance-work-orders",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"assets.work_order.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("maintenance_work_orders").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({scheduledAt:1}).limit(500).toArray()};
+  });
+  app.post("/assets/maintenance-work-orders",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"assets.work_order.create",scope);if(denied)return denied;
+    const body=MaintenanceWorkOrderSchema.parse({...raw,tenantId:p.tenantId,organizationId,status:"open"});
+    const result=await createMaintenanceWorkOrder(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/assets/maintenance-work-orders/:workOrderId/complete",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {workOrderId}=z.object({workOrderId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"assets.work_order.complete",scope);if(denied)return denied;
+    const body=MaintenanceCompletionSchema.parse({...raw,tenantId:p.tenantId,organizationId,workOrderId});
+    const result=await completeMaintenanceWorkOrder(db,body,p.userId,key);
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
