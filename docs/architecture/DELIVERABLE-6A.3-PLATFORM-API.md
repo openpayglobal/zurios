@@ -1,6 +1,6 @@
 # Zuri OS — Deliverable 6A.3: Platform API and Service Integration
 
-**Status:** Initial implementation submitted for review; acceptance remains pending.  
+**Status:** Reliability increment implemented on feature branch; CI and independent acceptance pending.  
 **Branch:** feature/6a3-platform-api  
 **Baseline:** develop at ae1673104dcc8730723a36b54d9b62a2abcdfb71.
 
@@ -37,6 +37,17 @@ Mutations use Zod validation and emit audit events. Session responses explicitly
 - Privileged root-organization creation requires a distinct permission.
 - Session listing/revocation defaults to the caller's own sessions unless a separate all-sessions permission is present.
 
+## Versioning and reliability contract
+
+- Canonical platform API base: `/v1/platform`.
+- Unversioned `/platform` aliases remain available temporarily and emit `Deprecation`, `Sunset` and successor-version `Link` headers.
+- All state-changing platform API operations require an `Idempotency-Key` header (8–128 characters).
+- Idempotency scope is tenant + actor + operation + key. The canonical request hash prevents key reuse with a different payload. Completed responses are replayed for 24 hours; key reuse with a different request returns 409.
+- Domain mutation, success audit event, idempotency response and outbox event are committed in one MongoDB transaction.
+- The outbox dispatcher uses atomic leases, at-least-once delivery, bounded exponential retry, dead-letter state and explicit replay. Consumers must deduplicate by `eventId`.
+- The OpenAPI 3.1 contract is at `docs/api/openapi.yaml`; CI validates it and checks route inventory drift against Fastify route declarations.
+- Event envelope and initial event registry are documented in `docs/architecture/6A.3-EVENT-CONTRACTS.md`.
+
 ## API error contract
 
 - Invalid input: 400.
@@ -48,12 +59,12 @@ Mutations use Zod validation and emit audit events. Session responses explicitly
 ## Remaining acceptance work
 
 - MongoDB replica-set route integration tests for every success and denial path.
-- OpenAPI 3.1 generation, API versioning and schema drift checks.
+- Generated OpenAPI/client artifacts and full request/response schema drift validation beyond route inventory.\n- API version compatibility policy, published deprecation dates and client migration guidance.
 - Idempotency keys for retryable mutations.
 - Transactional outbox and event delivery.
 - Request correlation and complete audit coverage for denied/failed privileged mutations.
 - Policy simulation and reviewed ABAC operator semantics.
 - Independent review of administrative permissions and break-glass controls.
-- Review audit actor context and route-specific data minimization.
+- Add independent review of audit actor context, denied/failed mutation coverage, audit database-level immutability and route-specific data minimization.
 
 This increment is not production-ready until all acceptance work is completed and reviewed.
