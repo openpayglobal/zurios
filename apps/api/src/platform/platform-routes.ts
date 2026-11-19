@@ -1,15 +1,19 @@
-import type {Db,Filter} from "mongodb";
+import type {ClientSession,Db,Filter} from "mongodb";
 import {createHash} from "node:crypto";
 import type {AuditEventDocument,SessionDocument} from "@zuri/core-platform";
 import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {z,ZodError} from "zod";
-import {coreCollections,createOrganization,createLocation,createMembership,createRole,upsertPolicy,setFeatureFlag,appendAuditEvent} from "@zuri/core-platform";
+import {
+ coreCollections,createOrganization,createLocation,createMembership,createRole,
+ upsertPolicy,setFeatureFlag,appendAuditEvent,appendOutboxEvent,runIdempotentMutation
+} from "@zuri/core-platform";
 import {authenticate} from "./auth-middleware.js";
 import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
+type MutationResult={statusCode:number;body:unknown};
 const principal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
 const orgs=(p:PlatformPrincipal)=>p.organizationIds??(p.organizationId?[p.organizationId]:[]);
 const locations=(p:PlatformPrincipal)=>p.locationIds??[];
@@ -17,13 +21,31 @@ const scoped=<T extends {tenantId:string}>(tenantId:string,extra:Filter<T>={}):F
 function fail(error:unknown,reply:FastifyReply){
  if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST",issues:error.issues.map(i=>({path:i.path,message:i.message}))});
  const code=error instanceof Error?error.message:"";
- if(["MEMBERSHIP_ALREADY_EXISTS","DUPLICATE_ORGANIZATION_SCOPE","DUPLICATE_LOCATION_SCOPE","DUPLICATE_ROLE_ASSIGNMENT"].includes(code))return reply.code(409).send({error:code});
+ if(["MEMBERSHIP_ALREADY_EXISTS","DUPLICATE_ORGANIZATION_SCOPE","DUPLICATE_LOCATION_SCOPE","DUPLICATE_ROLE_ASSIGNMENT","IDEMPOTENCY_KEY_REUSED","IDEMPOTENCY_IN_PROGRESS"].includes(code))return reply.code(409).send({error:code});
  if(["PARENT_ORGANIZATION_NOT_FOUND","ORGANIZATION_NOT_FOUND","PARENT_LOCATION_NOT_FOUND","ACTIVE_USER_REQUIRED","TENANT_NOT_ACTIVE","INVALID_ORGANIZATION_SCOPE","INVALID_LOCATION_SCOPE","INVALID_LOCATION_ORGANIZATION_SCOPE","INVALID_ROLE_ASSIGNMENT"].includes(code))return reply.code(422).send({error:code});
  return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 function permit(permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{const p=principal(request);if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return reply.code(403).send({error:"FORBIDDEN"});};}
-async function audit(db:Db,p:Principal,request:FastifyRequest,action:string,type:string,id:string|undefined){
- await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:createHash("sha256").update(request.ip).digest("hex"),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}});
+async function audit(db:Db,p:Principal,request:FastifyRequest,action:string,type:string,id:string|undefined,session:ClientSession){
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:createHash("sha256").update(request.ip).digest("hex"),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}},session);
+}
+async function mutate(
+ db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,operation:string,
+ work:(session:ClientSession)=>Promise<MutationResult>
+){
+ const key=request.headers["idempotency-key"];
+ if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+ try{
+  const result=await runIdempotentMutation(db,{
+   tenantId:p.tenantId,actorId:p.userId,operation,key,
+   request:{method:request.method,path:request.routeOptions.url,params:request.params??{},body:request.body??null}
+  },work);
+  reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+  return reply.code(result.statusCode).send(result.body);
+ }catch(error){return fail(error,reply);}
+}
+async function emit(db:Db,p:Principal,request:FastifyRequest,session:ClientSession,eventType:string,aggregateType:string,aggregateId:string,payload:Record<string,unknown>){
+ await appendOutboxEvent(db,session,{tenantId:p.tenantId,eventType,aggregateType,aggregateId,payload,correlationId:request.id});
 }
 export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async app=>{
@@ -41,8 +63,12 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const b=z.object({code:z.string(),name:z.string(),type:z.enum(["group","company","business_unit","department","branch"]),parentOrganizationId:z.string().optional()}).parse(request.body);
     if(b.parentOrganizationId&&!orgs(p).includes(b.parentOrganizationId))return reply.code(403).send({error:"ORGANIZATION_SCOPE_DENIED"});
     if(!b.parentOrganizationId&&!p.permissions.includes("platform.organizations.create.root"))return reply.code(403).send({error:"ROOT_ORGANIZATION_CREATION_DENIED"});
-    const result=await createOrganization(db,p.tenantId,p.userId,b);await audit(db,p,request,"platform.organization.created","organization",result.organizationId);
-    return reply.code(201).send({data:result});
+    return await mutate(db,request,reply,p,"platform.organizations.create",async session=>{
+     const result=await createOrganization(db,p.tenantId,p.userId,b,session);
+     await audit(db,p,request,"platform.organization.created","organization",result.organizationId,session);
+     await emit(db,p,request,session,"platform.organization.created","organization",result.organizationId,{organizationId:result.organizationId});
+     return {statusCode:201,body:{data:result}};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/locations",{preHandler:permit("platform.locations.read")},async request=>{
@@ -54,8 +80,12 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const b=z.object({organizationId:z.string(),code:z.string(),name:z.string(),type:z.enum(["site","store","warehouse","office","other"]),parentLocationId:z.string().optional(),timezone:z.string().optional(),address:z.record(z.string()).optional()}).parse(request.body);
     if(!orgs(p).includes(b.organizationId))return reply.code(403).send({error:"ORGANIZATION_SCOPE_DENIED"});
     if(b.parentLocationId&&!locations(p).includes(b.parentLocationId))return reply.code(403).send({error:"LOCATION_SCOPE_DENIED"});
-    const result=await createLocation(db,p.tenantId,p.userId,b);await audit(db,p,request,"platform.location.created","location",result.locationId);
-    return reply.code(201).send({data:result});
+    return await mutate(db,request,reply,p,"platform.locations.create",async session=>{
+     const result=await createLocation(db,p.tenantId,p.userId,b,session);
+     await audit(db,p,request,"platform.location.created","location",result.locationId,session);
+     await emit(db,p,request,session,"platform.location.created","location",result.locationId,{locationId:result.locationId,organizationId:result.organizationId});
+     return {statusCode:201,body:{data:result}};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/memberships",{preHandler:permit("platform.memberships.read")},async request=>{
@@ -66,8 +96,12 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const b=z.object({userId:z.string(),organizationIds:z.array(z.string()).min(1),locationIds:z.array(z.string()).default([]),roleIds:z.array(z.string()).default([])}).parse(request.body);
     if(b.organizationIds.some(x=>!orgs(p).includes(x))||b.locationIds.some(x=>!locations(p).includes(x)))return reply.code(403).send({error:"MEMBERSHIP_SCOPE_DENIED"});
-    const result=await createMembership(db,p.tenantId,p.userId,b);await audit(db,p,request,"platform.membership.created","membership",result.membershipId);
-    return reply.code(201).send({data:result});
+    return await mutate(db,request,reply,p,"platform.memberships.create",async session=>{
+     const result=await createMembership(db,p.tenantId,p.userId,b,session);
+     await audit(db,p,request,"platform.membership.created","membership",result.membershipId,session);
+     await emit(db,p,request,session,"platform.membership.created","membership",result.membershipId,{membershipId:result.membershipId,userId:result.userId});
+     return {statusCode:201,body:{data:result}};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/roles",{preHandler:permit("platform.roles.read")},async request=>{
@@ -76,8 +110,12 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/platform/roles",{preHandler:permit("platform.roles.create")},async(request,reply)=>{
    const p=principal(request);try{
     const b=z.object({key:z.string(),name:z.string(),description:z.string().optional(),permissionKeys:z.array(z.string()).max(500),isSystem:z.boolean().default(false)}).parse(request.body);
-    const result=await createRole(db,p.tenantId,p.userId,b);await audit(db,p,request,"platform.role.created","role",result.roleId);
-    return reply.code(201).send({data:result});
+    return await mutate(db,request,reply,p,"platform.roles.create",async session=>{
+     const result=await createRole(db,p.tenantId,p.userId,b,session);
+     await audit(db,p,request,"platform.role.created","role",result.roleId,session);
+     await emit(db,p,request,session,"platform.role.created","role",result.roleId,{roleId:result.roleId,key:result.key});
+     return {statusCode:201,body:{data:result}};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/policies",{preHandler:permit("platform.policies.read")},async request=>{
@@ -87,8 +125,12 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({key:z.string().min(2).max(100)}).parse(request.params);
     const b=z.object({effect:z.enum(["allow","deny"]),priority:z.number().int().min(0).max(10000),subject:z.record(z.unknown()).default({}),resource:z.record(z.unknown()).default({}),actions:z.array(z.string()).min(1),conditions:z.record(z.unknown()).default({})}).parse(request.body);
-    const result=await upsertPolicy(db,p.tenantId,p.userId,{...b,key:params.key});await audit(db,p,request,"platform.policy.upserted","policy",result?.policyId);
-    return {data:result};
+    return await mutate(db,request,reply,p,"platform.policies.upsert",async session=>{
+     const result=await upsertPolicy(db,p.tenantId,p.userId,{...b,key:params.key},session);
+     await audit(db,p,request,"platform.policy.upserted","policy",result?.policyId,session);
+     await emit(db,p,request,session,"platform.policy.upserted","policy",params.key,{key:params.key,effect:b.effect});
+     return {statusCode:200,body:{data:result}};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/feature-flags",{preHandler:permit("platform.feature-flags.read")},async request=>{
@@ -98,8 +140,12 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({key:z.string().min(2).max(100)}).parse(request.params);
     const b=z.object({enabled:z.boolean(),description:z.string().max(500).optional(),environments:z.array(z.string()).default(["development"]),rules:z.array(z.record(z.unknown())).default([])}).parse(request.body);
-    const result=await setFeatureFlag(db,p.tenantId,p.userId,{...b,key:params.key});await audit(db,p,request,"platform.feature-flag.updated","feature_flag",params.key);
-    return {data:result};
+    return await mutate(db,request,reply,p,"platform.feature-flags.upsert",async session=>{
+     const result=await setFeatureFlag(db,p.tenantId,p.userId,{...b,key:params.key},session);
+     await audit(db,p,request,"platform.feature-flag.updated","feature_flag",params.key,session);
+     await emit(db,p,request,session,"platform.feature-flag.updated","feature_flag",params.key,{key:params.key,enabled:b.enabled});
+     return {statusCode:200,body:{data:result}};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/sessions",{preHandler:permit("platform.sessions.read")},async request=>{
@@ -112,9 +158,13 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const {sessionId}=z.object({sessionId:z.string().min(1)}).parse(request.params);
     const filter={tenantId:p.tenantId,sessionId,...(p.permissions.includes("platform.sessions.revoke.all")?{}:{userId:p.userId}),revokedAt:{$exists:false}};
-    const result=await c.sessions.updateOne(filter,{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:p.userId}});
-    if(!result.matchedCount)return reply.code(404).send({error:"SESSION_NOT_FOUND"});
-    await audit(db,p,request,"platform.session.revoked","session",sessionId);return reply.code(204).send();
+    return await mutate(db,request,reply,p,"platform.sessions.revoke",async session=>{
+     const now=new Date(),result=await c.sessions.updateOne(filter,{$set:{revokedAt:now,updatedAt:now,updatedBy:p.userId}},{session});
+     if(!result.matchedCount)throw new Error("SESSION_NOT_FOUND");
+     await audit(db,p,request,"platform.session.revoked","session",sessionId,session);
+     await emit(db,p,request,session,"platform.session.revoked","session",sessionId,{sessionId});
+     return {statusCode:204,body:null};
+    });
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/audit-events",{preHandler:permit("platform.audit.read")},async request=>{
