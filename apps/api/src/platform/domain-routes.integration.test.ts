@@ -45,7 +45,9 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const permissions=[
    "inventory.warehouse.read","inventory.warehouse.create","inventory.stock.read",
    "inventory.stock.write","inventory.stock.reserve","inventory.stock.consume","inventory.stock.release",
-   "pos.terminal.create","pos.shift.open","pos.shift.close","pos.sale.complete","pos.refund.complete","pos.offline.sync"
+   "pos.terminal.create","pos.shift.open","pos.shift.close","pos.sale.complete","pos.refund.complete","pos.offline.sync",
+   "erp.account.read","erp.account.create","erp.fiscal_period.read","erp.fiscal_period.create","erp.purchase_order.create",
+   "erp.invoice.read","erp.invoice.create","erp.invoice.payment.allocate","erp.journal.post"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -161,7 +163,61 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    payload:{terminalId:"terminal-api-001",commandId:"offline-command-api-001",sequence:1,commandType:"sale",payload:{saleId:"offline-sale-api-001"},issuedAt:now.toISOString()}
   });
   assert.equal(offline.statusCode,202);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=9);
+
+  const accountCash=await app.inject({
+   method:"POST",url:"/v1/erp/accounts",headers:{...headers,"idempotency-key":"erp-account-api-001"},
+   payload:{organizationId:"org-a",accountCode:"1000",name:"Cash",accountType:"asset",normalBalance:"debit"}
+  });
+  assert.equal(accountCash.statusCode,201);
+  const accountRevenue=await app.inject({
+   method:"POST",url:"/v1/erp/accounts",headers:{...headers,"idempotency-key":"erp-account-api-002"},
+   payload:{organizationId:"org-a",accountCode:"4000",name:"Sales Revenue",accountType:"income",normalBalance:"credit"}
+  });
+  assert.equal(accountRevenue.statusCode,201);
+  const accountList=await app.inject({method:"GET",url:"/v1/erp/accounts",headers});
+  assert.equal(accountList.statusCode,200);
+  assert.equal(accountList.json().data.length,2);
+  const deniedAccount=await app.inject({
+   method:"POST",url:"/v1/erp/accounts",headers:{...headers,"idempotency-key":"erp-account-api-003"},
+   payload:{organizationId:"org-b",accountCode:"9000",name:"Out of scope",accountType:"asset",normalBalance:"debit"}
+  });
+  assert.equal(deniedAccount.statusCode,403);
+
+  const fiscal=await app.inject({
+   method:"POST",url:"/v1/erp/fiscal-periods",headers:{...headers,"idempotency-key":"erp-period-api-001"},
+   payload:{organizationId:"org-a",periodId:"FY-API",periodCode:"FY-API",startsAt:"2026-01-01T00:00:00.000Z",endsAt:"2026-12-31T23:59:59.999Z",status:"open"}
+  });
+  assert.equal(fiscal.statusCode,201);
+  const purchaseOrder=await app.inject({
+   method:"POST",url:"/v1/erp/purchase-orders",headers:{...headers,"idempotency-key":"erp-po-api-001"},
+   payload:{orderNumber:"PO-API-001",supplierId:"supplier-api",warehouseId:"warehouse-a",currency:"UGX",orderedAt:now.toISOString(),
+    lines:[{sku:"SKU-API",description:"Stock item",quantityMilli:1000,unitPriceMinor:1000,taxRateBps:0}],totalMinor:1000,status:"submitted"}
+  });
+  assert.equal(purchaseOrder.statusCode,201);
+  const invoice=await app.inject({
+   method:"POST",url:"/v1/erp/invoices",headers:{...headers,"idempotency-key":"erp-invoice-api-001"},
+   payload:{organizationId:"org-a",invoiceId:"invoice-api-001",invoiceNumber:"INV-API-001",invoiceType:"sales",partyId:"customer-api",currency:"UGX",
+    issuedAt:now.toISOString(),dueAt:new Date(now.getTime()+30*86400000).toISOString(),
+    lines:[{description:"Service",quantityMilli:1000,unitPriceMinor:10000,discountMinor:0,taxRateBps:1800}],
+    subtotalMinor:10000,taxMinor:1800,totalMinor:11800,status:"issued"}
+  });
+  assert.equal(invoice.statusCode,201);
+  const payment=await app.inject({
+   method:"POST",url:"/v1/erp/invoices/invoice-api-001/payments",headers:{...headers,"idempotency-key":"erp-payment-api-001"},
+   payload:{paymentId:"payment-api-001",amountMinor:11800,currency:"UGX"}
+  });
+  assert.equal(payment.statusCode,201);
+  const invoiceList=await app.inject({method:"GET",url:"/v1/erp/invoices",headers});
+  assert.equal(invoiceList.statusCode,200);
+  assert.equal(invoiceList.json().data.length,1);
+  const journal=await app.inject({
+   method:"POST",url:"/v1/erp/journal-entries/post",headers:{...headers,"idempotency-key":"erp-journal-api-001"},
+   payload:{entryNumber:"JE-API-001",fiscalPeriodId:"FY-API",sourceType:"manual",sourceId:"source-api-001",currency:"UGX",
+    lines:[{accountCode:"1000",debitMinor:1000,creditMinor:0,currency:"UGX"},{accountCode:"4000",debitMinor:0,creditMinor:1000,currency:"UGX"}],
+    status:"posted",postedAt:now.toISOString()}
+  });
+  assert.equal(journal.statusCode,201);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=16);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
