@@ -10,8 +10,8 @@ info:
     consume these shared identity, organization, authorization, configuration,
     session and audit authorities.
 servers:
-  - url: /
-    description: Deployment-relative API base
+  - url: /v1
+    description: Version 1 API base path
 security:
   - bearerAuth: []
 tags:
@@ -45,7 +45,7 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/organizations:
-    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    get:
       tags: [Organizations]
       operationId: listOrganizations
       summary: List organizations within the authenticated membership scope
@@ -59,6 +59,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Organizations]
       operationId: createOrganization
       summary: Create an organization within the authenticated scope
@@ -83,7 +85,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/InvalidReference"}
   /platform/locations:
-    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    get:
       tags: [Locations]
       operationId: listLocations
       summary: List locations within the authenticated location scope
@@ -101,6 +103,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Locations]
       operationId: createLocation
       summary: Create a location in an assigned organization
@@ -123,7 +127,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "422": {$ref: "#/components/responses/InvalidReference"}
   /platform/memberships:
-    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    get:
       tags: [Memberships]
       operationId: listMemberships
       summary: List memberships intersecting the caller's organization scope
@@ -141,6 +145,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Memberships]
       operationId: createMembership
       summary: Create a membership with validated organization and location scope
@@ -165,7 +171,7 @@ paths:
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {$ref: "#/components/responses/InvalidReference"}
   /platform/roles:
-    get:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    get:
       tags: [Roles]
       operationId: listRoles
       summary: List active tenant roles
@@ -183,6 +189,8 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       tags: [Roles]
       operationId: createRole
       summary: Create a tenant role
@@ -223,11 +231,12 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/policies/{key}:
-    put:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    put:
       tags: [Policies]
       operationId: upsertPolicy
       summary: Create or replace a tenant policy
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - name: key
           in: path
           required: true
@@ -265,11 +274,12 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/feature-flags/{key}:
-    put:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    put:
       tags: [Feature flags]
       operationId: setFeatureFlag
       summary: Set a tenant feature flag
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - name: key
           in: path
           required: true
@@ -317,11 +327,12 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/sessions/{sessionId}/revoke:
-    post:\n      parameters:\n        - $ref: "#/components/parameters/IdempotencyKey"
+    post:
       tags: [Sessions]
       operationId: revokeSession
       summary: Revoke a permitted active session
       parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
         - name: sessionId
           in: path
           required: true
@@ -360,6 +371,13 @@ paths:
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
 components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated unique key for safe retries. The same key and request replay the original response for 24 hours; reusing it with a different request returns 409.
+      schema: {type: string, minLength: 8, maxLength: 128}
   securitySchemes:
     bearerAuth:
       type: http
