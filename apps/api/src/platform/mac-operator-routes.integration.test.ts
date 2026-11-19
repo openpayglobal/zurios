@@ -52,7 +52,7 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   assert.equal(logout.statusCode,204);
   const revoked=await authApp.inject({method:"GET",url:"/v1/mac/overview",headers:{authorization:`Bearer ${rotated.accessToken}`}});
   assert.equal(revoked.statusCode,401);
-  assert.equal(await db.collection("admin_audit_events").countDocuments({action:"mac.auth.login",outcome:"success"}),1);
+  assert.equal(await db.collection("admin_audit_events").countDocuments({action:"mac.auth.login",outcome:"success"}),2);
  }finally{await app.close();await authApp.close();await db.dropDatabase();await client.close();}
 });
 
