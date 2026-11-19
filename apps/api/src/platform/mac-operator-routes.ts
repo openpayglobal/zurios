@@ -47,7 +47,8 @@ async function issueSession(db:Db,config:MacOperatorConfig,operator:any,request:
  const now=new Date(),sessionId=randomUUID(),refreshToken=randomBytes(48).toString("base64url"),expiresAt=new Date(now.getTime()+config.sessionTtlSeconds*1000);
  const session={sessionId,operatorId:operator.operatorId,refreshTokenHash:hashOpaqueToken(refreshToken),permissions:operator.permissions,tenantIds:operator.tenantIds??[],mfaVerifiedAt:now,createdAt:now,lastUsedAt:now,expiresAt};
  await db.collection("platform_operator_sessions").insertOne(session);
- await writeAdminAudit(db,{actorId:operator.operatorId,action:"mac.auth.login",resourceType:"platform_operator_session",resourceId:sessionId,outcome:"success",request});
+ try{await writeAdminAudit(db,{actorId:operator.operatorId,action:"mac.auth.login",resourceType:"platform_operator_session",resourceId:sessionId,outcome:"success",request});}
+ catch(error){await db.collection("platform_operator_sessions").deleteOne({sessionId,operatorId:operator.operatorId});throw error;}
  const accessToken=await new SignJWT({operatorId:operator.operatorId,sessionId})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(operator.operatorId).setIssuedAt().setExpirationTime("10m").sign(key(config));
  return {accessToken,refreshToken,sessionId,expiresAt,tokenType:"Bearer" as const,operator:publicOperator(operator)};
