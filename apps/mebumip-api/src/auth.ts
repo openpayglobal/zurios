@@ -91,15 +91,26 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       createdAt: now,
       updatedAt: now,
     });
+    let tenantId: ObjectId | undefined;
     try {
-      await db.collection("tenants").insertOne({
+      const tenantResult = await db.collection("tenants").insertOne({
         name: parsed.data.companyName,
         slug: parsed.data.tenantSlug,
         status: "active",
         createdAt: now,
         updatedAt: now,
       });
+      tenantId = tenantResult.insertedId;
+      await db.collection("memberships").insertOne({
+        tenantId: String(tenantId),
+        userId: String(userResult.insertedId),
+        role: "tenant_owner",
+        status: "active",
+        createdAt: now,
+        updatedAt: now,
+      });
     } catch (error) {
+      if (tenantId) await db.collection("tenants").deleteOne({ _id: tenantId });
       await db.collection("users").deleteOne({ _id: userResult.insertedId });
       throw error;
     }
