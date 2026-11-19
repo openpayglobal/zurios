@@ -347,8 +347,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const root=await createOrganization(db,tenant.tenantId,p.userId,{code:"ROOT",name:tenant.displayName,type:"company"},session);
      const ownerPermissions=[
       "platform.tenant.read","platform.admin.overview.read","platform.admin.overview.read.all",
-      "platform.organizations.read","platform.organizations.create","platform.organizations.create.root","platform.organizations.manage",
-      "platform.locations.read","platform.locations.create","platform.locations.manage",
+      "platform.organizations.read","platform.organizations.create","platform.organizations.create.root","platform.organizations.manage","platform.organizations.manage.request",
+      "platform.locations.read","platform.locations.create","platform.locations.manage","platform.locations.manage.request",
       "platform.memberships.read","platform.memberships.create","platform.memberships.manage","platform.memberships.manage.request","platform.memberships.assign.roles","platform.memberships.assign.privileged",
       "platform.users.read","platform.users.read.all","platform.users.invite",
       "platform.roles.read","platform.roles.create","platform.roles.create.system","platform.roles.grant.privileged",
