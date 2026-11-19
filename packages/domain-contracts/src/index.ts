@@ -178,7 +178,7 @@ export const StockMovementSchema=z.object({
  }else if(movement.destinationWarehouseId){
   ctx.addIssue({code:z.ZodIssueCode.custom,path:["destinationWarehouseId"],message:"Only transfers may specify a destination warehouse"});
  }
- if(movement.movementType==="adjustment"&&!movement.reason)ctx.addIssue({code:z.ZodIssueCode.custom,path:["reason"],message:"Adjustments require an auditable reason"});
+ if(movement.movementType==="adjustment"&&!movement.reason)ctx.addIssue({code:z.ZodIssueCode.custom,path:["reason"],message:"Adjustments require an auditable reason"});\n if(movement.movementType==="adjustment"&&!movement.adjustmentDirection)ctx.addIssue({code:z.ZodIssueCode.custom,path:["adjustmentDirection"],message:"Adjustments require an increase or decrease direction"});\n if(movement.movementType!=="adjustment"&&movement.adjustmentDirection)ctx.addIssue({code:z.ZodIssueCode.custom,path:["adjustmentDirection"],message:"Adjustment direction is only valid for adjustments"});
  if(movement.unitCostMinor!==undefined&&!movement.currency)ctx.addIssue({code:z.ZodIssueCode.custom,path:["currency"],message:"Costed movements require a currency"});
 });
 export type StockMovement=z.infer<typeof StockMovementSchema>;
