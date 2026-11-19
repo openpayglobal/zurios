@@ -7,7 +7,8 @@ const inventoryRouteSource=readFileSync("src/inventory/inventory-routes.ts","utf
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
 const routeDefinitions=[...routeSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
 const macRouteDefinitions=[...macRouteSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
-const allRouteDefinitions=[...routeDefinitions,...macRouteDefinitions];
+const inventoryRouteDefinitions=[...inventoryRouteSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
+const allRouteDefinitions=[...routeDefinitions,...macRouteDefinitions,...inventoryRouteDefinitions];
 const routePaths=new Set(allRouteDefinitions.map(([, ,path])=>path.replace(/:([A-Za-z0-9_]+)/g,"{$1}")));
 const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)[0]??"";
 const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path));
