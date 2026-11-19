@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {MongoClient} from "mongodb";
 import {runIdempotentMutation,IdempotencyConflictError} from "./idempotency-service.js";
-import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent} from "./outbox-service.js";
+import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent,consumeEventOnce} from "./outbox-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 test("idempotency, audit-compatible outbox and delivery lifecycle are transactional",{skip:!uri},async()=>{
@@ -13,6 +13,7 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   await db.collection("idempotency_records").createIndex({tenantId:1,actorId:1,operation:1,key:1},{unique:true});
   await db.collection("idempotency_records").createIndex({expiresAt:1},{expireAfterSeconds:0});
   await db.collection("outbox_events").createIndex({eventId:1},{unique:true});
+  await db.collection("event_consumer_receipts").createIndex({consumerId:1,eventId:1},{unique:true});
   await db.collection("outbox_events").createIndex({status:1,availableAt:1,occurredAt:1});
   const input={tenantId:"tenant-a",actorId:"user-a",operation:"tenant.resource.create",key:"idem-test-0001",request:{name:"Example",nested:{b:2,a:1}}};
   let executions=0;
@@ -67,6 +68,20 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(dispatch.published,2);
   assert.equal(delivered,2);
   assert.equal(await db.collection("outbox_events").countDocuments({status:"published"}),2);
+
+  const sourceEvent=await db.collection("outbox_events").findOne({eventType:"resource.created"});
+  assert.ok(sourceEvent);
+  let consumerEffects=0;
+  const consume=()=>consumeEventOnce(db,"analytics-projection-v1",sourceEvent as any,async session=>{
+   consumerEffects++;
+   await db.collection("consumer_effects").insertOne({consumerId:"analytics-projection-v1",eventId:sourceEvent!.eventId},{session});
+  });
+  const consumed=await consume(),consumerReplay=await consume();
+  assert.equal(consumed.replayed,false);
+  assert.equal(consumerReplay.replayed,true);
+  assert.equal(consumerEffects,1);
+  assert.equal(await db.collection("consumer_effects").countDocuments({}),1);
+
 
   await db.collection("outbox_events").insertOne({
    eventId:"dead-letter-event",tenantId:"tenant-a",eventType:"resource.dead",aggregateType:"resource",
