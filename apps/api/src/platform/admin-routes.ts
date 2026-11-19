@@ -1,9 +1,9 @@
 import {createHmac,randomUUID} from "node:crypto";
-import type {ClientSession,Db,Filter} from "mongodb";
+import type {ClientSession,Db,Document,Filter} from "mongodb";
 import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {ZodError,z} from "zod";
 import {
- coreCollections,authorize,evaluatePolicy,runIdempotentMutation,appendAuditEvent,appendOutboxEvent,
+ coreCollections,evaluatePolicy,runIdempotentMutation,appendAuditEvent,appendOutboxEvent,
  provisionTenant,createOrganization,createRole,createUser,createMembership,setMembershipStatus,
  createApprovalRequest,approveApprovalRequest,rejectApprovalRequest,completeApprovalRequest,
  upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,
@@ -12,6 +12,7 @@ import {
 import {encryptMfaSecret} from "./auth-crypto.js";
 import {issueMembershipInvitation} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
+import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
@@ -144,12 +145,12 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const query=z.object({q:z.string().max(80).optional(),status:z.enum(["invited","active","suspended","locked"]).optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(request.query);
     const p=principal(request),visibleOrgIds=orgIds(p),all=p.permissions.includes("platform.users.read.all");
     if(!all&&!visibleOrgIds.length)return {data:[]};
-    const membershipFilter:Filter={tenantId:p.tenantId,status:{$in:["invited","active","suspended"]},...(all?{}:{organizationIds:{$in:visibleOrgIds}})};
+    const membershipFilter:Filter<Document>={tenantId:p.tenantId,status:{$in:["invited","active","suspended"]},...(all?{}:{organizationIds:{$in:visibleOrgIds}})};
     const memberships=await c.memberships.find(membershipFilter,{projection:{_id:0}}).sort({createdAt:-1}).limit(500).toArray();
     const userIds=[...new Set(memberships.map(m=>m.userId))];if(!userIds.length)return {data:[]};
     const escaped=query.q?.replaceAll("\\","\\\\").replaceAll(".","\\.").replaceAll("*","\\*").replaceAll("+","\\+").replaceAll("?","\\?").replaceAll("^","\\^").replaceAll("$","\\$").replaceAll("{","\\{").replaceAll("}","\\}").replaceAll("(","\\(").replaceAll(")","\\)").replaceAll("|","\\|");
     const search=escaped?new RegExp(escaped,"i"):undefined;
-    const userFilter:Filter={userId:{$in:userIds},...(query.status?{status:query.status}:{}),...(search?{$or:[{emailNormalized:search},{displayName:search}]}:{})};
+    const userFilter:Filter<Document>={userId:{$in:userIds},...(query.status?{status:query.status}:{}),...(search?{$or:[{emailNormalized:search},{displayName:search}]}:{})};
     const users=await c.users.find(userFilter,{projection:{_id:0,passwordHash:0,mfaSecretEncrypted:0,pendingMfaSecretEncrypted:0,mfaRecoveryCodeHashes:0,mfaLastUsedStep:0,invitationTokenHash:0,invitationExpiresAt:0,emailVerificationTokenHash:0,emailVerificationExpiresAt:0,passwordResetTokenHash:0,passwordResetExpiresAt:0,failedLoginCount:0,lockedUntil:0}}).sort({displayName:1}).limit(query.limit).toArray();
     const byUser=new Map<string,typeof memberships>();for(const membership of memberships){const list=byUser.get(membership.userId)??[];list.push(membership);byUser.set(membership.userId,list);}
     const visibleLocations=new Set(locIds(p));
@@ -306,7 +307,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const params=z.object({key:z.enum(["defaultLocale","defaultCurrency","timezone","displayName"])}).parse(request.params);
     const body=z.object({value:z.unknown(),reason:reasonSchema}).parse(request.body);
     const valueSchemas:Record<string,z.ZodTypeAny>={defaultLocale:z.string().min(2).max(20),defaultCurrency:z.string().length(3).transform(v=>v.toUpperCase()),timezone:z.string().min(1).max(80),displayName:z.string().min(2).max(100)};
-    const value=valueSchemas[params.key].parse(body.value);
+    const value=valueSchemas[params.key]!.parse(body.value);
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.configuration.update",async session=>{
      const now=new Date(),result=await db.collection("tenant_config").findOneAndUpdate({tenantId:p.tenantId,key:params.key},{$set:{value,updatedAt:now,updatedBy:p.userId},$setOnInsert:{tenantId:p.tenantId,key:params.key,createdAt:now,createdBy:p.userId},$inc:{version:1}},{upsert:true,returnDocument:"after",session});
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"platform.configuration.updated","tenant_config",params.key,"success",{reason:body.reason},session);
