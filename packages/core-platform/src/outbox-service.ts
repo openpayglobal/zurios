@@ -3,7 +3,7 @@ import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 
 export type OutboxEventDocument={
- eventId:string;tenantId:string;eventType:string;aggregateType:string;aggregateId?:string;
+ eventId:string;tenantId:string;eventType:string;schemaVersion:1;aggregateType:string;aggregateId?:string;
  payload:Record<string,unknown>;occurredAt:Date;correlationId?:string;
  status:"pending"|"processing"|"published"|"dead_letter";attempts:number;
  availableAt:Date;leaseOwner?:string;leaseUntil?:Date;publishedAt?:Date;lastError?:string;
@@ -17,7 +17,7 @@ const schema=z.object({
 export async function appendOutboxEvent(db:Db,session:ClientSession,input:unknown){
  const d=schema.parse(input),now=new Date();
  const doc:OutboxEventDocument={
-  eventId:randomUUID(),...d,occurredAt:now,status:"pending",attempts:0,
+  eventId:randomUUID(),...d,schemaVersion:1,occurredAt:now,status:"pending",attempts:0,
   availableAt:now,createdAt:now,updatedAt:now
  };
  await db.collection<OutboxEventDocument>("outbox_events").insertOne(doc,{session});
