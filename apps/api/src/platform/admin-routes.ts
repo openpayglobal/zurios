@@ -212,8 +212,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
 
     if(body.action.startsWith("tenant."))return reply.code(403).send({error:"PLATFORM_SCOPE_REQUIRED"});
     if(body.action.startsWith("membership.")&&!await c.memberships.findOne({tenantId:p.tenantId,membershipId:body.targetId}))return reply.code(404).send({error:"MEMBERSHIP_NOT_FOUND"});
-    if(body.action==="organization.deactivate"&&(!orgIds(p).includes(body.targetId)||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:body.targetId,status:"active"})))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});
-    if(body.action==="location.deactivate"&&(!locIds(p).includes(body.targetId)||!await c.locations.findOne({tenantId:p.tenantId,locationId:body.targetId,status:"active"})))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
+    if(body.action==="organization.deactivate"&&((!p.permissions.includes("platform.organizations.manage.all")&&!orgIds(p).includes(body.targetId))||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:body.targetId,status:"active"})))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});
+    if(body.action==="location.deactivate"&&((!p.permissions.includes("platform.locations.manage.all")&&!locIds(p).includes(body.targetId))||!await c.locations.findOne({tenantId:p.tenantId,locationId:body.targetId,status:"active"})))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
     if(body.action==="break_glass.grant"){
      const bg=payload as {userId:string;organizationIds:string[];locationIds:string[]};
      if(bg.organizationIds.some(id=>!orgIds(p).includes(id))||bg.locationIds.some(id=>!locIds(p).includes(id)))return reply.code(403).send({error:"BREAK_GLASS_SCOPE_DENIED"});
@@ -347,8 +347,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const root=await createOrganization(db,tenant.tenantId,p.userId,{code:"ROOT",name:tenant.displayName,type:"company"},session);
      const ownerPermissions=[
       "platform.tenant.read","platform.admin.overview.read","platform.admin.overview.read.all",
-      "platform.organizations.read","platform.organizations.create","platform.organizations.create.root","platform.organizations.manage","platform.organizations.manage.request",
-      "platform.locations.read","platform.locations.create","platform.locations.manage","platform.locations.manage.request",
+      "platform.organizations.read","platform.organizations.create","platform.organizations.create.root","platform.organizations.manage","platform.organizations.manage.all","platform.organizations.manage.request",
+      "platform.locations.read","platform.locations.create","platform.locations.manage","platform.locations.manage.all","platform.locations.manage.request",
       "platform.memberships.read","platform.memberships.create","platform.memberships.manage","platform.memberships.manage.request","platform.memberships.assign.roles","platform.memberships.assign.privileged",
       "platform.users.read","platform.users.read.all","platform.users.invite",
       "platform.roles.read","platform.roles.create","platform.roles.create.system","platform.roles.grant.privileged",
@@ -377,7 +377,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({organizationId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
     if(!p.permissions.includes("platform.organizations.manage.request"))return reply.code(403).send({error:"ORGANIZATION_LIFECYCLE_REQUEST_NOT_PERMITTED"});
-    if(!orgIds(p).includes(params.organizationId)||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:params.organizationId,status:"active"}))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});
+    if((!p.permissions.includes("platform.organizations.manage.all")&&!orgIds(p).includes(params.organizationId))||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:params.organizationId,status:"active"}))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.organizations.lifecycle.request",async session=>{
      const approval=await createApprovalRequest(db,session,{tenantId:p.tenantId,scope:"tenant",action:"organization.deactivate",targetType:"organization",targetId:params.organizationId,payload:{},reason:body.reason,requestedBy:p.userId,correlationId:request.id});
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"platform.organization.lifecycle.requested","approval",approval.requestId,"success",{organizationId:params.organizationId,reason:body.reason},session);
@@ -390,7 +390,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({locationId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
     if(!p.permissions.includes("platform.locations.manage.request"))return reply.code(403).send({error:"LOCATION_LIFECYCLE_REQUEST_NOT_PERMITTED"});
-    if(!locIds(p).includes(params.locationId)||!await c.locations.findOne({tenantId:p.tenantId,locationId:params.locationId,status:"active"}))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
+    if((!p.permissions.includes("platform.locations.manage.all")&&!locIds(p).includes(params.locationId))||!await c.locations.findOne({tenantId:p.tenantId,locationId:params.locationId,status:"active"}))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.locations.lifecycle.request",async session=>{
      const approval=await createApprovalRequest(db,session,{tenantId:p.tenantId,scope:"tenant",action:"location.deactivate",targetType:"location",targetId:params.locationId,payload:{},reason:body.reason,requestedBy:p.userId,correlationId:request.id});
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"platform.location.lifecycle.requested","approval",approval.requestId,"success",{locationId:params.locationId,reason:body.reason},session);
