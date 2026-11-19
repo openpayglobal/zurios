@@ -22,7 +22,7 @@ try{
  await app.register(authRoutes(db,authConfig));
  await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(platformRoutes(db,authConfig));
- await app.register(macOperatorRoutes(db,{issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.MAC_JWT_SECRET,bootstrapToken:config.MAC_BOOTSTRAP_TOKEN,mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??"",sessionTtlSeconds:config.MAC_SESSION_TTL_SECONDS}),{prefix:"/v1"});
+ await app.register(macOperatorRoutes(db,{issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,...(config.MAC_JWT_SECRET?{jwtSecret:config.MAC_JWT_SECRET}:{}),...(config.MAC_BOOTSTRAP_TOKEN?{bootstrapToken:config.MAC_BOOTSTRAP_TOKEN}:{}),mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??"",sessionTtlSeconds:config.MAC_SESSION_TTL_SECONDS}),{prefix:"/v1"});
  await app.listen({host:config.API_HOST,port:config.API_PORT});
  outboxWorkerPromise=runOutboxWorker(db,createMongoEventBusPublisher(db),outboxAbortController.signal).catch(error=>{app.log.error({err:error},"Platform outbox worker stopped unexpectedly");});
 }catch(error){app.log.error(error);process.exitCode=1;}
