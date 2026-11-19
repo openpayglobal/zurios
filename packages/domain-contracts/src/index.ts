@@ -513,3 +513,38 @@ export const MaintenanceCompletionSchema=z.object({
  actualCostMinor:z.number().int().nonnegative(),completionNotes:z.string().min(5).max(2000),expectedVersion:z.number().int().nonnegative()
 });
 export type MaintenanceCompletion=z.infer<typeof MaintenanceCompletionSchema>;
+
+
+export const ProjectSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),projectId:z.string().min(1),projectCode:z.string().min(1).max(40),
+ name:z.string().min(2).max(180),description:z.string().max(3000).optional(),customerId:z.string().min(1).optional(),
+ managerUserId:z.string().min(1),startsAt:z.string().datetime(),dueAt:z.string().datetime().optional(),
+ budgetMinor:z.number().int().nonnegative(),currency:z.string().regex(/^[A-Z]{3}$/),
+ status:z.enum(["active","on_hold","completed","cancelled"]).default("active")
+}).superRefine((project,ctx)=>{
+ if(project.dueAt&&project.dueAt<project.startsAt)ctx.addIssue({code:z.ZodIssueCode.custom,path:["dueAt"],message:"Project due date cannot precede start"});
+});
+export type Project=z.infer<typeof ProjectSchema>;
+
+export const ProjectTaskSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),projectId:z.string().min(1),taskId:z.string().min(1),
+ name:z.string().min(2).max(180),description:z.string().max(3000).optional(),
+ assignedToUserId:z.string().min(1).optional(),priority:z.enum(["low","normal","high","critical"]),
+ estimatedMinutes:z.number().int().nonnegative(),dueAt:z.string().datetime().optional(),
+ status:z.literal("backlog").default("backlog")
+});
+export type ProjectTask=z.infer<typeof ProjectTaskSchema>;
+
+export const TimeEntrySchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),timeEntryId:z.string().min(1),
+ projectId:z.string().min(1),taskId:z.string().min(1),employeeId:z.string().min(1),
+ workDate:z.string().datetime(),minutes:z.number().int().positive().max(1440),billable:z.boolean(),
+ description:z.string().min(3).max(2000),status:z.literal("submitted").default("submitted")
+});
+export type TimeEntry=z.infer<typeof TimeEntrySchema>;
+
+export const TimeEntryDecisionSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),timeEntryId:z.string().min(1),
+ decision:z.enum(["approved","rejected"]),reason:z.string().min(10).max(1000),expectedVersion:z.number().int().nonnegative()
+});
+export type TimeEntryDecision=z.infer<typeof TimeEntryDecisionSchema>;
