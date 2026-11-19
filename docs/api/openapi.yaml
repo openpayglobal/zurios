@@ -383,6 +383,188 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/login:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: loginTenantUser
+      summary: Authenticate a tenant user with email, password and tenant slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, tenantSlug]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, minLength: 1, maxLength: 128}
+                tenantSlug: {type: string, minLength: 2, maxLength: 64}
+      responses:
+        "200": {description: Login response or MFA challenge}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {description: Invalid credentials}
+        "429": {description: Rate limit exceeded}
+  /auth/mfa/verify:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: verifyTenantLoginMfa
+      summary: Complete tenant login with an MFA challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeToken, code]
+              properties:
+                challengeToken: {type: string}
+                code: {type: string, minLength: 6, maxLength: 64}
+      responses:
+        "200": {description: Tenant session and access token issued}
+        "401": {description: MFA verification failed}
+  /auth/refresh:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: refreshTenantSession
+      summary: Rotate a tenant refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, refreshToken]
+              properties:
+                sessionId: {type: string}
+                refreshToken: {type: string}
+      responses:
+        "200": {description: Rotated tenant session}
+        "401": {description: Refresh token invalid or expired}
+  /auth/invitations/{userId}/accept:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: acceptTenantInvitation
+      summary: Accept a tenant membership invitation and set password
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: {type: string, minLength: 20}
+                password: {type: string, minLength: 12, maxLength: 128}
+      responses:
+        "204": {description: Invitation accepted}
+        "401": {description: Invitation invalid or expired}
+  /auth/email/verify:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: verifyTenantEmail
+      summary: Verify a tenant user's email address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, token]
+              properties:
+                userId: {type: string}
+                token: {type: string, minLength: 20}
+      responses:
+        "204": {description: Email verified}
+        "401": {description: Verification token invalid}
+  /auth/password/reset:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: resetTenantPassword
+      summary: Reset a tenant user's password with a one-time token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, token, newPassword]
+              properties:
+                userId: {type: string}
+                token: {type: string, minLength: 20}
+                newPassword: {type: string, minLength: 12, maxLength: 128}
+      responses:
+        "204": {description: Password reset}
+        "401": {description: Reset token invalid or expired}
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getTenantPrincipal
+      summary: Return the authenticated tenant principal
+      responses:
+        "200": {description: Authenticated tenant and membership context}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logoutTenantSession
+      summary: Revoke the current tenant session
+      responses:
+        "204": {description: Tenant session revoked}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/mfa/enroll:
+    post:
+      tags: [Authentication]
+      operationId: beginTenantMfaEnrollment
+      summary: Begin tenant MFA enrollment
+      responses:
+        "200": {description: TOTP enrollment secret and URI}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/mfa/confirm:
+    post:
+      tags: [Authentication]
+      operationId: confirmTenantMfaEnrollment
+      summary: Confirm tenant MFA enrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 64}
+      responses:
+        "200": {description: MFA enabled and recovery codes returned once}
+        "401": {description: MFA code invalid}
+  /auth/mfa/disable:
+    post:
+      tags: [Authentication]
+      operationId: disableTenantMfa
+      summary: Disable tenant MFA after password and TOTP verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, code]
+              properties:
+                password: {type: string}
+                code: {type: string}
+      responses:
+        "204": {description: MFA disabled}
+        "401": {description: Reauthentication failed}
   /inventory/products:
     get:
       tags: [Inventory]
