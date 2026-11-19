@@ -4,7 +4,7 @@
 **Programme owner:** Zuri OS  
 **Repository:** `openpayglobal/zurios`  
 **Working branch:** `feature/6a3-platform-api`  
-**Status:** 6A.1/6A.2 merged to `develop`; 6A.3 initial API implementation submitted for review; 6A overall is not yet accepted.
+**Status:** 6A.1/6A.2 merged to `develop`; 6A.3 reliability and API-contract implementation is under CI and review; 6A overall is not yet accepted.
 
 ## Governing architecture
 
@@ -168,8 +168,8 @@ These are separate domain bounded contexts. They may own their own collections a
 - The current ABAC evaluator is equality-only and must remain fail-closed until a reviewed policy language is implemented.
 - Audit redaction is application-level; database-level immutability, integrity chaining, retention and export controls remain outstanding.
 - Membership/session revocation spans multiple documents; production consistency and failure recovery require transaction or equivalent tested design.
-- API authentication and route-level integration remain separate deliverables.
-- The current repository's GitHub visibility must be confirmed by its owner before proprietary development continues; the connected GitHub metadata currently reports it as public.
+- Route-level integration coverage now exercises all current platform API resource paths; broader negative-path and security coverage remains required.
+- The repository is public by owner direction and remains unchanged. Do not commit credentials, private customer data or production configuration; use secret references and perform a full history secret scan/rotation review.
 
 
 ## Execution update — 18 November 2026
@@ -180,3 +180,15 @@ These are separate domain bounded contexts. They may own their own collections a
 - 6A.3 remains pending full route-level replica-set integration tests, OpenAPI 3.1, idempotency, transactional outbox and independent security review.
 - The repository's GitHub API metadata reports visibility as public. The product owner has directed that repository visibility remain unchanged; no privacy-setting change is authorised by this programme instruction.
 - Because the repository is public, commits must not contain credentials, access tokens, private customer data, production configuration, or other material that must remain confidential. Use placeholders and secret references; rotate any credential found to have been exposed. This is a publication-risk control, not a reason to alter repository visibility.
+
+## Execution update — 18 November 2026 (6A.3 reliability increment)
+
+- Canonical platform endpoints are now versioned under /v1/platform; unversioned aliases remain temporarily available with deprecation headers.
+- State-changing platform routes require an Idempotency-Key; response replay is scoped to tenant, actor, operation and canonical request hash for a 24-hour retention window.
+- Platform domain writes, success audit records, idempotency response records and outbox events are committed in a MongoDB transaction.
+- Added outbox event envelopes (schema version 1), atomic worker leases, retry backoff, dead-letter handling, replay, an abortable worker loop and transactional consumer receipts.
+- Added API route-inventory drift checks and OpenAPI 3.1 validation to CI.
+- Denied permission/scope actions and failed transactional mutations receive separate audit events; IP pseudonyms use keyed HMAC rather than an unkeyed digest.
+- Replica-set integration tests cover tenant scope, membership organization/location consistency, idempotency replay and mismatch, rollback, concurrent duplicate requests, outbox delivery/retry/dead-letter/replay, consumer deduplication and platform API routes.
+- A concrete broker/webhook transport, deployed worker, alerting, retention/export controls, independent security review and signed acceptance remain outstanding. Passing CI does not constitute 6A.3 or 6A.6 acceptance.
+- 6A.4, 6A.5, 6A.6 and 6B–6D remain gated in the agreed order; no downstream business ecosystem implementation is authorised before 6A.6 sign-off.
