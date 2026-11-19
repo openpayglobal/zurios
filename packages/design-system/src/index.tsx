@@ -1,4 +1,4 @@
-import {useId,type ButtonHTMLAttributes,type InputHTMLAttributes,type ReactNode,type SelectHTMLAttributes} from "react";
+import {useId,type ButtonHTMLAttributes,type HTMLAttributes,type InputHTMLAttributes,type ReactNode,type SelectHTMLAttributes} from "react";
 
 type ButtonVariant="primary"|"secondary"|"danger"|"ghost";
 type ControlSize="sm"|"md"|"lg";
@@ -45,7 +45,7 @@ export function Badge({variant="neutral",children,className}:{variant?:BadgeVari
  return <span className={cx("zui-badge",`zui-badge--${variant}`,className)}>{children}</span>;
 }
 
-export function Card({children,className,...props}:{children:ReactNode;className?:string}&React.HTMLAttributes<HTMLElement>){
+export function Card({children,className,...props}:{children:ReactNode;className?:string}&HTMLAttributes<HTMLElement>){
  return <section {...props} className={cx("zui-card",className)}>{children}</section>;
 }
 
