@@ -57,7 +57,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("platform_operator_sessions").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("admin_audit_events").createIndex({eventId:1},{unique:true}),
   db.collection("admin_audit_events").createIndex({occurredAt:-1}),
-  db.collection("admin_audit_events").createIndex({actor.operatorId:1,occurredAt:-1}),
+  db.collection("admin_audit_events").createIndex({"actor.operatorId":1,occurredAt:-1}),
   db.collection("mac_auth_rate_limits").createIndex({key:1},{unique:true}),
   db.collection("mac_auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
