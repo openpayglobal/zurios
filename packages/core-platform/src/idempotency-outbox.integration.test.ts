@@ -62,11 +62,11 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(await db.collection("idempotency_records").countDocuments({key:failedInput.key}),0);
 
   let delivered=0;
-  const dispatch=await dispatchOutboxBatch(db,async event=>{delivered++;assert.equal(event.eventType,"resource.created");},{workerId:"worker-a",batchSize:10});
-  assert.equal(dispatch.claimed,1);
-  assert.equal(dispatch.published,1);
-  assert.equal(delivered,1);
-  assert.equal(await db.collection("outbox_events").countDocuments({status:"published"}),1);
+  const dispatch=await dispatchOutboxBatch(db,async event=>{delivered++;assert.ok(["resource.created","resource.concurrent"].includes(event.eventType));},{workerId:"worker-a",batchSize:10});
+  assert.equal(dispatch.claimed,2);
+  assert.equal(dispatch.published,2);
+  assert.equal(delivered,2);
+  assert.equal(await db.collection("outbox_events").countDocuments({status:"published"}),2);
 
   await db.collection("outbox_events").insertOne({
    eventId:"dead-letter-event",tenantId:"tenant-a",eventType:"resource.dead",aggregateType:"resource",
