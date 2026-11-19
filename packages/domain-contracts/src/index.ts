@@ -314,3 +314,66 @@ export const ReorderPolicySchema=z.object({
  message:"Reorder quantity must be between minimum and maximum levels",path:["reorderQuantityMilli"]
 });
 export type ReorderPolicy=z.infer<typeof ReorderPolicySchema>;
+
+
+export const CrmAccountSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),accountId:z.string().min(1),
+ name:z.string().min(2).max(160),accountType:z.enum(["prospect","customer","partner"]),
+ industry:z.string().max(100).optional(),website:z.string().url().optional(),ownerUserId:z.string().min(1).optional(),
+ status:z.enum(["active","inactive"]).default("active")
+});
+export type CrmAccount=z.infer<typeof CrmAccountSchema>;
+
+export const CrmContactSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),contactId:z.string().min(1),
+ accountId:z.string().min(1).optional(),firstName:z.string().min(1).max(80),lastName:z.string().min(1).max(80),
+ email:z.string().email().max(254).optional(),phoneE164:z.string().regex(/^\\+[1-9]\\d{7,14}$/).optional(),
+ jobTitle:z.string().max(120).optional(),marketingConsent:z.enum(["granted","denied","unknown"]).default("unknown"),
+ consentCapturedAt:z.string().datetime().optional(),consentSource:z.string().max(120).optional(),
+ status:z.enum(["active","inactive"]).default("active")
+}).superRefine((contact,ctx)=>{
+ if(contact.marketingConsent==="granted"&&(!contact.consentCapturedAt||!contact.consentSource)){
+  ctx.addIssue({code:z.ZodIssueCode.custom,path:["consentCapturedAt"],message:"Granted marketing consent requires a capture timestamp and source"});
+ }
+});
+export type CrmContact=z.infer<typeof CrmContactSchema>;
+
+export const CrmLeadSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),leadId:z.string().min(1),
+ firstName:z.string().min(1).max(80),lastName:z.string().min(1).max(80),email:z.string().email().max(254).optional(),
+ phoneE164:z.string().regex(/^\\+[1-9]\\d{7,14}$/).optional(),companyName:z.string().max(160).optional(),
+ source:z.enum(["website","referral","campaign","partner","walk_in","import","other"]),
+ status:z.enum(["new","qualified","converted","disqualified"]).default("new"),
+ assignedTo:z.string().min(1).optional(),marketingConsent:z.enum(["granted","denied","unknown"]).default("unknown"),
+ consentCapturedAt:z.string().datetime().optional(),consentSource:z.string().max(120).optional()
+}).superRefine((lead,ctx)=>{
+ if(lead.marketingConsent==="granted"&&(!lead.consentCapturedAt||!lead.consentSource)){
+  ctx.addIssue({code:z.ZodIssueCode.custom,path:["consentCapturedAt"],message:"Granted marketing consent requires a capture timestamp and source"});
+ }
+});
+export type CrmLead=z.infer<typeof CrmLeadSchema>;
+
+export const CrmOpportunitySchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),opportunityId:z.string().min(1),
+ accountId:z.string().min(1).optional(),contactId:z.string().min(1).optional(),
+ name:z.string().min(2).max(160),stage:z.enum(["prospecting","qualification","proposal","negotiation","won","lost"]),
+ amountMinor:z.number().int().nonnegative(),currency:z.string().regex(/^[A-Z]{3}$/),
+ expectedCloseAt:z.string().datetime(),ownerUserId:z.string().min(1),version:z.number().int().nonnegative().default(0)
+});
+export type CrmOpportunity=z.infer<typeof CrmOpportunitySchema>;
+
+export const CrmActivitySchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),activityId:z.string().min(1),
+ relatedType:z.enum(["account","contact","lead","opportunity"]),relatedId:z.string().min(1),
+ activityType:z.enum(["call","email","meeting","task","note"]),subject:z.string().min(2).max(160),
+ occurredAt:z.string().datetime(),status:z.enum(["planned","completed","cancelled"]),
+ description:z.string().max(4000).optional()
+});
+export type CrmActivity=z.infer<typeof CrmActivitySchema>;
+
+export const CrmOpportunityStageUpdateSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),opportunityId:z.string().min(1),
+ stage:z.enum(["prospecting","qualification","proposal","negotiation","won","lost"]),
+ expectedVersion:z.number().int().nonnegative()
+});
+export type CrmOpportunityStageUpdate=z.infer<typeof CrmOpportunityStageUpdateSchema>;
