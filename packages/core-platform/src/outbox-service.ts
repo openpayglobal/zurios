@@ -88,3 +88,29 @@ export async function runOutboxWorker(
   if(result.claimed===0)await waitForNextPoll(pollIntervalMs,signal);
  }
 }
+
+export type EventConsumerReceiptDocument={consumerId:string;eventId:string;tenantId:string;processedAt:Date};
+export async function consumeEventOnce(
+ db:Db,consumerId:string,event:OutboxEventDocument,
+ handler:(session:ClientSession,event:OutboxEventDocument)=>Promise<void>
+):Promise<{replayed:boolean}>{
+ if(!consumerId.trim()||consumerId.length>160)throw new Error("INVALID_EVENT_CONSUMER_ID");
+ const receipts=db.collection<EventConsumerReceiptDocument>("event_consumer_receipts");
+ const session=db.client.startSession();
+ try{
+  let replayed=false;
+  await session.withTransaction(async()=>{
+   const existing=await receipts.findOne({consumerId,eventId:event.eventId},{session});
+   if(existing){replayed=true;return;}
+   await receipts.insertOne({consumerId,eventId:event.eventId,tenantId:event.tenantId,processedAt:new Date()},{session});
+   await handler(session,event);
+  },{readConcern:{level:"snapshot"},writeConcern:{w:"majority"},readPreference:"primary"});
+  return {replayed};
+ }catch(error){
+  if(error&&typeof error==="object"&&"code" in error&&(error as {code?:number}).code===11000){
+   const existing=await receipts.findOne({consumerId,eventId:event.eventId});
+   if(existing)return {replayed:true};
+  }
+  throw error;
+ }finally{await session.endSession();}
+}
