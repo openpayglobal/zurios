@@ -99,7 +99,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     if(await collection.estimatedDocumentCount()>0)return reply.code(409).send({error:"BOOTSTRAP_CLOSED"});
     const email=normalized(body.email),operatorId=randomUUID(),secret=generateTotpSecret(),now=new Date();
     const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.read","mac.sessions.read","mac.operators.manage","mac.security.read"];
-    await collection.insertOne({operatorId,emailNormalized:email,displayName:body.displayName,passwordHash:await hashPassword(body.password),permissions,tenantIds:[],status:"pending_mfa",bootstrapOwner:true,mfaEnabled:false,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),createdAt:now,updatedAt:now});
+    await collection.insertOne({operatorId,emailNormalized:email,displayName:body.displayName,passwordHash:await hashPassword(body.password),permissions,tenantIds:[],status:"pending_mfa",bootstrapOwner:true,mfaEnabled:false,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),pendingMfaExpiresAt:new Date(now.getTime()+24*60*60*1000),createdAt:now,updatedAt:now});
     await writeAdminAudit(db,{actorId:operatorId,action:"mac.auth.bootstrap.started",resourceType:"platform_operator",resourceId:operatorId,outcome:"success",request});
     const label=encodeURIComponent(email),issuer=encodeURIComponent("Zuri OS MAC");
     return reply.code(201).send({operatorId,email,totpSecret:secret,otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`,nextStep:"Confirm the authenticator code using /mac/auth/bootstrap/confirm. The secret is shown only once."});
@@ -115,7 +115,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     if(!operator?.pendingMfaSecretEncrypted)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
     const secret=decryptMfaSecret(operator.pendingMfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,body.code);
     if(step===null)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
-    const activated=await collection.updateOne({operatorId:operator.operatorId,status:"pending_mfa",mfaEnabled:false},{$set:{status:"active",mfaEnabled:true,mfaSecretEncrypted:operator.pendingMfaSecretEncrypted,mfaLastUsedStep:step,updatedAt:new Date()},$unset:{pendingMfaSecretEncrypted:""}});
+    const activated=await collection.updateOne({operatorId:operator.operatorId,status:"pending_mfa",mfaEnabled:false},{$set:{status:"active",mfaEnabled:true,mfaSecretEncrypted:operator.pendingMfaSecretEncrypted,mfaLastUsedStep:step,updatedAt:new Date()},$unset:{pendingMfaSecretEncrypted:"",pendingMfaExpiresAt:""}});
     if(!activated.modifiedCount)return reply.code(409).send({error:"BOOTSTRAP_ALREADY_COMPLETED"});
     const active=await collection.findOne({operatorId:operator.operatorId});
     const session=await issueSession(db,config,active,request);
@@ -149,7 +149,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     const claimed=await invitations.updateOne({invitationId:invitation.invitationId,tokenHash,status:"pending",expiresAt:{$gt:now}},{$set:{status:"pending_mfa",operatorId,acceptedAt:now}});
     if(!claimed.modifiedCount)return reply.code(409).send({error:"INVITATION_ALREADY_USED"});
     try{
-     await db.collection("platform_operators").insertOne({operatorId,emailNormalized:invitation.emailNormalized,displayName:invitation.displayName,passwordHash:await hashPassword(body.password),permissions:invitation.permissions,tenantIds:invitation.tenantIds??[],status:"pending_mfa",mfaEnabled:false,invitationId:invitation.invitationId,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),createdAt:now,updatedAt:now});
+     await db.collection("platform_operators").insertOne({operatorId,emailNormalized:invitation.emailNormalized,displayName:invitation.displayName,passwordHash:await hashPassword(body.password),permissions:invitation.permissions,tenantIds:invitation.tenantIds??[],status:"pending_mfa",mfaEnabled:false,invitationId:invitation.invitationId,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),pendingMfaExpiresAt:new Date(now.getTime()+24*60*60*1000),createdAt:now,updatedAt:now});
     }catch(error){await invitations.updateOne({invitationId:invitation.invitationId,status:"pending_mfa"},{$set:{status:"pending"},$unset:{operatorId:"",acceptedAt:""}});if((error as any)?.code===11000)return reply.code(409).send({error:"OPERATOR_ALREADY_EXISTS"});throw error;}
     try{await writeAdminAudit(db,{actorId:operatorId,action:"mac.auth.invitation.accepted",resourceType:"platform_operator",resourceId:operatorId,outcome:"success",request,metadata:{invitationId:invitation.invitationId}});}
     catch(error){await db.collection("platform_operators").deleteOne({operatorId,status:"pending_mfa"});await invitations.updateOne({invitationId:invitation.invitationId,status:"pending_mfa"},{$set:{status:"pending"},$unset:{operatorId:"",acceptedAt:""}});throw error;}
