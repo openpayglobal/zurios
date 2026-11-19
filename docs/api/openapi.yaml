@@ -45,6 +45,8 @@ tags:
     description: Organization-scoped purchasing, invoicing, fiscal periods and double-entry posting
   - name: CRM
     description: Organization-scoped customer accounts, contacts, leads, opportunities and activities
+  - name: Human Resources
+    description: Organization-scoped employee directory and segregated leave approvals
 paths:
   /platform/tenant:
     get:
@@ -1152,6 +1154,86 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {description: Opportunity not found}
         "409": {$ref: "#/components/responses/Conflict"}
+  /hr/employees:
+    get:
+      tags: [Human Resources]
+      operationId: listHrEmployees
+      summary: List employee records in authorized organizations
+      responses:
+        "200": {description: Scoped employee directory}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Human Resources]
+      operationId: createHrEmployee
+      summary: Create an employee record in an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrEmployee"}
+      responses:
+        "201": {description: Employee created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/leave-requests:
+    get:
+      tags: [Human Resources]
+      operationId: listHrLeaveRequests
+      summary: List leave requests in authorized organizations
+      responses:
+        "200": {description: Scoped leave requests}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Human Resources]
+      operationId: createHrLeaveRequest
+      summary: Request leave for an active employee
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrLeaveRequest"}
+      responses:
+        "201": {description: Leave request created pending approval}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/leave-requests/{leaveRequestId}/approve:
+    post:
+      tags: [Human Resources]
+      operationId: approveHrLeaveRequest
+      summary: Approve a leave request with requester/approver separation
+      parameters:
+        - {name: leaveRequestId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrLeaveDecision"}
+      responses:
+        "200": {description: Leave request approved}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/leave-requests/{leaveRequestId}/reject:
+    post:
+      tags: [Human Resources]
+      operationId: rejectHrLeaveRequest
+      summary: Reject a leave request with an auditable reason
+      parameters:
+        - {name: leaveRequestId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrLeaveDecision"}
+      responses:
+        "200": {description: Leave request rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -1508,6 +1590,43 @@ components:
       properties:
         organizationId: {type: string}
         stage: {type: string, enum: [prospecting, qualification, proposal, negotiation, won, lost]}
+        expectedVersion: {type: integer, minimum: 0}
+    HrEmployee:
+      type: object
+      required: [organizationId, employeeId, employeeNumber, firstName, lastName, workEmail, departmentId, positionTitle, employmentType, startDate]
+      properties:
+        organizationId: {type: string}
+        employeeId: {type: string}
+        employeeNumber: {type: string, maxLength: 40}
+        userId: {type: string}
+        firstName: {type: string, maxLength: 80}
+        lastName: {type: string, maxLength: 80}
+        workEmail: {type: string, format: email}
+        departmentId: {type: string}
+        positionTitle: {type: string, maxLength: 120}
+        managerEmployeeId: {type: string}
+        employmentType: {type: string, enum: [permanent, contract, temporary, intern]}
+        status: {type: string, enum: [active, on_leave, suspended, terminated], default: active}
+        startDate: {type: string, format: date-time}
+        endDate: {type: string, format: date-time}
+    HrLeaveRequest:
+      type: object
+      required: [organizationId, leaveRequestId, employeeId, leaveType, startsAt, endsAt, days]
+      properties:
+        organizationId: {type: string}
+        leaveRequestId: {type: string}
+        employeeId: {type: string}
+        leaveType: {type: string, enum: [annual, sick, personal, parental, unpaid]}
+        startsAt: {type: string, format: date-time}
+        endsAt: {type: string, format: date-time}
+        days: {type: number, exclusiveMinimum: 0, maximum: 366}
+        reason: {type: string, maxLength: 1000}
+    HrLeaveDecision:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 10, maxLength: 1000}
         expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
