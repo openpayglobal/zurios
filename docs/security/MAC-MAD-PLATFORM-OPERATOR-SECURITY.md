@@ -65,6 +65,8 @@ Implemented in this phase:
 - Independent MAC JWT signing key, opaque refresh tokens stored only as SHA-256 hashes, refresh-token rotation and session revocation.
 - Login/bootstrap rate limiting and separate MongoDB collections/indexes for operators, sessions, global audit and rate limits.
 - Sanitized operator inventory, session inventory and audited revocation of other operator sessions.
+- One-time 24-hour operator invitations with fixed read-only permission profile, TOTP enrollment and single-use activation.
+- Operator suspension that revokes all active sessions; self-suspension is denied.
 - Read-only MAC overview, tenant listing and administrative audit endpoints with permission checks.
 - OpenAPI 3.1 route contract and MongoDB replica-set integration coverage, including session revocation and invalid-input handling.
 
@@ -74,6 +76,6 @@ Required preview configuration before the endpoints can operate:
 - `MAC_MFA_ENCRYPTION_KEY`: separate 32-byte base64 key used only for TOTP secret encryption.
 
 Not implemented by this phase:
-- Additional operator invitations and lifecycle management, role-grant approvals, operator suspension/recovery, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters and production activation.
+- Elevated permission-grant workflows and two-person approvals, operator reactivation/recovery, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters and production activation.
 
 The API remains unavailable when its required MAC secrets are absent. It does not silently fall back to tenant JWT credentials.
