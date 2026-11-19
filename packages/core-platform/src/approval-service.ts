@@ -2,7 +2,7 @@ import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
 
-export type ApprovalAction="membership.suspend"|"membership.reactivate"|"membership.revoke"|"policy.apply"|"feature_flag.set"|"break_glass.grant"|"tenant.activate"|"tenant.suspend"|"tenant.close";
+export type ApprovalAction="membership.suspend"|"membership.reactivate"|"membership.revoke"|"organization.deactivate"|"location.deactivate"|"policy.apply"|"feature_flag.set"|"break_glass.grant"|"tenant.activate"|"tenant.suspend"|"tenant.close";
 export type ApprovalRequestDocument={
  requestId:string;tenantId:string;scope:"tenant"|"platform";action:ApprovalAction;
  targetType:string;targetId:string;payload:Record<string,unknown>;reason:string;
@@ -12,7 +12,7 @@ export type ApprovalRequestDocument={
 };
 const schema=z.object({
  tenantId:z.string().min(1),scope:z.enum(["tenant","platform"]),action:z.enum([
-  "membership.suspend","membership.reactivate","membership.revoke","policy.apply","feature_flag.set","break_glass.grant","tenant.activate","tenant.suspend","tenant.close"
+  "membership.suspend","membership.reactivate","membership.revoke","organization.deactivate","location.deactivate","policy.apply","feature_flag.set","break_glass.grant","tenant.activate","tenant.suspend","tenant.close"
  ]),
  targetType:z.string().min(2).max(80),targetId:z.string().min(1).max(200),
  payload:z.record(z.unknown()).default({}),reason:z.string().min(20).max(2000),
