@@ -279,8 +279,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({requestId:z.string().min(1)}).parse(request.params),query=z.object({scope:approvalScopeSchema.default("tenant")}).parse(request.query),body=approvalDecisionSchema.parse(request.body);
     const scopeTenantId=query.scope==="platform"?"platform":p.tenantId;
-    if(query.scope==="platform"&&!p.platformPermissions?.includes("platform.approvals.approve"))return reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});
-    if(query.scope==="tenant"&&!p.permissions.includes("platform.approvals.approve"))return reply.code(403).send({error:"FORBIDDEN"});
+    if(query.scope==="platform"&&!await checkPlatformPermission(db,config.jwtSecret,"platform.approvals.approve",request,reply,p))return;
+    if(query.scope==="tenant"&&!await checkTenantPermission(db,config.jwtSecret,"platform.approvals.approve",request,reply,p))return;
     return await mutate(db,request,reply,p,config.jwtSecret,scopeTenantId,"platform.approvals.reject",async session=>{
      const result=await rejectApprovalRequest(db,session,{tenantId:scopeTenantId,requestId:params.requestId,reviewerId:p.userId,reason:body.reason});
      await writeAudit(db,scopeTenantId,p,request,config.jwtSecret,"platform.approval.rejected","approval",params.requestId,"success",{requestedBy:result.requestedBy,reason:body.reason},session);
