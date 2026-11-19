@@ -33,7 +33,8 @@ export async function runIdempotentMutation(
   let output:(StoredResult&{replayed:boolean})|undefined;
   await session.withTransaction(async()=>{
    const existing=await collection.findOne(filter,{session});
-   if(existing){
+   if(existing&&existing.expiresAt<=new Date()){await collection.deleteOne(filter,{session});}
+   else if(existing){
     if(existing.requestHash!==requestHash)throw new IdempotencyConflictError("IDEMPOTENCY_KEY_REUSED");
     if(existing.status==="completed"&&existing.result){output={...existing.result,replayed:true};return;}
     throw new IdempotencyConflictError("IDEMPOTENCY_IN_PROGRESS");
