@@ -100,6 +100,15 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(receivedEventId,sourceEvent!.eventId);
   assert.match(receivedSignature,/^sha256=[a-f0-9]{64}$/);
   assert.equal(await db.collection("webhook_deliveries").countDocuments({endpointId:"hook-a",status:"delivered"}),1);
+  await registerWebhookSubscription(db,{tenantId:"tenant-a",endpointId:"hook-b",url:"https://hooks.example.test/retry",secretRef:"vault/tenant-a/hook-b",eventTypes:["resource.created"]},"admin-a",["hooks.example.test"]);
+  assert.equal(await queueWebhookDeliveries(db,sourceEvent as any),1);
+  const failedDelivery=await dispatchWebhookBatch(db,{resolveSecret:async()=>"r".repeat(32),fetch:async()=>new Response(null,{status:503})},{workerId:"webhook-worker-b",maxAttempts:1});
+  assert.equal(failedDelivery.deadLettered,1);
+  const deadDelivery=await db.collection<any>("webhook_deliveries").findOne({endpointId:"hook-b",eventId:sourceEvent!.eventId});
+  assert.equal(deadDelivery.status,"dead_letter");
+  assert.equal(await replayDeadLetterWebhookDelivery(db,deadDelivery.deliveryId),true);
+  const replayDelivery=await dispatchWebhookBatch(db,{resolveSecret:async()=>"r".repeat(32),fetch:async()=>new Response(null,{status:204})},{workerId:"webhook-worker-c"});
+  assert.equal(replayDelivery.delivered,1);
 
   await db.collection("outbox_events").insertOne({
    eventId:"dead-letter-event",tenantId:"tenant-a",eventType:"resource.dead",aggregateType:"resource",
