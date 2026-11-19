@@ -15,17 +15,18 @@ The repository is in active foundation implementation. The current `main` baseli
 - Versioned platform API routes, Zod request schemas, OpenAPI 3.1 contract and route/schema drift validation.
 - Idempotent mutation handling, transactional audit/outbox writes, a MongoDB-backed event stream and consumer receipt primitives.
 - Governance/admin API and workspace capabilities for approvals, tenant lifecycle, invitations, policy simulation, audit, configuration and break-glass controls.
+- Initial `@zuri/design-system` workspace package with semantic tokens, shared React primitives, admin-shell integration and server-rendered component tests; full visual/accessibility acceptance remains pending.
 
-**Latest CI repair:** [PR #8](https://github.com/openpayglobal/zurios/pull/8) fixes the OpenAPI schema-property parser and invalid escaped newlines in the location service. GitHub Actions [run #615](https://github.com/openpayglobal/zurios/actions/runs/44552128620) passed replica-set startup, OpenAPI lint, route/schema drift checks, typecheck, tests and build. The PR remains open; this is not a claim that the changes are merged or deployed.
+**Latest CI repair:** [PR #8](https://github.com/openpayglobal/zurios/pull/8) now includes the pnpm v9 lockfile, frozen CI installs, Turbo MongoDB environment propagation, runner-reachable replica-set initialization, migration/outbox fixes and expanded auth HTTP route tests. GitHub Actions [run #681](https://github.com/openpayglobal/zurios/actions/runs/44557432014) passed the complete pipeline with database-backed integration tests executing (not skipped). [PR #9](https://github.com/openpayglobal/zurios/pull/9) adds the initial shared design-system package; [run #679](https://github.com/openpayglobal/zurios/actions/runs/44557264189) passed its full CI pipeline. Both PRs remain open; these changes are not merged into `main`.
 
 ## What is not yet accepted
 
 - The 6A foundation has not completed independent security, tenant-isolation, operational and production-readiness acceptance.
 - The outbox currently hands events to the internal MongoDB event stream. External broker/provider adapters, deployed consumer registry, alerting, replay operations and runbooks remain to be completed.
 - The governance/admin implementation still needs full route-by-route acceptance, provider integration and UX/accessibility review.
-- A separately packaged, shared design system has not yet been accepted.
+- The initial shared design-system package is implemented and CI-tested, but visual regression, keyboard-flow and independent WCAG 2.2 AA acceptance remain open.
 - ERP, POS and Inventory are roadmap deliverables, not production-ready modules in this repository baseline.
-- Vercel deployment status contexts for the current PR commit are failing and must be diagnosed before release.
+- Vercel previews are currently blocked by the account's free-tier daily deployment quota (over 100 deployments); the earlier PR #8 web preview reached READY. Wait for quota reset or plan adjustment before retrying deployment.
 
 See [the whole-ecosystem roadmap](docs/architecture/WHOLE-ECOSYSTEM-ROADMAP.md) for the implementation sequence, dependencies, acceptance gates and progress ledger. No compliance certification or production readiness is claimed.
 
