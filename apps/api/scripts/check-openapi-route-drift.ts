@@ -3,6 +3,7 @@ import {PLATFORM_BODY_CONTRACTS} from "../src/platform/platform-schemas.js";
 
 const routeSource=readFileSync("src/platform/platform-routes.ts","utf8");
 const macRouteSource=readFileSync("src/platform/mac-operator-routes.ts","utf8");
+const inventoryRouteSource=readFileSync("src/inventory/inventory-routes.ts","utf8");
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
 const routeDefinitions=[...routeSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
 const macRouteDefinitions=[...macRouteSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
@@ -12,7 +13,7 @@ const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)
 const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path));
 const missingFromContract=[...routePaths].filter(path=>!contractPaths.has(path));
 const undocumentedRoutes=[...contractPaths].filter(path=>!routePaths.has(path));
-const mutatingRoutes=routeDefinitions.filter(([,method])=>method!=="get").length;
+const mutatingRoutes=routeDefinitions.filter(([,method])=>method!=="get").length+inventoryRouteDefinitions.filter(([,method])=>method!=="get").length;
 const idempotencyRefs=(contract.match(/\$ref: "#\/components\/parameters\/IdempotencyKey"/g)??[]).length;
 const failures:string[]=[];
 if(!contract.startsWith("openapi: 3.1."))failures.push("OpenAPI document must use 3.1");
