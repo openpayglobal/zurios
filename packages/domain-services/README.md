@@ -1,6 +1,6 @@
 # Zuri domain services
 
-This package implements the first transactional service layer for Inventory (6D), ERP (6B) and POS (6C). All commands are tenant-scoped, idempotent and execute domain writes with outbox writes in a MongoDB transaction. It is a service foundation, not a production-complete business suite.
+This package implements the first transactional service layer for Inventory (6D), ERP (6B) and POS (6C). All commands are tenant-scoped, idempotent and execute domain writes, audit records and outbox writes in a MongoDB transaction. It is a service foundation, not a production-complete business suite.
 
 ## Inventory
 
@@ -36,4 +36,4 @@ This package implements the first transactional service layer for Inventory (6D)
 - Add external event secret-manager integration, worker deployment, metrics, alerting and operator runbooks.
 - Complete the 6A.6 security, isolation, backup/restore and independent acceptance gates before production use.
 
-All database operations assume a MongoDB replica set. The integration test suite uses MONGODB_TEST_URI and a disposable test database.
+All database operations assume a MongoDB replica set. The integration test suite uses MONGODB_TEST_URI and a disposable test database. The cross-domain integration test passed in Actions run #805.
