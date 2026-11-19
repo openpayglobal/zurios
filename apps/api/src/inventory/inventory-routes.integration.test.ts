@@ -58,6 +58,14 @@ test("inventory API enforces tenant and organization scope, idempotency, ABAC an
   assert.equal(sourceBalance.json().data.quantityOnHand,"4.5");assert.equal(destinationBalance.json().data.quantityOnHand,"2");
   const forbiddenLocation=await app.inject({method:"POST",url:"/v1/inventory/movements",headers:{...headers,"idempotency-key":"inventory-cross-org-0001"},payload:{productId,stockLocationId:"restricted-stock-location",movementType:"issue",quantity:"1",unitCode:"EA",source:{type:"sale",id:"SALE-003"}}});
   assert.equal(forbiddenLocation.statusCode,403);
+  await db.collection("policies").insertMany([
+   {tenantId,policyId:"deny-inventory-transfer",key:"deny-inventory-transfer",effect:"deny",priority:100,subject:{userId},resource:{resourceType:"inventory_transfer"},actions:["inventory.transfers.create"],conditions:{},status:"active"},
+   {tenantId,policyId:"deny-inventory-adjustment",key:"deny-inventory-adjustment",effect:"deny",priority:100,subject:{userId},resource:{resourceType:"inventory_adjustment"},actions:["inventory.adjustments.approve"],conditions:{},status:"active"}
+  ]);
+  const deniedTransfer=await app.inject({method:"POST",url:"/v1/inventory/movements",headers:{...headers,"idempotency-key":"inventory-transfer-denied-0001"},payload:{productId,stockLocationId:sourceId,destinationStockLocationId:destinationId,movementType:"transfer",quantity:"1",unitCode:"EA",source:{type:"stock_transfer",id:"TRANSFER-DENIED"}}});
+  assert.equal(deniedTransfer.statusCode,403);assert.equal(deniedTransfer.json().error,"ABAC_POLICY_DENIED");
+  const deniedAdjustment=await app.inject({method:"POST",url:"/v1/inventory/movements",headers:{...headers,"idempotency-key":"inventory-adjustment-denied-0001"},payload:{productId,stockLocationId:sourceId,movementType:"adjustment_in",quantity:"1",unitCode:"EA",source:{type:"stock_count",id:"COUNT-001"},reason:"Approved stock count variance"}}); 
+  assert.equal(deniedAdjustment.statusCode,403);assert.equal(deniedAdjustment.json().error,"ABAC_POLICY_DENIED");
   await db.collection("policies").insertOne({tenantId,policyId:"deny-inventory-products",key:"deny-inventory-products",effect:"deny",priority:100,subject:{userId},resource:{resourceType:"inventory_api"},actions:["inventory.products.read"],conditions:{},status:"active"});
   const abacDenied=await app.inject({method:"GET",url:"/v1/inventory/products",headers});
   assert.equal(abacDenied.statusCode,403);assert.equal(abacDenied.json().error,"ABAC_POLICY_DENIED");
