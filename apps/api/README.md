@@ -30,13 +30,13 @@ Set these as encrypted Vercel project environment variables before the API is de
 | `JWT_ISSUER` | Stable HTTPS issuer URL |
 | `JWT_AUDIENCE` | API audience identifier |
 | `JWT_SECRET` | Random secret, minimum 32 characters |
-| `MFA_ENCRYPTION_KEY` | Base64-encoded 32-byte key, required in production |
+| `MAC_MFA_ENCRYPTION_KEY` | Base64-encoded 32-byte key, required in production |
 | `MAC_JWT_SECRET` | Independent random MAC operator signing key; never reuse `JWT_SECRET` |
 | `MAC_BOOTSTRAP_TOKEN` | One-time high-entropy initial-owner bootstrap token; remove after bootstrap |
 | `MAC_SESSION_TTL_SECONDS` | MAC operator session lifetime; defaults to 28,800 seconds |
 | `CORS_ORIGINS` | Comma-separated exact allowed frontend origins |
 
-The MAC/MAD API remains unavailable until `MAC_JWT_SECRET` and `MFA_ENCRYPTION_KEY` are configured. Initial owner bootstrap additionally requires `MAC_BOOTSTRAP_TOKEN`; remove that token after activation. The web project must set `VITE_ZURI_API_URL` to the API origin and its origin must be listed in `CORS_ORIGINS`.
+The MAC/MAD API remains unavailable until `MAC_JWT_SECRET` and `MAC_MFA_ENCRYPTION_KEY` are configured. Initial owner bootstrap additionally requires `MAC_BOOTSTRAP_TOKEN`; remove that token after activation. The web project must set `VITE_ZURI_API_URL` to the API origin and its origin must be listed in `CORS_ORIGINS`.
 
 Do not commit real credentials. Use a dedicated least-privilege MongoDB database user, TLS, and narrowly scoped Atlas network access. Do not use unrestricted `0.0.0.0/0` access merely to make deployment succeed.
 
