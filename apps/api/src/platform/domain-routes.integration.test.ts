@@ -46,7 +46,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "inventory.warehouse.read","inventory.warehouse.create","inventory.stock.read",
    "inventory.stock.write","inventory.stock.reserve","inventory.stock.consume","inventory.stock.release",
    "pos.terminal.create","pos.shift.open","pos.shift.close","pos.sale.complete","pos.refund.complete","pos.offline.sync",
-   "erp.account.read","erp.account.create","erp.fiscal_period.read","erp.fiscal_period.create","erp.purchase_order.create",
+   "erp.account.read","erp.account.create","erp.fiscal_period.read","erp.fiscal_period.create","erp.purchase_order.create","erp.purchase_order.receive",
    "erp.invoice.read","erp.invoice.create","erp.invoice.payment.allocate","erp.journal.post",
    "crm.account.read","crm.account.create","crm.contact.read","crm.contact.create","crm.lead.read","crm.lead.create",
    "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create",
@@ -215,9 +215,17 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const purchaseOrder=await app.inject({
    method:"POST",url:"/v1/erp/purchase-orders",headers:{...headers,"idempotency-key":"erp-po-api-001"},
    payload:{orderNumber:"PO-API-001",supplierId:"supplier-api",warehouseId:"warehouse-a",currency:"UGX",orderedAt:now.toISOString(),
-    lines:[{sku:"SKU-API",description:"Stock item",quantityMilli:1000,unitPriceMinor:1000,taxRateBps:0}],totalMinor:1000,status:"submitted"}
+    lines:[{sku:"SKU-API",description:"Stock item",quantityMilli:1000,unitPriceMinor:1000,taxRateBps:0}],totalMinor:1000,status:"approved"}
   });
   assert.equal(purchaseOrder.statusCode,201);
+  const goodsReceipt=await app.inject({
+   method:"POST",url:"/v1/erp/purchase-orders/PO-API-001/receipts",headers:{...headers,"idempotency-key":"erp-goods-receipt-api-001"},
+   payload:{organizationId:"org-a",receiptId:"erp-receipt-api-001",receivedAt:now.toISOString(),lines:[{sku:"SKU-API",quantityMilli:1000}]}
+  });
+  assert.equal(goodsReceipt.statusCode,201);
+  assert.equal(goodsReceipt.json().body.status,"received");
+  const receiptBalance=await db.collection<any>("inventory_stock_balances").findOne({tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-API"});
+  assert.equal(receiptBalance.quantityOnHandMilli,4000);
   const invoice=await app.inject({
    method:"POST",url:"/v1/erp/invoices",headers:{...headers,"idempotency-key":"erp-invoice-api-001"},
    payload:{organizationId:"org-a",invoiceId:"invoice-api-001",invoiceNumber:"INV-API-001",invoiceType:"sales",partyId:"customer-api",currency:"UGX",
