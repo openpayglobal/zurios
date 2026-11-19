@@ -32,6 +32,9 @@ function permit(db:Db,config:AuthConfig,permission:string){
 async function writeAudit(db:Db,request:FastifyRequest,p:Principal,config:AuthConfig,session:ClientSession,action:string,resourceType:string,resourceId:string,metadata:Record<string,unknown>={}){
  await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,config.jwtSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType,resourceId,outcome:"success",correlationId:request.id,metadata},session);
 }
+async function readAudit(db:Db,request:FastifyRequest,p:Principal,config:AuthConfig,action:string,resourceType:string,metadata:Record<string,unknown>={}){
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,config.jwtSecret)},action,resourceType,outcome:"success",correlationId:request.id,metadata});
+}
 async function writeOutbox(db:Db,request:FastifyRequest,p:Principal,session:ClientSession,eventType:string,aggregateType:string,aggregateId:string,payload:Record<string,unknown>){
  await appendOutboxEvent(db,session,{tenantId:p.tenantId,eventType,aggregateType,aggregateId,payload,correlationId:request.id});
 }
@@ -61,7 +64,9 @@ export function inventoryRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.get("/inventory/products",{preHandler:permit(db,config,"inventory.products.read")},async(request,reply)=>{
    const query=listQuery.extend({search:z.string().trim().max(80).optional()}).safeParse(request.query);
    if(!query.success)return reply.code(400).send({error:"INVALID_REQUEST"});
-   const filter:Record<string,unknown>={tenantId:principal(request).tenantId,status:"active"};
+   const p=principal(request);
+   await readAudit(db,request,p,config,"inventory.products.read","product",{limit:query.data.limit});
+   const filter:Record<string,unknown>={tenantId:p.tenantId,status:"active"};
    if(query.data.search){const prefix=query.data.search.replace(/[.*+?^${}()|[\]\\]/g,"\\$&").toUpperCase();filter.skuNormalized={$regex:"^"+prefix};}
    const data=await db.collection("products").find(filter,{projection:{_id:0,tenantId:0}}).sort({name:1}).limit(query.data.limit).toArray();
    return {data};
@@ -78,6 +83,7 @@ export function inventoryRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.get("/inventory/locations",{preHandler:permit(db,config,"inventory.locations.read")},async request=>{
    const p=principal(request),ids=p.organizationIds??[];
    if(!ids.length)return {data:[]};
+   await readAudit(db,request,p,config,"inventory.stock_locations.read","stock_location");
    const data=await db.collection("stock_locations").find({tenantId:p.tenantId,organizationId:{$in:ids},status:"active"},{projection:{_id:0}}).sort({name:1}).toArray();
    return {data};
   });
@@ -131,6 +137,7 @@ export function inventoryRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request),location=await db.collection("stock_locations").findOne({tenantId:p.tenantId,stockLocationId:query.data.stockLocationId,status:"active"});
    if(!location)return reply.code(404).send({error:"STOCK_LOCATION_NOT_FOUND"});
    if(!authorize(p,{permission:"inventory.balances.read",resourceTenantId:p.tenantId,organizationId:location.organizationId}))return denied(db,request,reply,p,config.jwtSecret,"STOCK_LOCATION_SCOPE_DENIED");
+   await readAudit(db,request,p,config,"inventory.stock_balance.read","stock_balance",{productId:query.data.productId,stockLocationId:query.data.stockLocationId});
    return {data:await getStockBalance(db,p.tenantId,query.data.productId,query.data.stockLocationId,query.data.lotId)};
   });
   app.get("/inventory/movements",{preHandler:permit(db,config,"inventory.movements.read")},async(request,reply)=>{
@@ -138,6 +145,7 @@ export function inventoryRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    if(!query.success)return reply.code(400).send({error:"INVALID_REQUEST"});
    const p=principal(request),orgs=p.organizationIds??[];
    if(!orgs.length)return {data:[]};
+   await readAudit(db,request,p,config,"inventory.stock_movements.read","stock_movement",{limit:query.data.limit});
    const filter:Record<string,unknown>={tenantId:p.tenantId,organizationId:{$in:orgs}};
    if(query.data.productId)filter.productId=query.data.productId;
    if(query.data.stockLocationId)filter.stockLocationId=query.data.stockLocationId;
