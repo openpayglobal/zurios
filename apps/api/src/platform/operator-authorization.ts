@@ -25,6 +25,8 @@ export type PlatformOperatorAccessRequest = {
   permission: string;
   tenantId?: string;
   now?: Date;
+  /** Maximum age of the server-verified MFA event. Defaults to five minutes. */
+  mfaMaxAgeSeconds?: number;
 };
 
 export type PlatformOperatorDecision =
@@ -44,7 +46,9 @@ export function authorizePlatformOperator(
   }
 
   const now = request.now ?? new Date();
-  if (!(principal.mfaVerifiedAt instanceof Date) || Number.isNaN(principal.mfaVerifiedAt.getTime()) || principal.mfaVerifiedAt > now) {
+  const mfaMaxAgeSeconds = request.mfaMaxAgeSeconds ?? 300;
+  const mfaAgeMs = now.getTime() - principal.mfaVerifiedAt.getTime();
+  if (!(principal.mfaVerifiedAt instanceof Date) || Number.isNaN(principal.mfaVerifiedAt.getTime()) || principal.mfaVerifiedAt > now || !Number.isFinite(mfaMaxAgeSeconds) || mfaMaxAgeSeconds <= 0 || mfaAgeMs > mfaMaxAgeSeconds * 1000) {
     return { allowed: false, reason: "MFA_REQUIRED" };
   }
 
