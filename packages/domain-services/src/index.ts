@@ -8,3 +8,4 @@ export * from "./payment-service.js";
 export * from "./commerce-service.js";
 export * from "./asset-service.js";
 export * from "./project-service.js";
+export * from "./procurement-service.js";
