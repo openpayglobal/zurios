@@ -114,3 +114,12 @@ export async function consumeEventOnce(
   throw error;
  }finally{await session.endSession();}
 }
+
+export async function publishOutboxToMongoEventBus(db:Db,event:OutboxEventDocument):Promise<void>{
+ await db.collection<OutboxEventDocument>("platform_events").updateOne(
+  {eventId:event.eventId},{$setOnInsert:event},{upsert:true}
+ );
+}
+export function createMongoEventBusPublisher(db:Db):OutboxPublisher{
+ return async event=>publishOutboxToMongoEventBus(db,event);
+}
