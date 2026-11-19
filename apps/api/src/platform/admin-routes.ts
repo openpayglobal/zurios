@@ -36,33 +36,35 @@ function fail(error:unknown,reply:FastifyReply){
 async function writeAudit(db:Db,tenantId:string,p:Principal,request:FastifyRequest,secret:string,action:string,resourceType:string,resourceId:string|undefined,outcome:"success"|"denied"|"failure",metadata:Record<string,unknown>={},session?:ClientSession){
  await appendAuditEvent(db,{tenantId,actor:{userId:p.userId,ipHash:hashIp(request,secret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType,...(resourceId?{resourceId}:{}),outcome,correlationId:request.id,metadata:{...metadata,...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}},session);
 }
+async function checkTenantPermission(db:Db,secret:string,permission:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
+ if(!authorize(p,{permission,resourceTenantId:p.tenantId})){
+  await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission});
+  reply.code(403).send({error:"FORBIDDEN"});return false;
+ }
+ const decision=await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},resource:{tenantId:p.tenantId,resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
+ if(decision.reason==="EXPLICIT_DENY"){
+  await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,code:"ABAC_POLICY_DENIED"});
+  reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
+ }
+ return true;
+}
+async function checkPlatformPermission(db:Db,secret:string,permission:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
+ if(!p.platformPermissions?.includes(permission)){
+  await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform"});
+  reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});return false;
+ }
+ const decision=await evaluatePolicy(db,"platform",{subject:{userId:p.userId},resource:{resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
+ if(decision.reason==="EXPLICIT_DENY"){
+  await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code:"ABAC_POLICY_DENIED"});
+  reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
+ }
+ return true;
+}
 function tenantGuard(db:Db,secret:string,permission:string){
- return async(request:FastifyRequest,reply:FastifyReply)=>{
-  const p=principal(request);
-  if(!authorize(p,{permission,resourceTenantId:p.tenantId})){
-   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission});
-   return reply.code(403).send({error:"FORBIDDEN"});
-  }
-  const decision=await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},resource:{tenantId:p.tenantId,resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
-  if(decision.reason==="EXPLICIT_DENY"){
-   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,code:"ABAC_POLICY_DENIED"});
-   return reply.code(403).send({error:"ABAC_POLICY_DENIED"});
-  }
- };
+ return async(request:FastifyRequest,reply:FastifyReply)=>checkTenantPermission(db,secret,permission,request,reply,principal(request));
 }
 function platformGuard(db:Db,secret:string,permission:string){
- return async(request:FastifyRequest,reply:FastifyReply)=>{
-  const p=principal(request);
-  if(!p.platformPermissions?.includes(permission)){
-   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform"});
-   return reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});
-  }
-  const decision=await evaluatePolicy(db,"platform",{subject:{userId:p.userId},resource:{resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
-  if(decision.reason==="EXPLICIT_DENY"){
-   await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code:"ABAC_POLICY_DENIED"});
-   return reply.code(403).send({error:"ABAC_POLICY_DENIED"});
-  }
- };
+ return async(request:FastifyRequest,reply:FastifyReply)=>checkPlatformPermission(db,secret,permission,request,reply,principal(request));
 }
 async function mutate(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,secret:string,scopeTenantId:string,operation:string,work:(session:ClientSession)=>Promise<MutationResult>){
  const key=request.headers["idempotency-key"];
@@ -183,8 +185,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const query=z.object({scope:approvalScopeSchema.default("tenant"),status:z.enum(["pending","approved","rejected","executed","expired"]).optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(request.query);
     const scopeTenantId=query.scope==="platform"?"platform":p.tenantId;
-    if(query.scope==="platform"&&!p.platformPermissions?.includes("platform.approvals.read"))return reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});
-    if(query.scope==="tenant"&&!authorize(p,{permission:"platform.approvals.read",resourceTenantId:p.tenantId}))return reply.code(403).send({error:"FORBIDDEN"});
+    if(query.scope==="platform"&&!await checkPlatformPermission(db,config.jwtSecret,"platform.approvals.read",request,reply,p))return;
+    if(query.scope==="tenant"&&!await checkTenantPermission(db,config.jwtSecret,"platform.approvals.read",request,reply,p))return;
     return {data:await db.collection<ApprovalRequestDocument>("approval_requests").find({tenantId:scopeTenantId,...(query.status?{status:query.status}:{})}).sort({createdAt:-1}).limit(query.limit).toArray()};
    }catch(error){return fail(error,reply);}
   });
@@ -220,8 +222,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const params=z.object({requestId:z.string().min(1)}).parse(request.params),query=z.object({scope:approvalScopeSchema.default("tenant")}).parse(request.query),body=z.object({reason:z.string().min(10).max(1000)}).parse(request.body);
     const scopeTenantId=query.scope==="platform"?"platform":p.tenantId;
-    if(query.scope==="platform"&&!p.platformPermissions?.includes("platform.approvals.approve"))return reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});
-    if(query.scope==="tenant"&&!p.permissions.includes("platform.approvals.approve"))return reply.code(403).send({error:"FORBIDDEN"});
+    if(query.scope==="platform"&&!await checkPlatformPermission(db,config.jwtSecret,"platform.approvals.approve",request,reply,p))return;
+    if(query.scope==="tenant"&&!await checkTenantPermission(db,config.jwtSecret,"platform.approvals.approve",request,reply,p))return;
     return await mutate(db,request,reply,p,config.jwtSecret,scopeTenantId,"platform.approvals.approve",async session=>{
      const approval=await approveApprovalRequest(db,session,{tenantId:scopeTenantId,requestId:params.requestId,approverId:p.userId,reason:body.reason});
      if(query.scope==="tenant"&&approval.scope!=="tenant")throw new Error("APPROVAL_SCOPE_MISMATCH");
