@@ -1,10 +1,9 @@
 import {useMemo,useState} from "react";
 import type {ReactNode} from "react";
 import {
-  Activity,AlertTriangle,ArrowUpRight,Blocks,Boxes,Building2,CheckCircle2,
-  ChevronDown,ChevronRight,Cloud,Command,Database,FileKey2,Globe2,HardDrive,
-  KeyRound,LayoutDashboard,LockKeyhole,Menu,Network,Package,RefreshCw,Search,
-  Server,Settings2,Shield,ShieldCheck,Users,Workflow
+  Activity,AlertTriangle,Blocks,Building2,CheckCircle2,ChevronRight,Cloud,
+  Command,Database,FileKey2,Globe2,KeyRound,LayoutDashboard,LockKeyhole,
+  Menu,RefreshCw,Search,Settings2,Shield,ShieldCheck,Workflow
 } from "lucide-react";
 
 type Section = "Overview"|"Ecosystems"|"Tenants"|"Environment & Secrets"|"Providers"|"Deployments"|"Security & Audit"|"Approvals"|"Settings";
@@ -79,7 +78,7 @@ function EnvironmentSecrets(){
  </div>;
 }
 
-function Placeholder({section}:{section:Section}){
+function Placeholder({section}:{section:Exclude<Section,"Overview"|"Environment & Secrets">}){
  const content:Record<Exclude<Section,"Overview"|"Environment & Secrets">,{icon:typeof Blocks;description:string;items:string[]}> = {
   "Ecosystems":{icon:Blocks,description:"Registry of Zuri OS products, modules, services, versions and entitlements.",items:["Product and module lifecycle","Service ownership and dependencies","Feature entitlements and activation"]},
   "Tenants":{icon:Building2,description:"Global tenant and environment inventory with strict separation from tenant-level administration.",items:["Tenant lifecycle and status","Organization and workspace structure","Environment and regional configuration"]},
