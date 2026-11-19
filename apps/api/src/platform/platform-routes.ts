@@ -22,6 +22,7 @@ function fail(error:unknown,reply:FastifyReply){
  if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST",issues:error.issues.map(i=>({path:i.path,message:i.message}))});
  const code=error instanceof Error?error.message:"";
  if(["MEMBERSHIP_ALREADY_EXISTS","DUPLICATE_ORGANIZATION_SCOPE","DUPLICATE_LOCATION_SCOPE","DUPLICATE_ROLE_ASSIGNMENT","IDEMPOTENCY_KEY_REUSED","IDEMPOTENCY_IN_PROGRESS"].includes(code))return reply.code(409).send({error:code});
+ if(code==="SESSION_NOT_FOUND")return reply.code(404).send({error:code});
  if(["PARENT_ORGANIZATION_NOT_FOUND","ORGANIZATION_NOT_FOUND","PARENT_LOCATION_NOT_FOUND","ACTIVE_USER_REQUIRED","TENANT_NOT_ACTIVE","INVALID_ORGANIZATION_SCOPE","INVALID_LOCATION_SCOPE","INVALID_LOCATION_ORGANIZATION_SCOPE","INVALID_ROLE_ASSIGNMENT"].includes(code))return reply.code(422).send({error:code});
  return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
@@ -51,6 +52,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async app=>{
   const c=coreCollections(db);
   app.addHook("preHandler",authenticate(db,config));
+  app.addHook("onSend",async(request,reply,payload)=>{if(!request.url.startsWith("/v1/")){reply.header("Deprecation","true");reply.header("Sunset","Wed, 30 Jun 2027 23:59:59 GMT");reply.header("Link",'</v1/platform>; rel="successor-version"');}return payload;});
   app.get("/platform/tenant",{preHandler:permit("platform.tenant.read")},async request=>{
    const p=principal(request);return {data:await c.tenants.findOne({tenantId:p.tenantId},{projection:{_id:0}})};
   });
