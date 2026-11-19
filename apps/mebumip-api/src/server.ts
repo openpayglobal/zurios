@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { MongoClient } from "mongodb";
 import { config, corsOrigins } from "./config.js";
+import { registerAuthRoutes } from "./auth.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 
 const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) => {
@@ -39,9 +40,9 @@ app.get("/health/ready", async (_request, reply) => {
   return { status: "ready", database: "connected" };
 });
 
-// No tenant, Meta, MAC mutation, or MAD data endpoints are exposed until
-// authentication, verified tenant resolution, authorization and audit persistence
-// are wired. Security primitives live in security.ts and are covered by tests.
+// Authentication/bootstrap routes are registered only after MongoDB indexes are ready.
+// Tenant, Meta, MAC mutation and MAD data routes remain disabled until route-level
+// authorization, verified tenant resolution and complete audit persistence are wired.
 app.setNotFoundHandler((_request, reply) => {
   return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
@@ -58,6 +59,7 @@ if (config.MONGODB_URI) {
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
     await ensureMeBuMIPIndexes(db);
+    registerAuthRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
   } catch (error) {
