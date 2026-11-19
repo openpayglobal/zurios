@@ -3,6 +3,8 @@ info:
   title: Zuri OS Platform API
   version: 1.0.0
   summary: Shared multi-tenant platform control-plane API
+  license:
+    name: No license specified
   description: |
     Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
     Tenant context is derived from the authenticated principal; callers cannot
@@ -16,14 +18,27 @@ security:
   - bearerAuth: []
 tags:
   - name: Tenant
+    description: Authenticated tenant context and lifecycle metadata
   - name: Organizations
+    description: Tenant organization hierarchy
   - name: Locations
+    description: Tenant operational locations and scopes
   - name: Memberships
+    description: User-to-tenant and organization memberships
   - name: Roles
+    description: Tenant role definitions and permission sets
   - name: Policies
+    description: Attribute-based authorization policies
   - name: Feature flags
+    description: Tenant feature configuration
   - name: Sessions
+    description: Authenticated session lifecycle
   - name: Audit
+    description: Immutable tenant audit event access
+  - name: Administration
+    description: Governance, administration, approvals and operational controls
+  - name: Identity
+    description: Global identity and tenant membership lifecycle
 paths:
   /platform/tenant:
     get:
@@ -387,7 +402,7 @@ paths:
       responses:
         "204": {description: Membership activated}
         "400": {$ref: "#/components/responses/InvalidRequest"}
-        "422": {description: Invitation is invalid, expired or user is not eligible}
+        "422": {description: "Invitation is invalid, expired or user is not eligible"}
   /platform/admin/overview:
     get:
       tags: [Administration]
