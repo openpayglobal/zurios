@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -367,7 +367,7 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
     const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
     if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
-    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
     const denied=await permit(db,request,reply,p,"erp.fiscal_period.create",scope);if(denied)return denied;
     const body=FiscalPeriodSchema.parse({...raw,tenantId:p.tenantId,organizationId});
     const result=await createFiscalPeriod(db,p.tenantId,p.userId,body as Record<string,unknown>,key);
@@ -547,6 +547,64 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
+
+  app.get("/hr/employees",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"hr.employee.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("hr_employees").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({lastName:1,firstName:1}).limit(500).toArray()};
+  });
+  app.post("/hr/employees",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"hr.employee.create",scope);if(denied)return denied;
+    const body=HrEmployeeSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createHrEmployee(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.get("/hr/leave-requests",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"hr.leave.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("hr_leave_requests").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({startsAt:-1}).limit(500).toArray()};
+  });
+  app.post("/hr/leave-requests",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"hr.leave.request",scope);if(denied)return denied;
+    const body=HrLeaveRequestSchema.parse({...raw,tenantId:p.tenantId,organizationId,status:"pending"});
+    const result=await createHrLeaveRequest(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  const decideLeave=async(request:FastifyRequest,reply:FastifyReply,decision:"approved"|"rejected")=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {leaveRequestId}=z.object({leaveRequestId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"hr.leave.approve",scope);if(denied)return denied;
+    const body=HrLeaveDecisionSchema.parse({...raw,tenantId:p.tenantId,organizationId,leaveRequestId,decision});
+    const result=await decideHrLeaveRequest(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  };
+  app.post("/hr/leave-requests/:leaveRequestId/approve",async(request,reply)=>decideLeave(request,reply,"approved"));
+  app.post("/hr/leave-requests/:leaveRequestId/reject",async(request,reply)=>decideLeave(request,reply,"rejected"));
 
  };
 }
