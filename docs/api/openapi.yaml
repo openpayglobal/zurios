@@ -383,6 +383,178 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /inventory/products:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryProducts
+      summary: List active tenant products
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+        - in: query
+          name: search
+          schema: {type: string, maxLength: 80}
+      responses:
+        "200": {description: Tenant-scoped product catalogue}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: createInventoryProduct
+      summary: Create a tenant product
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, name, baseUnitCode]
+              properties:
+                sku: {type: string, maxLength: 80}
+                name: {type: string, minLength: 2, maxLength: 200}
+                baseUnitCode: {type: string, maxLength: 12}
+                categoryId: {type: string}
+                trackLot: {type: boolean, default: false}
+                trackSerial: {type: boolean, default: false}
+                allowNegativeStock: {type: boolean, default: false}
+      responses:
+        "201": {description: Product created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "409": {description: SKU conflict or idempotency conflict}
+  /inventory/locations:
+    get:
+      tags: [Inventory]
+      operationId: listStockLocations
+      summary: List stock locations within authorized organizations
+      responses:
+        "200": {description: Organization-scoped stock locations}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: createStockLocation
+      summary: Create a stock location within an authorized organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, code, name]
+              properties:
+                organizationId: {type: string}
+                code: {type: string, maxLength: 40}
+                name: {type: string, maxLength: 150}
+                type: {type: string, enum: [warehouse, store, stockroom, transit, other]}
+      responses:
+        "201": {description: Stock location created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /inventory/lots:
+    post:
+      tags: [Inventory]
+      operationId: createStockLot
+      summary: Create a lot for a lot-tracked product
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, lotNumber]
+              properties:
+                productId: {type: string}
+                lotNumber: {type: string, maxLength: 100}
+                supplierLotNumber: {type: string, maxLength: 100}
+                expiryDate: {type: string, format: date-time}
+                receivedAt: {type: string, format: date-time}
+      responses:
+        "201": {description: Stock lot created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "404": {description: Product not found}
+  /inventory/movements:
+    get:
+      tags: [Inventory]
+      operationId: listStockMovements
+      summary: List immutable stock movement facts within authorized organizations
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+        - in: query
+          name: productId
+          schema: {type: string}
+        - in: query
+          name: stockLocationId
+          schema: {type: string}
+      responses:
+        "200": {description: Organization-scoped immutable movement history}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: recordStockMovement
+      summary: Record an immutable receipt, issue, adjustment or atomic transfer
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, stockLocationId, movementType, quantity, unitCode, source]
+              properties:
+                productId: {type: string}
+                stockLocationId: {type: string}
+                destinationStockLocationId: {type: string}
+                movementType: {type: string, enum: [receipt, issue, adjustment_in, adjustment_out, transfer]}
+                quantity: {type: string, pattern: "^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,6})?$"}
+                unitCode: {type: string}
+                lotId: {type: string}
+                source:
+                  type: object
+                  required: [type, id]
+                  properties:
+                    type: {type: string}
+                    id: {type: string}
+                reason: {type: string, minLength: 5, maxLength: 300}
+      responses:
+        "201": {description: Movement recorded; transfer writes paired source/destination facts atomically}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {description: Idempotency or movement conflict}
+        "422": {description: Insufficient stock or invalid inventory state}
+  /inventory/balances:
+    get:
+      tags: [Inventory]
+      operationId: getStockBalance
+      summary: Read a product balance for an authorized stock location
+      parameters:
+        - in: query
+          name: productId
+          required: true
+          schema: {type: string}
+        - in: query
+          name: stockLocationId
+          required: true
+          schema: {type: string}
+        - in: query
+          name: lotId
+          schema: {type: string}
+      responses:
+        "200": {description: Decimal quantity on hand, reserved, in transit and available}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Stock location not found}
   /mac/auth/bootstrap:
     post:
       security: []
