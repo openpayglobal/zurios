@@ -59,7 +59,11 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("admin_audit_events").createIndex({occurredAt:-1}),
   db.collection("admin_audit_events").createIndex({"actor.operatorId":1,occurredAt:-1}),
   db.collection("mac_auth_rate_limits").createIndex({key:1},{unique:true}),
-  db.collection("mac_auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0})
+  db.collection("mac_auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
+  db.collection("platform_operator_invitations").createIndex({invitationId:1},{unique:true}),
+  db.collection("platform_operator_invitations").createIndex({tokenHash:1},{unique:true}),
+  db.collection("platform_operator_invitations").createIndex({emailNormalized:1},{unique:true,partialFilterExpression:{status:{$in:["pending","pending_mfa"]}}}),
+  db.collection("platform_operator_invitations").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
 }
 export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
