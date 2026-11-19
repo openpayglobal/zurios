@@ -77,7 +77,8 @@ export const PurchaseOrderLineSchema=z.object({
  description:z.string().min(1).max(250),
  quantityMilli:z.number().int().positive(),
  unitPriceMinor:z.number().int().nonnegative(),
- taxRateBps:z.number().int().min(0).max(10000)
+ taxRateBps:z.number().int().min(0).max(10000),
+ receivedQuantityMilli:z.number().int().nonnegative().default(0)
 });
 export const PurchaseOrderSchema=z.object({
  tenantId:z.string().min(1),organizationId:z.string().min(1).optional(),
@@ -548,3 +549,13 @@ export const TimeEntryDecisionSchema=z.object({
  decision:z.enum(["approved","rejected"]),reason:z.string().min(10).max(1000),expectedVersion:z.number().int().nonnegative()
 });
 export type TimeEntryDecision=z.infer<typeof TimeEntryDecisionSchema>;
+
+
+export const PurchaseOrderReceiptSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),receiptId:z.string().min(1),purchaseOrderId:z.string().min(1),
+ receivedAt:z.string().datetime(),lines:z.array(z.object({sku:z.string().min(1).max(100),quantityMilli:z.number().int().positive()})).min(1)
+}).superRefine((receipt,ctx)=>{
+ const skus=receipt.lines.map(line=>line.sku);
+ if(new Set(skus).size!==skus.length)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines"],message:"Receipt lines must have unique SKUs"});
+});
+export type PurchaseOrderReceipt=z.infer<typeof PurchaseOrderReceiptSchema>;
