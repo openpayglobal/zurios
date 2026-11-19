@@ -98,7 +98,8 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    if(bootstrapUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    if(!sameSecret(request.headers["x-mac-bootstrap-token"] as string|undefined,config.bootstrapToken))return reply.code(401).send({error:"UNAUTHENTICATED"});
    try{
-    const body=bootstrapSchema.parse(request.body),collection=db.collection("platform_operators");\n    await enforceMacRateLimit(db,request,"bootstrap");
+    const body=bootstrapSchema.parse(request.body),collection=db.collection("platform_operators");
+    await enforceMacRateLimit(db,request,"bootstrap");
     if(await collection.estimatedDocumentCount()>0)return reply.code(409).send({error:"BOOTSTRAP_CLOSED"});
     const email=normalized(body.email),operatorId=randomUUID(),secret=generateTotpSecret(),now=new Date();
     const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.manage","mac.security.read"];
@@ -129,7 +130,9 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    reply.header("Cache-Control","no-store");
    if(authUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    try{
-    const body=loginSchema.parse(request.body),email=normalized(body.email);\n    await enforceMacRateLimit(db,request,email);\n    const operator=await db.collection("platform_operators").findOne({emailNormalized:email,status:"active",mfaEnabled:true});
+    const body=loginSchema.parse(request.body),email=normalized(body.email);
+    await enforceMacRateLimit(db,request,email);
+    const operator=await db.collection("platform_operators").findOne({emailNormalized:email,status:"active",mfaEnabled:true});
     if(!operator?.passwordHash||!await verifyPassword(body.password,operator.passwordHash)||!operator.mfaSecretEncrypted)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
     const secret=decryptMfaSecret(operator.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,body.code);
     if(step===null)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
