@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -49,6 +49,30 @@ async function permit(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principa
   return reply.code(403).send({error:decision.reason==="EXPLICIT_DENY"?"ABAC_POLICY_DENIED":"ABAC_POLICY_NO_MATCHING_ALLOW"});
  }
  return undefined;
+}
+async function authorizedOrganizationIds(db:Db,request:FastifyRequest,p:Principal,permission:string,organizationIds:string[]):Promise<string[]>{
+ const organizations=await db.collection<{tenantId:string;organizationId:string;status:string}>("organizations")
+  .find({tenantId:p.tenantId,organizationId:{$in:organizationIds},status:"active"}).toArray();
+ const allowed:string[]=[];
+ for(const organization of organizations){
+  const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:organization.organizationId};
+  if(!authorizeDomainResource(p,permission,scope)){
+   try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"authorization.denied",resourceType:"domain_api",resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{permission,organizationId:organization.organizationId}});}
+   catch(error){request.log.error({err:error,correlationId:request.id},"Failed to persist domain list denial audit");}
+   continue;
+  }
+  const decision=await evaluatePolicy(db,p.tenantId,{
+   subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},
+   resource:{...scope,resourceType:"domain_api",path:request.routeOptions.url??"",method:request.method},
+   action:permission,environment:{}
+  });
+  if(decision.allowed)allowed.push(organization.organizationId);
+  else{
+   try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"authorization.denied",resourceType:"domain_api",resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{permission,organizationId:organization.organizationId,reason:decision.reason}});}
+   catch(error){request.log.error({err:error,correlationId:request.id},"Failed to persist ABAC list denial audit");}
+  }
+ }
+ return allowed;
 }
 async function authorizedLocationIds(db:Db,request:FastifyRequest,p:Principal,permission:string,locationIds:string[]):Promise<string[]>{
  const locations=await db.collection<{tenantId:string;locationId:string;organizationId:string;status:string}>("locations")
@@ -297,5 +321,121 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
+  app.get("/erp/accounts",async(request,reply)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"erp.account.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("erp_accounts").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({accountCode:1}).limit(500).toArray()};
+  });
+
+  app.post("/erp/accounts",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"erp.account.create",scope);if(denied)return denied;
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=AccountSchema.parse({...raw,organizationId});
+    const result=await createAccount(db,p.tenantId,p.userId,body,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.get("/erp/fiscal-periods",async(request,reply)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"erp.fiscal_period.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("erp_fiscal_periods").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({startsAt:-1}).limit(200).toArray()};
+  });
+
+  app.post("/erp/fiscal-periods",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"erp.fiscal_period.create",scope);if(denied)return denied;
+    const body=FiscalPeriodSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createFiscalPeriod(db,p.tenantId,p.userId,body as Record<string,unknown>,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.post("/erp/purchase-orders",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const warehouseId=typeof raw.warehouseId==="string"?raw.warehouseId:"";
+    if(!warehouseId)return reply.code(400).send({error:"WAREHOUSE_ID_REQUIRED"});
+    const scope=await resolveWarehouseScope(db,p.tenantId,warehouseId);
+    if(!scope)return reply.code(422).send({error:"ACTIVE_WAREHOUSE_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"erp.purchase_order.create",scope);if(denied)return denied;
+    const body=PurchaseOrderSchema.parse({...raw,tenantId:p.tenantId,idempotencyKey:key,organizationId:scope.organizationId});
+    const result=await createPurchaseOrder(db,body,p.userId);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.get("/erp/invoices",async(request,reply)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"erp.invoice.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("erp_invoices").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({issuedAt:-1}).limit(500).toArray()};
+  });
+
+  app.post("/erp/invoices",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"erp.invoice.create",scope);if(denied)return denied;
+    const body=InvoiceSchema.parse({...raw,tenantId:p.tenantId,idempotencyKey:key,organizationId});
+    const result=await createInvoice(db,body,p.userId);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.post("/erp/invoices/:invoiceId/payments",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {invoiceId}=z.object({invoiceId:z.string().min(1)}).parse(request.params);
+    const body=z.object({paymentId:z.string().min(1),amountMinor:z.number().int().positive(),currency:z.string().regex(/^[A-Z]{3}$/)}).parse(request.body);
+    const invoice=await db.collection<{tenantId:string;invoiceId:string;organizationId?:string}>("erp_invoices").findOne({tenantId:p.tenantId,invoiceId});
+    if(!invoice)return reply.code(404).send({error:"INVOICE_NOT_FOUND"});
+    if(!invoice.organizationId)return reply.code(403).send({error:"INVOICE_ORGANIZATION_SCOPE_MISSING"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:invoice.organizationId};
+    const denied=await permit(db,request,reply,p,"erp.invoice.payment.allocate",scope);if(denied)return denied;
+    const result=await allocateInvoicePayment(db,{tenantId:p.tenantId,actorId:p.userId,key,paymentId:body.paymentId,invoiceId,amountMinor:body.amountMinor,currency:body.currency});
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.post("/erp/journal-entries/post",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const fiscalPeriodId=typeof raw.fiscalPeriodId==="string"?raw.fiscalPeriodId:"";
+    if(!fiscalPeriodId)return reply.code(400).send({error:"FISCAL_PERIOD_ID_REQUIRED"});
+    const period=await db.collection<{tenantId:string;periodId:string;organizationId?:string}>("erp_fiscal_periods").findOne({tenantId:p.tenantId,periodId:fiscalPeriodId});
+    if(!period)return reply.code(422).send({error:"FISCAL_PERIOD_NOT_FOUND"});
+    if(!period.organizationId)return reply.code(403).send({error:"FISCAL_PERIOD_ORGANIZATION_SCOPE_MISSING"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:period.organizationId};
+    const denied=await permit(db,request,reply,p,"erp.journal.post",scope);if(denied)return denied;
+    const body=JournalEntrySchema.parse({...raw,tenantId:p.tenantId,idempotencyKey:key,organizationId:period.organizationId});
+    const result=await postJournalEntry(db,body,p.userId);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
  };
 }
