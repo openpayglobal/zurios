@@ -8,7 +8,8 @@ export async function createMembership(db:Db,tenantId:string,actorId:string,inpu
  const d=schema.parse(input),c=coreCollections(db);
  assertUnique(d.organizationIds,"DUPLICATE_ORGANIZATION_SCOPE");assertUnique(d.locationIds,"DUPLICATE_LOCATION_SCOPE");assertUnique(d.roleIds,"DUPLICATE_ROLE_ASSIGNMENT");
  if(!await c.tenants.findOne({tenantId,status:"active"},session?{session}:{}))throw new Error("TENANT_NOT_ACTIVE");
- const user=await c.users.findOne({userId:d.userId,status:options?.allowInvitedUser?{$in:["active","invited"]}:"active"},session?{session}:{});\n if(!user)throw new Error("ACTIVE_USER_REQUIRED");
+ const user=await c.users.findOne({userId:d.userId,status:options?.allowInvitedUser?{$in:["active","invited"]}:"active"},session?{session}:{});
+ if(!user)throw new Error("ACTIVE_USER_REQUIRED");
  if(d.organizationIds.length&&await c.organizations.countDocuments({tenantId,organizationId:{$in:d.organizationIds},status:"active"},session?{session}:{})!==d.organizationIds.length)throw new Error("INVALID_ORGANIZATION_SCOPE");
  if(d.locationIds.length){
   const locations=await c.locations.find({tenantId,locationId:{$in:d.locationIds},status:"active"},{projection:{_id:0,locationId:1,organizationId:1},...(session?{session}:{})}).toArray();
