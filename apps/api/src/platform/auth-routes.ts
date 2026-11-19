@@ -3,7 +3,7 @@ import type {FastifyPluginAsync} from "fastify";
 import {z,ZodError} from "zod";
 import {createHash} from "node:crypto";
 import type {AuthConfig} from "./auth-service.js";
-import {acceptInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,login,logout,refreshLogin,resetPassword,verifyEmail,verifyMfaLogin} from "./auth-service.js";
+import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,login,logout,refreshLogin,resetPassword,verifyEmail,verifyMfaLogin} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
 const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64)});
 const mfaSchema=z.object({challengeToken:z.string().min(20),code:z.string().min(6).max(64)});
@@ -43,6 +43,13 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    try{
     const params=z.object({userId:z.string().min(1)}).parse(request.params),body=z.object({token:z.string().min(20),password:z.string().min(12).max(128)}).parse(request.body);
     await acceptInvitation(db,params.userId,body.token,body.password);return reply.code(204).send();
+   }catch(error){return failure(error,reply);}
+  });
+  app.post("/auth/memberships/:membershipId/accept",async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   try{
+    const params=z.object({membershipId:z.string().min(1)}).parse(request.params),body=z.object({token:z.string().min(20),password:z.string().min(12).max(128).optional()}).parse(request.body);
+    await acceptMembershipInvitation(db,params.membershipId,body.token,body.password);return reply.code(204).send();
    }catch(error){return failure(error,reply);}
   });
   app.post("/auth/email/verify",async(request,reply)=>{
