@@ -26,8 +26,9 @@ if(!userId||!permissions.length||reason.length<20){
    if(!root)root=await createOrganization(db,"platform","bootstrap:platform-operator",{code:"ROOT",name:"Zuri OS Platform",type:"group"},session);
    let role=await coreCollections(db).roles.findOne({tenantId:"platform",key:"platform-operator-base"},{session});
    if(!role)role=await createRole(db,"platform","bootstrap:platform-operator",{key:"platform-operator-base",name:"Platform Operator Base",description:"Base identity role; platform permissions are sourced from the separate operator grant.",permissionKeys:[],isSystem:true},session);
-   const membership=await coreCollections(db).memberships.findOne({tenantId:"platform",userId, status:"active"},{session});
+   const membership=await coreCollections(db).memberships.findOne({tenantId:"platform",userId,status:"active"},{session});
    if(!membership)await createMembership(db,"platform","bootstrap:platform-operator",{userId,organizationIds:[root.organizationId],locationIds:[],roleIds:[role.roleId]},session);
+   else await coreCollections(db).memberships.updateOne({tenantId:"platform",membershipId:membership.membershipId},{$addToSet:{roleIds:role.roleId,organizationIds:root.organizationId},$set:{updatedAt:new Date(),updatedBy:"bootstrap:platform-operator"}},{session});
    const grant=await grantPlatformOperator(db,session,{userId,permissionKeys:permissions,reason}, "bootstrap:controlled-operator-provisioning");
    await appendAuditEvent(db,{tenantId:"platform",actor:{service:"platform-bootstrap"},action:"platform.operator.granted",resourceType:"platform_operator_grant",resourceId:grant.grantId,outcome:"success",metadata:{userId,permissionKeys:permissions,reason}},session);
   },{writeConcern:{w:"majority"}});
