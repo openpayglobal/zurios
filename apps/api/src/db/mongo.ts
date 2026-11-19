@@ -52,6 +52,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("platform_operators").createIndex({operatorId:1},{unique:true}),
   db.collection("platform_operators").createIndex({emailNormalized:1},{unique:true}),
   db.collection("platform_operators").createIndex({bootstrapOwner:1},{unique:true,partialFilterExpression:{bootstrapOwner:true}}),
+  db.collection("platform_operators").createIndex({pendingMfaExpiresAt:1},{expireAfterSeconds:0}),
   db.collection("platform_operator_sessions").createIndex({sessionId:1},{unique:true}),
   db.collection("platform_operator_sessions").createIndex({operatorId:1,createdAt:-1}),
   db.collection("platform_operator_sessions").createIndex({expiresAt:1},{expireAfterSeconds:0}),
