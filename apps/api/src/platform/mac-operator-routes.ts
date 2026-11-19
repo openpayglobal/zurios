@@ -156,6 +156,26 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    return reply.code(result.modifiedCount?204:404).send();
   });
   app.get("/mac/auth/me",{preHandler:authenticated},async request=>({operator:publicOperator(await db.collection("platform_operators").findOne({operatorId:request.macOperator!.operatorId}))}));
+  app.get("/mac/operators",{preHandler:[authenticated,permission("mac.operators.manage")]},async request=>{
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.operators.read",resourceType:"platform_operator_inventory",outcome:"success",request});
+   const items=await db.collection("platform_operators").find({},{projection:{_id:0,operatorId:1,emailNormalized:1,displayName:1,permissions:1,tenantIds:1,status:1,mfaEnabled:1,createdAt:1,updatedAt:1}}).sort({emailNormalized:1}).limit(100).toArray();
+   return {data:items.map(publicOperator)};
+  });
+  app.get("/mac/sessions",{preHandler:[authenticated,permission("mac.operators.manage")]},async request=>{
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.sessions.read",resourceType:"platform_operator_session_inventory",outcome:"success",request});
+   const items=await db.collection("platform_operator_sessions").find({expiresAt:{$gt:new Date()}},{projection:{_id:0,sessionId:1,operatorId:1,createdAt:1,lastUsedAt:1,expiresAt:1,revokedAt:1,revokedReason:1}}).sort({createdAt:-1}).limit(100).toArray();
+   return {data:items};
+  });
+  app.post("/mac/sessions/:sessionId/revoke",{preHandler:[authenticated,permission("mac.operators.manage")]},async(request,reply)=>{
+   const params=z.object({sessionId:z.string().uuid()}).parse(request.params);
+   const body=z.object({reason:z.string().trim().min(10).max(300)}).parse(request.body);
+   const principal=request.macOperator!;
+   if(params.sessionId===principal.sessionId)return reply.code(409).send({error:"USE_LOGOUT_FOR_CURRENT_SESSION"});
+   const result=await db.collection("platform_operator_sessions").updateOne({sessionId:params.sessionId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{revokedAt:new Date(),revokedReason:"operator_revoked",revokedBy:principal.operatorId}});
+   if(!result.modifiedCount)return reply.code(404).send({error:"SESSION_NOT_FOUND"});
+   await writeAdminAudit(db,{actorId:principal.operatorId,action:"mac.sessions.revoke",resourceType:"platform_operator_session",resourceId:params.sessionId,outcome:"success",request,metadata:{reason:body.reason}});
+   return reply.code(204).send();
+  });
   app.get("/mac/overview",{preHandler:[authenticated,permission("mac.overview.read")]},async request=>{
    await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.overview.read",resourceType:"platform_overview",outcome:"success",request});
    const [tenants,operators,sessions]=await Promise.all([
