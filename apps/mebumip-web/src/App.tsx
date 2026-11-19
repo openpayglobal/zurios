@@ -18,7 +18,7 @@ const objectives: Objective[] = [
   { id: "E", title: "External software integrations", phase: "Phase 6", status: "Planned", description: "Versioned APIs, outbound webhooks, Zuri OS adapter and developer access.", icon: Waypoints },
 ];
 
-const phases = [
+const phases: Array<[string, string, string, string]> = [
   ["0", "Product governance & Meta prerequisites", "In progress", "Meta portfolio creation deferred by owner"],
   ["1", "Standalone foundation, MAC & MAD", "In progress", "Product workspace and administration shell"],
   ["2", "Facebook & Instagram", "Not started", "Objective A"],
