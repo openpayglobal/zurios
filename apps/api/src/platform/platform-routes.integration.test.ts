@@ -56,6 +56,15 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   const unauthenticated=await app.inject({method:"GET",url:"/v1/platform/organizations"});
   assert.equal(unauthenticated.statusCode,401);
 
+  const deniedWithoutAllow=await app.inject({method:"GET",url:"/v1/platform/organizations",headers:{authorization:`Bearer ${token}`}});
+  assert.equal(deniedWithoutAllow.statusCode,403);
+  assert.equal(deniedWithoutAllow.json().error,"ABAC_POLICY_NO_MATCHING_ALLOW");
+  const adminRole=await db.collection("roles").findOne({tenantId:"tenant-a",roleId:"role-admin"});
+  const allowedActions=(adminRole?.permissionKeys??[]) as string[];
+  await db.collection("policies").insertMany(allowedActions.map((action,index)=>({
+   tenantId:"tenant-a",policyId:"route-allow-"+index,key:"route-allow-"+index,effect:"allow",priority:0,
+   subject:{userId:"operator-a"},resource:{},actions:[action],conditions:{},status:"active"
+  })));
   const organizations=await app.inject({
    method:"GET",url:"/v1/platform/organizations",headers:{authorization:`Bearer ${token}`}
   });
