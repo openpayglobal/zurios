@@ -2,14 +2,14 @@ import {Decimal128,type ClientSession,type Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
 
-const quantitySchema=z.string().regex(/^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,6})?$/).refine(v=>/[1-9]/.test(v),"Quantity must be greater than zero");
+const quantitySchema=z.string().regex(/^(?:0|[1-9][0-9]{0,17})(?:\.[0-9]{1,6})?$/).refine(v=>/[1-9]/.test(v),"Quantity must be greater than zero");
 const productSchema=z.object({
  sku:z.string().trim().min(1).max(80).regex(/^[A-Za-z0-9._/-]+$/),
  name:z.string().trim().min(2).max(200),
  baseUnitCode:z.string().trim().min(1).max(12).transform(v=>v.toUpperCase()),
  categoryId:z.string().optional(),
  trackLot:z.boolean().default(false),
- trackSerial:z.boolean().default(false),
+ trackSerial:z.literal(false).default(false),
  allowNegativeStock:z.boolean().default(false)
 });
 const locationSchema=z.object({
@@ -56,8 +56,8 @@ async function applyDelta(db:Db,input:{tenantId:string;productId:string;stockLoc
  if(!balance)throw new Error("STOCK_BALANCE_MISSING");
  return balance;
 }
-function movementDocument(input:{tenantId:string;movementId:string;productId:string;stockLocationId:string;movementType:string;quantity:string;unitCode:string;lotId?:string;source:{type:string;id:string};idempotencyKey:string;occurredAt:Date;actorId:string;transferId?:string}){
- return {tenantId:input.tenantId,movementId:input.movementId,productId:input.productId,stockLocationId:input.stockLocationId,movementType:input.movementType,quantity:decimal(input.quantity),unitCode:input.unitCode,...(input.lotId?{lotId:input.lotId}:{}),source:input.source,idempotencyKey:input.idempotencyKey,occurredAt:input.occurredAt,actor:{type:"user",id:input.actorId},...(input.transferId?{transferId:input.transferId}:{}),schemaVersion:1,createdAt:new Date()};
+function movementDocument(input:{tenantId:string;movementId:string;productId:string;stockLocationId:string;movementType:string;quantity:string;unitCode:string;lotId?:string;source:{type:string;id:string};idempotencyKey:string;occurredAt:Date;actorId:string;transferId?:string;reason?:string}){
+ return {tenantId:input.tenantId,movementId:input.movementId,productId:input.productId,stockLocationId:input.stockLocationId,movementType:input.movementType,quantity:decimal(input.quantity),unitCode:input.unitCode,...(input.lotId?{lotId:input.lotId}:{}),source:input.source,idempotencyKey:input.idempotencyKey,occurredAt:input.occurredAt,actor:{type:"user",id:input.actorId},...(input.transferId?{transferId:input.transferId}:{}),...(input.reason?{reason:input.reason}:{}),schemaVersion:1,createdAt:new Date()};
 }
 export async function createInventoryProduct(db:Db,tenantId:string,actorId:string,input:unknown,session:ClientSession){
  const data=productSchema.parse(input),now=new Date(),productId=newId("prd"),doc:StockProduct={tenantId,productId,...data,skuNormalized:data.sku.trim().toUpperCase(),status:"active",createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
@@ -75,6 +75,8 @@ export async function recordStockMovement(db:Db,tenantId:string,actorId:string,i
  if(!product)throw new Error("PRODUCT_NOT_FOUND");
  if(data.unitCode!==product.baseUnitCode)throw new Error("UNIT_MISMATCH");
  if(product.trackLot&&!data.lotId)throw new Error("LOT_REQUIRED");
+ if(product.trackSerial)throw new Error("SERIAL_TRACKING_NOT_IMPLEMENTED");
+ if(data.lotId&&!await db.collection("stock_lots").findOne({tenantId,lotId:data.lotId,productId:data.productId,status:"active"},{session}))throw new Error("STOCK_LOT_NOT_FOUND");
  const source=await locations.findOne({tenantId,stockLocationId:data.stockLocationId,status:"active"},{session});
  if(!source)throw new Error("STOCK_LOCATION_NOT_FOUND");
  if(data.movementType==="transfer"){
@@ -82,20 +84,20 @@ export async function recordStockMovement(db:Db,tenantId:string,actorId:string,i
   if(!destination)throw new Error("DESTINATION_STOCK_LOCATION_NOT_FOUND");
  }
  const movements=db.collection("stock_movements"),now=data.occurredAt??new Date();
- const exists=await movements.findOne({tenantId,idempotencyKey:data.idempotencyKey},{session});
+ const exists=await movements.findOne({tenantId,idempotencyKey:data.movementType==="transfer"?{$in:[data.idempotencyKey,data.idempotencyKey+":out",data.idempotencyKey+":in"]}:data.idempotencyKey},{session});
  if(exists)throw new Error("STOCK_MOVEMENT_ALREADY_RECORDED");
  const transferId=data.movementType==="transfer"?newId("str"):undefined;
  const movementDocs=[];
  if(data.movementType==="transfer"){
   await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.stockLocationId,lotId:data.lotId,quantity:data.quantity,direction:-1,allowNegative:product.allowNegativeStock,actorId,session});
   await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.destinationStockLocationId!,lotId:data.lotId,quantity:data.quantity,direction:1,allowNegative:true,actorId,session});
-  movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.stockLocationId,movementType:"transfer_out",quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey+":out",occurredAt:now,actorId,transferId}));
+  movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.stockLocationId,movementType:"transfer_out",quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey+":out",occurredAt:now,actorId,transferId,...(data.reason?{reason:data.reason}:{})}));
   movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.destinationStockLocationId!,movementType:"transfer_in",quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey+":in",occurredAt:now,actorId,transferId}));
   await db.collection("stock_transfer_orders").insertOne({tenantId,transferId,productId:data.productId,sourceStockLocationId:data.stockLocationId,destinationStockLocationId:data.destinationStockLocationId,quantity:decimal(data.quantity),unitCode:data.unitCode,lotId:data.lotId,source:data.source,status:"completed",createdAt:new Date(),createdBy:actorId},{session});
  }else{
   const direction=data.movementType==="receipt"||data.movementType==="adjustment_in"?1:-1;
   await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.stockLocationId,lotId:data.lotId,quantity:data.quantity,direction,allowNegative:product.allowNegativeStock,actorId,session});
-  movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.stockLocationId,movementType:data.movementType,quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey,occurredAt:now,actorId}));
+  movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.stockLocationId,movementType:data.movementType,quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey,occurredAt:now,actorId,...(data.reason?{reason:data.reason}:{})}));
  }
  await movements.insertMany(movementDocs,{session});
  return {transferId,movements:movementDocs};
