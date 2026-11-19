@@ -6,3 +6,4 @@ export * from "./hr-service.js";
 export * from "./payroll-service.js";
 export * from "./payment-service.js";
 export * from "./commerce-service.js";
+export * from "./asset-service.js";
