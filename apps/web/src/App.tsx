@@ -28,10 +28,10 @@ function cn(...values:Array<string|false|undefined>){return values.filter(Boolea
 function Panel({children,className=""}:{children:ReactNode;className?:string}){
  return <section className={cn("rounded-2xl border border-white/[0.08] bg-[#111d2e]/85 shadow-[0_18px_55px_rgba(0,0,0,.12)]",className)}>{children}</section>;
 }
-function SectionTitle({eyebrow,title,description,action}:{eyebrow:string;title:string;description:string;action?:React.ReactNode}){
+function SectionTitle({eyebrow,title,description,action}:{eyebrow:string;title:string;description:string;action?:ReactNode}){
  return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200/80">{eyebrow}</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-100 md:text-3xl">{title}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{description}</p></div>{action}</div>;
 }
-function Button({children,onClick,disabled=false,variant="primary",type="button"}:{children:React.ReactNode;onClick?:()=>void;disabled?:boolean;variant?:"primary"|"secondary"|"danger";type?:"button"|"submit"}){
+function Button({children,onClick,disabled=false,variant="primary",type="button"}:{children:ReactNode;onClick?:()=>void;disabled?:boolean;variant?:"primary"|"secondary"|"danger";type?:"button"|"submit"}){
  const styles={primary:"border-cyan-200/20 bg-cyan-200/[0.12] text-cyan-100 hover:bg-cyan-200/[0.18]",secondary:"border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",danger:"border-rose-300/20 bg-rose-300/[0.08] text-rose-200 hover:bg-rose-300/[0.14]"};
  return <button type={type} onClick={onClick} disabled={disabled} className={cn("inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40",styles[variant])}>{children}</button>;
 }
@@ -132,7 +132,7 @@ export default function App(){
   }catch(e){setError(e instanceof Error?e.message:"Sign-in failed.");}
   finally{setBusy(false);}
  };
- const verifyMfa=async(event:React.FormEvent)=>{
+ const verifyMfa=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
    const response=await fetch(API_BASE+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
@@ -175,7 +175,7 @@ export default function App(){
  const configRows=(data.data??[]) as any[];
  const tenants=(data.data??[]) as any[];
 
- const submitInvitation=async(event:React.FormEvent<HTMLFormElement>)=>{
+ const submitInvitation=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   try{
    await api("/v1/platform/admin/users/invitations",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({email:form.get("email"),displayName:form.get("displayName"),organizationIds:[form.get("organizationId")],locationIds:form.get("locationId")?[form.get("locationId")]:[],roleIds:[],reason:form.get("reason")})});
@@ -190,7 +190,7 @@ export default function App(){
   try{await api("/v1/platform/admin/break-glass/"+grantId+"/revoke",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason})});setNotice("Emergency grant revoked.");void loadView("breakglass");}
   catch(e){setError(e instanceof Error?e.message:"Grant revocation failed.");}
  };
- const updateConfig=async(event:React.FormEvent<HTMLFormElement>)=>{
+ const updateConfig=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget),key=String(form.get("key")),value=form.get("value");
   try{await api("/v1/platform/admin/configuration/"+key,{method:"PUT",headers:{"idempotency-key":idempotency()},body:JSON.stringify({value,reason:form.get("reason")})});setNotice("Tenant configuration updated.");void loadView("configuration");}
   catch(e){setError(e instanceof Error?e.message:"Configuration update failed.");}
@@ -216,7 +216,7 @@ export default function App(){
   try{await api("/v1/platform/admin/tenants/"+tenantId+"/lifecycle-requests",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({action:form.get("action"),reason:form.get("reason")})});setNotice("Platform tenant lifecycle request submitted for independent approval.");event.currentTarget.reset();void loadView("governance");}
   catch(e){setError(e instanceof Error?e.message:"Tenant lifecycle request failed.");}
  };
- const createTenant=async(event:React.FormEvent<HTMLFormElement>)=>{
+ const createTenant=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   try{await api("/v1/platform/admin/tenants",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({slug:form.get("slug"),legalName:form.get("legalName"),displayName:form.get("displayName"),defaultLocale:"en",defaultCurrency:"UGX",timezone:"Africa/Kampala",owner:{email:form.get("ownerEmail"),displayName:form.get("ownerName")},reason:form.get("reason")})});setNotice("Tenant provisioned. Initial owner invitation is queued.");event.currentTarget.reset();void loadView("tenants");}
   catch(e){setError(e instanceof Error?e.message:"Tenant provisioning failed.");}
