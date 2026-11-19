@@ -18,7 +18,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("roles").createIndex({tenantId:1,roleId:1},{unique:true}),db.collection("roles").createIndex({tenantId:1,key:1},{unique:true}),
   db.collection("policies").createIndex({tenantId:1,key:1},{unique:true}),db.collection("sessions").createIndex({tenantId:1,sessionId:1},{unique:true}),
   db.collection("sessions").createIndex({expiresAt:1},{expireAfterSeconds:0}),db.collection("feature_flags").createIndex({tenantId:1,key:1},{unique:true}),
-  db.collection("audit_events").createIndex({tenantId:1,occurredAt:-1}),db.collection("audit_events").createIndex({eventId:1},{unique:true}),
+  db.collection("audit_events").createIndex({tenantId:1,occurredAt:-1}),db.collection("audit_events").createIndex({eventId:1},{unique:true}),\n  db.collection("idempotency_records").createIndex({tenantId:1,actorId:1,operation:1,key:1},{unique:true}),db.collection("idempotency_records").createIndex({expiresAt:1},{expireAfterSeconds:0}),\n  db.collection("outbox_events").createIndex({eventId:1},{unique:true}),db.collection("outbox_events").createIndex({status:1,availableAt:1,occurredAt:1}),db.collection("outbox_events").createIndex({status:1,leaseUntil:1}),
   db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
