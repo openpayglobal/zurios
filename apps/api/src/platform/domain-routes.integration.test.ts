@@ -52,7 +52,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create",
    "hr.employee.read","hr.employee.create","hr.leave.read","hr.leave.request","hr.leave.approve",
    "payroll.run.read","payroll.run.create","payroll.run.approve",
-   "payments.intent.read","payments.intent.create","payments.refund.request"
+   "payments.intent.read","payments.intent.create","payments.refund.request",
+   "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -352,7 +353,24 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    payload:{organizationId:"org-a",refundId:"refund-payment-api-001",paymentId:"payment-captured-api-001",amountMinor:500,reason:"Customer returned an item"}
   });
   assert.equal(refundRequest.statusCode,202);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=34);
+  const commerceProduct=await app.inject({
+   method:"POST",url:"/v1/commerce/products",headers:{...headers,"idempotency-key":"commerce-product-api-001"},
+   payload:{organizationId:"org-a",productId:"commerce-product-api-001",sku:"SKU-COM-API",name:"Commerce API product",currency:"UGX",unitPriceMinor:1000,taxRateBps:1800,status:"active"}
+  });
+  assert.equal(commerceProduct.statusCode,201);
+  await db.collection("inventory_reservations").insertOne({tenantId:"tenant-a",reservationId:"reservation-commerce-api-001",warehouseId:"warehouse-a",
+   orderId:"commerce-order-api-001",lines:[{sku:"SKU-COM-API",quantityMilli:1000}],status:"reserved"});
+  const commerceOrder=await app.inject({
+   method:"POST",url:"/v1/commerce/orders",headers:{...headers,"idempotency-key":"commerce-order-api-001"},
+   payload:{organizationId:"org-a",orderId:"commerce-order-api-001",customerId:"customer-api",warehouseId:"warehouse-a",
+    reservationId:"reservation-commerce-api-001",lines:[{sku:"SKU-COM-API",quantityMilli:1000}]}
+  });
+  assert.equal(commerceOrder.statusCode,201);
+  assert.equal(commerceOrder.json().body.totalMinor,1180);
+  const commerceOrders=await app.inject({method:"GET",url:"/v1/commerce/orders",headers});
+  assert.equal(commerceOrders.statusCode,200);
+  assert.equal(commerceOrders.json().data.length,1);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=37);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
