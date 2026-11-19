@@ -418,7 +418,7 @@ paths:
                 baseUnitCode: {type: string, maxLength: 12}
                 categoryId: {type: string}
                 trackLot: {type: boolean, default: false}
-                trackSerial: {type: boolean, default: false}
+                trackSerial: {type: boolean, enum: [false], default: false}
                 allowNegativeStock: {type: boolean, default: false}
       responses:
         "201": {description: Product created}
