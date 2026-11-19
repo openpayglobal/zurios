@@ -3,6 +3,7 @@ import type { Db } from "mongodb";
 export async function ensureMeBuMIPIndexes(db: Db): Promise<void> {
   await Promise.all([
     db.collection("users").createIndex({ normalizedEmail: 1 }, { unique: true, name: "users_email_unique" }),
+    db.collection("users").createIndex({ platformRole: 1 }, { unique: true, partialFilterExpression: { platformRole: "platform_owner" }, name: "single_platform_owner" }),
     db.collection("tenants").createIndex({ slug: 1 }, { unique: true, name: "tenants_slug_unique" }),
     db.collection("memberships").createIndex({ tenantId: 1, userId: 1 }, { unique: true, name: "membership_tenant_user_unique" }),
     db.collection("memberships").createIndex({ userId: 1, status: 1 }, { name: "membership_user_status" }),
