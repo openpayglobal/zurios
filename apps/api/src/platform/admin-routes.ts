@@ -284,9 +284,11 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return {data:await c.auditEvents.find(filter,{projection:{_id:0}}).sort({occurredAt:-1}).limit(q.limit).toArray()};
    }catch(error){return fail(error,reply);}
   });
-  app.get("/platform/admin/audit-exports",{preHandler:tenantGuard(db,config.jwtSecret,"platform.audit.export")},async request=>{
-   const p=principal(request),query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25)}).parse(request.query);
-   return {data:await db.collection("audit_export_jobs").find({tenantId:p.tenantId},{projection:{_id:0}}).sort({createdAt:-1}).limit(query.limit).toArray()};
+  app.get("/platform/admin/audit-exports",{preHandler:tenantGuard(db,config.jwtSecret,"platform.audit.export")},async(request,reply)=>{
+   try{
+    const p=principal(request),query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25)}).parse(request.query);
+    return {data:await db.collection("audit_export_jobs").find({tenantId:p.tenantId},{projection:{_id:0}}).sort({createdAt:-1}).limit(query.limit).toArray()};
+   }catch(error){return fail(error,reply);}
   });
   app.post("/platform/admin/audit-exports",{preHandler:tenantGuard(db,config.jwtSecret,"platform.audit.export")},async(request,reply)=>{
    const p=principal(request);try{
@@ -331,9 +333,11 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     });
    }catch(error){return fail(error,reply);}
   });
-  app.get("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.read")},async request=>{
-   const query=z.object({status:z.enum(["provisioning","active","suspended","closed"]).optional(),limit:z.coerce.number().int().min(1).max(200).default(100)}).parse(request.query);
-   return {data:await c.tenants.find({...query.status?{status:query.status}:{}},{projection:{_id:0}}).sort({createdAt:-1}).limit(query.limit).toArray()};
+  app.get("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.read")},async(request,reply)=>{
+   try{
+    const query=z.object({status:z.enum(["provisioning","active","suspended","closed"]).optional(),limit:z.coerce.number().int().min(1).max(200).default(100)}).parse(request.query);
+    return {data:await c.tenants.find(query.status?{status:query.status}:{},{projection:{_id:0}}).sort({createdAt:-1}).limit(query.limit).toArray()};
+   }catch(error){return fail(error,reply);}
   });
   app.post("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.provision")},async(request,reply)=>{
    const p=principal(request);try{
