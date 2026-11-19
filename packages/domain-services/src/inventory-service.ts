@@ -35,9 +35,9 @@ async function applyDelta(db:Db,session:ClientSession,delta:Delta,tenantId:strin
  await changeBalance(db,session,tenantId,warehouseId,sku,delta.onHand,delta.reserved);
  await writeLedger(db,session,delta,tenantId,warehouseId,sku,quantityMilli);
 }
-export async function createWarehouse(db:Db,input:unknown,actorId:string){
+export async function createWarehouse(db:Db,input:unknown,actorId:string,idempotencyKey?:string){
  const warehouse=WarehouseSchema.parse(input);
- return runIdempotentMutation(db,{tenantId:warehouse.tenantId,actorId,operation:"inventory.warehouse.create",key:"warehouse-"+warehouse.warehouseId,request:warehouse},async session=>{
+ return runIdempotentMutation(db,{tenantId:warehouse.tenantId,actorId,operation:"inventory.warehouse.create",key:idempotencyKey??"warehouse-"+warehouse.warehouseId,request:warehouse},async session=>{
   await db.collection("inventory_warehouses").insertOne({...warehouse,createdAt:new Date(),updatedAt:new Date(),createdBy:actorId},{session});
   await auditDomainMutation(db,session,warehouse.tenantId,actorId,"inventory.warehouse.created","inventory_warehouse",warehouse.warehouseId);
   return {statusCode:201,body:{warehouseId:warehouse.warehouseId}};
