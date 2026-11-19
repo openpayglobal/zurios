@@ -31,7 +31,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    db.collection("inventory_reservations").createIndex({tenantId:1,reservationId:1},{unique:true})
   ]);
   await db.collection("tenants").insertMany([{tenantId:"tenant-a",status:"active"},{tenantId:"tenant-b",status:"active"}]);
-  await db.collection("users").insertOne({userId:"inventory-user",status:"active"});
+  await db.collection("users").insertMany([{userId:"inventory-user",status:"active"},{userId:"hr-manager-user",status:"active"}]);
   await db.collection("organizations").insertMany([
    {tenantId:"tenant-a",organizationId:"org-a",status:"active"},
    {tenantId:"tenant-a",organizationId:"org-b",status:"active"},
@@ -49,7 +49,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "erp.account.read","erp.account.create","erp.fiscal_period.read","erp.fiscal_period.create","erp.purchase_order.create",
    "erp.invoice.read","erp.invoice.create","erp.invoice.payment.allocate","erp.journal.post",
    "crm.account.read","crm.account.create","crm.contact.read","crm.contact.create","crm.lead.read","crm.lead.create",
-   "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create"
+   "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create",
+   "hr.employee.read","hr.employee.create","hr.leave.read","hr.leave.request","hr.leave.approve"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -58,6 +59,14 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   });
   await db.collection("sessions").insertOne({
    tenantId:"tenant-a",sessionId:"inventory-session",userId:"inventory-user",membershipId:"inventory-membership",
+   expiresAt:new Date(now.getTime()+60_000),lastUsedAt:now
+  });
+  await db.collection("memberships").insertOne({
+   tenantId:"tenant-a",membershipId:"hr-manager-membership",userId:"hr-manager-user",
+   organizationIds:["org-a"],locationIds:["loc-a"],roleIds:["inventory-role"],status:"active"
+  });
+  await db.collection("sessions").insertOne({
+   tenantId:"tenant-a",sessionId:"hr-manager-session",userId:"hr-manager-user",membershipId:"hr-manager-membership",
    expiresAt:new Date(now.getTime()+60_000),lastUsedAt:now
   });
   await db.collection("policies").insertMany(permissions.map((action,index)=>({
@@ -74,6 +83,10 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience)
    .setSubject("inventory-user").setIssuedAt().setExpirationTime("5m").sign(signingKey);
   const headers={authorization:`Bearer ${token}`};
+  const managerToken=await new SignJWT({tenantId:"tenant-a",membershipId:"hr-manager-membership",sessionId:"hr-manager-session"})
+   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience)
+   .setSubject("hr-manager-user").setIssuedAt().setExpirationTime("5m").sign(signingKey);
+  const managerHeaders={authorization:`Bearer ${managerToken}`};
 
   const listed=await app.inject({method:"GET",url:"/v1/inventory/warehouses",headers});
   assert.equal(listed.statusCode,200);
@@ -264,7 +277,36 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    payload:{organizationId:"org-b",accountId:"crm-account-denied",name:"Out of scope",accountType:"prospect"}
   });
   assert.equal(deniedCrmAccount.statusCode,403);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=22);
+  const hrEmployee=await app.inject({
+   method:"POST",url:"/v1/hr/employees",headers:{...headers,"idempotency-key":"hr-employee-api-001"},
+   payload:{organizationId:"org-a",employeeId:"hr-employee-api-001",employeeNumber:"HR-001",userId:"employee-other",
+    firstName:"Grace",lastName:"O.",workEmail:"grace.hr@example.test",departmentId:"operations",positionTitle:"Operations Analyst",
+    employmentType:"permanent",status:"active",startDate:"2025-01-01T00:00:00.000Z"}
+  });
+  assert.equal(hrEmployee.statusCode,201);
+  const hrEmployees=await app.inject({method:"GET",url:"/v1/hr/employees",headers});
+  assert.equal(hrEmployees.statusCode,200);
+  assert.equal(hrEmployees.json().data.length,1);
+  const leave=await app.inject({
+   method:"POST",url:"/v1/hr/leave-requests",headers:{...headers,"idempotency-key":"hr-leave-api-001"},
+   payload:{organizationId:"org-a",leaveRequestId:"hr-leave-api-001",employeeId:"hr-employee-api-001",leaveType:"annual",
+    startsAt:"2026-12-01T00:00:00.000Z",endsAt:"2026-12-05T00:00:00.000Z",days:5}
+  });
+  assert.equal(leave.statusCode,201);
+  const selfApproval=await app.inject({
+   method:"POST",url:"/v1/hr/leave-requests/hr-leave-api-001/approve",headers:{...headers,"idempotency-key":"hr-leave-self-approve-api"},
+   payload:{organizationId:"org-a",reason:"Requester must not approve their own leave",expectedVersion:0}
+  });
+  assert.equal(selfApproval.statusCode,409);
+  const approvedLeave=await app.inject({
+   method:"POST",url:"/v1/hr/leave-requests/hr-leave-api-001/approve",headers:{...managerHeaders,"idempotency-key":"hr-leave-approve-api-001"},
+   payload:{organizationId:"org-a",reason:"Coverage confirmed and approval recorded",expectedVersion:0}
+  });
+  assert.equal(approvedLeave.statusCode,200);
+  const hrLeaveList=await app.inject({method:"GET",url:"/v1/hr/leave-requests",headers:managerHeaders});
+  assert.equal(hrLeaveList.statusCode,200);
+  assert.equal(hrLeaveList.json().data[0].status,"approved");
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=27);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
