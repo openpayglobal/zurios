@@ -41,6 +41,9 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 | `GET /v1/mac/overview` | Platform counts and integration status | `mac.overview.read` |
 | `GET /v1/mac/tenants` | Paginated tenant inventory | `mac.tenants.read` |
 | `GET /v1/mac/audit` | Global admin audit events | `mac.audit.read` |
+| `GET /v1/mac/operators` | Sanitized global operator inventory | `mac.operators.manage` |
+| `GET /v1/mac/sessions` | Active/recent operator session metadata | `mac.operators.manage` |
+| `POST /v1/mac/sessions/{sessionId}/revoke` | Revoke another operator session with reason | `mac.operators.manage` |
 
 ## Recovery and incident handling
 
@@ -52,7 +55,7 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 
 ## Current limitations
 
-- The API currently supports one initial bootstrap owner; multi-operator invitation, grant approval, suspension and recovery workflows are not yet implemented.
+- The API currently supports one initial bootstrap owner, operator inventory and session listing/revocation. Multi-operator invitation, grant approval, suspension and recovery workflows are not yet implemented.
 - MAC read APIs are implemented; runtime configuration writes, provider changes, deployments, rollbacks and other high-impact mutations remain disabled.
 - The MAC frontend reads authenticated overview, tenant and audit data. It keeps tokens in React memory only; reloading the tab requires a new sign-in.
 - No live deployment, production promotion, paid Vercel feature or new recurring cost is authorized by this runbook.
