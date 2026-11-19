@@ -26,7 +26,7 @@ export async function createPurchaseOrder(db:Db,input:unknown,actorId:string){
  const order=PurchaseOrderSchema.parse(input);
  return runIdempotentMutation(db,{tenantId:order.tenantId,actorId,operation:"erp.purchase_order.create",key:order.idempotencyKey,request:order},async session=>{
   const now=new Date();
-  await db.collection("erp_purchase_orders").insertOne({...order,orderedAt:new Date(order.orderedAt),...(order.expectedAt?{expectedAt:new Date(order.expectedAt)}:{}),createdAt:now,updatedAt:now,createdBy:actorId},{session});
+  await db.collection("erp_purchase_orders").insertOne({...order,orderedAt:new Date(order.orderedAt),...(order.expectedAt?{expectedAt:new Date(order.expectedAt)}:{}),createdAt:now,updatedAt:now,createdBy:actorId,version:0},{session});
   await auditDomainMutation(db,session,order.tenantId,actorId,"erp.purchase_order.created","erp_purchase_order",order.orderNumber,{supplierId:order.supplierId,totalMinor:order.totalMinor,currency:order.currency});
   if(order.status==="submitted")await appendOutboxEvent(db,session,{tenantId:order.tenantId,eventType:"erp.purchase_order.submitted",aggregateType:"purchase_order",aggregateId:order.orderNumber,payload:{orderNumber:order.orderNumber,supplierId:order.supplierId,warehouseId:order.warehouseId,totalMinor:order.totalMinor,currency:order.currency}});
   return {statusCode:201,body:{orderNumber:order.orderNumber}};
