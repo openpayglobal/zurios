@@ -10,7 +10,7 @@
     "noEmit": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "types": ["react"]
+    "types": ["react", "node"]
   },
   "include": ["src"]
 }
