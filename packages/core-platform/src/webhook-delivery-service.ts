@@ -1,4 +1,4 @@
-import {createHmac,randomUUID} from "node:crypto";
+import {createHash,createHmac,randomUUID} from "node:crypto";
 import {isIP} from "node:net";
 import type {Db} from "mongodb";
 import {z} from "zod";
@@ -20,7 +20,7 @@ function validateDestination(value:string,allowedHosts:string[]){
 export async function registerWebhookSubscription(db:Db,input:unknown,actorId:string,allowedHosts:string[]){
  const parsed=subscriptionSchema.parse(input),url=validateDestination(parsed.url,allowedHosts);
  const subscription={...parsed,url,status:"active" as const};
- return runIdempotentMutation(db,{tenantId:parsed.tenantId,actorId,operation:"platform.webhook.register",key:"webhook-"+parsed.endpointId,request:subscription},async session=>{
+ return runIdempotentMutation(db,{tenantId:parsed.tenantId,actorId,operation:"platform.webhook.register",key:"webhook-"+createHash("sha256").update(parsed.endpointId).digest("hex"),request:subscription},async session=>{
   const now=new Date();
   await db.collection<Subscription>("webhook_subscriptions").insertOne({...subscription,createdAt:now,updatedAt:now,createdBy:actorId},{session});
   return {statusCode:201,body:{endpointId:parsed.endpointId}};
