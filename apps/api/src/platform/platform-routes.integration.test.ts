@@ -14,20 +14,16 @@ const config:AuthConfig={
 };
 const signingKey=new TextEncoder().encode(config.jwtSecret);
 
-test("platform API enforces authenticated tenant and organization-location scope",{skip:!uri},async()=>{
+test("versioned platform API enforces tenant, scope, idempotency and outbox invariants",{skip:!uri},async()=>{
  const client=new MongoClient(uri!);await client.connect();
  const db=client.db(`zuri_api_it_${randomUUID().replaceAll("-","")}`);
  const app=Fastify();
  try{
   const now=new Date();
-  await db.collection("tenants").insertMany([
-   {tenantId:"tenant-a",status:"active"},
-   {tenantId:"tenant-b",status:"active"}
-  ]);
-  await db.collection("users").insertMany([
-   {userId:"operator-a",status:"active"},
-   {userId:"target-user",status:"active"}
-  ]);
+  await db.collection("idempotency_records").createIndex({tenantId:1,actorId:1,operation:1,key:1},{unique:true});
+  await db.collection("outbox_events").createIndex({eventId:1},{unique:true});
+  await db.collection("tenants").insertMany([{tenantId:"tenant-a",status:"active"},{tenantId:"tenant-b",status:"active"}]);
+  await db.collection("users").insertMany([{userId:"operator-a",status:"active"},{userId:"target-user",status:"active"}]);
   await db.collection("organizations").insertMany([
    {tenantId:"tenant-a",organizationId:"org-a",name:"Tenant A Org",status:"active"},
    {tenantId:"tenant-a",organizationId:"org-b",name:"Tenant A Other Org",status:"active"},
@@ -49,29 +45,59 @@ test("platform API enforces authenticated tenant and organization-location scope
    tenantId:"tenant-a",sessionId:"session-a",userId:"operator-a",membershipId:"membership-a",
    expiresAt:new Date(now.getTime()+60_000),lastUsedAt:now
   });
+  await app.register(platformRoutes(db,config),{prefix:"/v1"});
   await app.register(platformRoutes(db,config));
   await app.ready();
   const token=await new SignJWT({tenantId:"tenant-a",membershipId:"membership-a",sessionId:"session-a"})
    .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience)
    .setSubject("operator-a").setIssuedAt().setExpirationTime("5m").sign(signingKey);
 
-  const unauthenticated=await app.inject({method:"GET",url:"/platform/organizations"});
+  const unauthenticated=await app.inject({method:"GET",url:"/v1/platform/organizations"});
   assert.equal(unauthenticated.statusCode,401);
 
   const organizations=await app.inject({
-   method:"GET",url:"/platform/organizations",headers:{authorization:`Bearer ${token}`}
+   method:"GET",url:"/v1/platform/organizations",headers:{authorization:`Bearer ${token}`}
   });
   assert.equal(organizations.statusCode,200);
   const body=organizations.json() as {data:Array<{organizationId:string;tenantId:string}>};
   assert.deepEqual(body.data.map(item=>item.organizationId).sort(),["org-a","org-b"]);
   assert.ok(body.data.every(item=>item.tenantId==="tenant-a"));
 
+  const legacy=await app.inject({method:"GET",url:"/platform/organizations",headers:{authorization:`Bearer ${token}`}});
+  assert.equal(legacy.statusCode,200);
+  assert.equal(legacy.headers.deprecation,"true");
+  assert.equal(legacy.headers.link,'</v1/platform>; rel="successor-version"');
+
   const invalidMembership=await app.inject({
-   method:"POST",url:"/platform/memberships",headers:{authorization:`Bearer ${token}`},
+   method:"POST",url:"/v1/platform/memberships",
+   headers:{authorization:`Bearer ${token}`,"idempotency-key":"membership-invalid-0001"},
    payload:{userId:"target-user",organizationIds:["org-a"],locationIds:["loc-b"],roleIds:[]}
   });
   assert.equal(invalidMembership.statusCode,422);
   assert.equal(invalidMembership.json().error,"INVALID_LOCATION_ORGANIZATION_SCOPE");
+
+  const validPayload={userId:"target-user",organizationIds:["org-a"],locationIds:["loc-a"],roleIds:[]};
+  const create=()=>app.inject({
+   method:"POST",url:"/v1/platform/memberships",
+   headers:{authorization:`Bearer ${token}`,"idempotency-key":"membership-create-0001"},
+   payload:validPayload
+  });
+  const created=await create(),replayed=await create();
+  assert.equal(created.statusCode,201);
+  assert.equal(replayed.statusCode,201);
+  assert.equal(replayed.headers["idempotency-replayed"],"true");
+  assert.deepEqual(replayed.json(),created.json());
+  assert.equal(await db.collection("memberships").countDocuments({tenantId:"tenant-a",userId:"target-user"}),1);
+  assert.equal(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a",eventType:"platform.membership.created"}),1);
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId:"tenant-a",action:"platform.membership.created"}),1);
+
+  const changed=await app.inject({
+   method:"POST",url:"/v1/platform/memberships",
+   headers:{authorization:`Bearer ${token}`,"idempotency-key":"membership-create-0001"},
+   payload:{...validPayload,organizationIds:["org-b"],locationIds:["loc-b"]}
+  });
+  assert.equal(changed.statusCode,409);
+  assert.equal(changed.json().error,"IDEMPOTENCY_KEY_REUSED");
  }finally{
   await app.close();await db.dropDatabase();await client.close();
  }
