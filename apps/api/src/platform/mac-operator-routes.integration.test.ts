@@ -27,7 +27,7 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   const bootstrapCode=totpCode(secret);
   const confirm=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap/confirm",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"owner@example.test",code:bootstrapCode}});
   assert.equal(confirm.statusCode,201);
-  const session=confirm.json() as {accessToken:string;refreshToken:string;sessionId:string};
+  const session=confirm.json() as {accessToken:string;refreshToken:string;sessionId:string;operator:{operatorId:string}};
   assert.ok(session.accessToken);assert.ok(session.refreshToken);
   const replayedBootstrapCode=await app.inject({method:"POST",url:"/v1/mac/auth/login",payload:{email:"owner@example.test",password:"A-strong-test-password-2026",code:bootstrapCode}});
   assert.equal(replayedBootstrapCode.statusCode,401);
@@ -46,13 +46,13 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   const invitedSecret=accepted.json().totpSecret as string;
   const invitedConfirm=await authApp.inject({method:"POST",url:"/v1/mac/auth/invitations/confirm",payload:{inviteToken,code:totpCode(invitedSecret)}});
   assert.equal(invitedConfirm.statusCode,201);
-  const invitedSession=invitedConfirm.json() as {accessToken:string;sessionId:string;operator:{permissions:string[]}};
+  const invitedSession=invitedConfirm.json() as {accessToken:string;sessionId:string;operator:{operatorId:string;permissions:string[]}};
   assert.ok(invitedSession.operator.permissions.includes("mac.operators.read"));
   assert.ok(!invitedSession.operator.permissions.includes("mac.operators.manage"));
   const deniedInvite=await authApp.inject({method:"POST",url:"/v1/mac/operators/invitations",headers:{authorization:`Bearer ${invitedSession.accessToken}`},payload:{email:"unauthorized@example.test",displayName:"Unauthorized Operator"}});
   assert.equal(deniedInvite.statusCode,403);
-  const selfSuspend=await authApp.inject({method:"POST",url:`/v1/mac/operators/${session.sessionId}/suspend`,headers:{authorization:`Bearer ${session.accessToken}`},payload:{reason:"Attempt self suspension test"}});
-  assert.notEqual(selfSuspend.statusCode,204);
+  const selfSuspend=await authApp.inject({method:"POST",url:`/v1/mac/operators/${session.operator.operatorId}/suspend`,headers:{authorization:`Bearer ${session.accessToken}`},payload:{reason:"Attempt self suspension test"}});
+  assert.equal(selfSuspend.statusCode,409);
   const suspendInvited=await authApp.inject({method:"POST",url:`/v1/mac/operators/${invitedSession.operator.operatorId}/suspend`,headers:{authorization:`Bearer ${session.accessToken}`},payload:{reason:"Test operator suspension workflow"}});
   assert.equal(suspendInvited.statusCode,204);
   const suspendedAccess=await authApp.inject({method:"GET",url:"/v1/mac/overview",headers:{authorization:`Bearer ${invitedSession.accessToken}`}});
