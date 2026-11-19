@@ -223,7 +223,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    payload:{organizationId:"org-a",receiptId:"erp-receipt-api-001",receivedAt:now.toISOString(),lines:[{sku:"SKU-API",quantityMilli:1000}]}
   });
   assert.equal(goodsReceipt.statusCode,201);
-  assert.equal(goodsReceipt.json().body.status,"received");
+  assert.equal(goodsReceipt.json().status,"received");
   const receiptBalance=await db.collection<any>("inventory_stock_balances").findOne({tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-API"});
   assert.equal(receiptBalance.quantityOnHandMilli,4000);
   const invoice=await app.inject({
@@ -376,7 +376,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
     reservationId:"reservation-commerce-api-001",lines:[{sku:"SKU-COM-API",quantityMilli:1000}]}
   });
   assert.equal(commerceOrder.statusCode,201);
-  assert.equal(commerceOrder.json().body.totalMinor,1180);
+  assert.equal(commerceOrder.json().totalMinor,1180);
   const commerceOrders=await app.inject({method:"GET",url:"/v1/commerce/orders",headers});
   assert.equal(commerceOrders.statusCode,200);
   assert.equal(commerceOrders.json().data.length,1);
