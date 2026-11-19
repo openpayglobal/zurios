@@ -117,6 +117,9 @@ function sendError(error:unknown,reply:FastifyReply){
  if(["HR_LEAVE_VERSION_CONFLICT","HR_LEAVE_REQUEST_NOT_PENDING","HR_LEAVE_SELF_APPROVAL_DENIED"].includes(code))return reply.code(409).send({error:code});
  if(["HR_MANAGER_NOT_FOUND","HR_ACTIVE_EMPLOYEE_NOT_FOUND"].includes(code))return reply.code(422).send({error:code});
  if(code==="HR_LEAVE_REQUEST_NOT_FOUND")return reply.code(404).send({error:code});
+ if(["PAYROLL_VERSION_CONFLICT","PAYROLL_RUN_NOT_DRAFT","PAYROLL_SELF_APPROVAL_DENIED"].includes(code))return reply.code(409).send({error:code});
+ if(code==="PAYROLL_EMPLOYEE_SCOPE_OR_STATUS_INVALID")return reply.code(422).send({error:code});
+ if(code==="PAYROLL_RUN_NOT_FOUND")return reply.code(404).send({error:code});
  reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 function idempotencyKey(request:FastifyRequest):string|undefined{
