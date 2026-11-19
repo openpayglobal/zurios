@@ -1042,6 +1042,8 @@ paths:
       summary: List CRM accounts in authorized organizations
       responses:
         "200": {description: Scoped CRM accounts}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [CRM]
@@ -1065,6 +1067,8 @@ paths:
       summary: List CRM contacts in authorized organizations
       responses:
         "200": {description: Scoped CRM contacts}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [CRM]
       operationId: createCrmContact
@@ -1087,6 +1091,8 @@ paths:
       summary: List leads in authorized organizations
       responses:
         "200": {description: Scoped CRM leads}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [CRM]
       operationId: createCrmLead
@@ -1109,6 +1115,8 @@ paths:
       summary: List pipeline opportunities in authorized organizations
       responses:
         "200": {description: Scoped CRM opportunities}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [CRM]
       operationId: createCrmOpportunity
@@ -1131,6 +1139,8 @@ paths:
       summary: List customer activities in authorized organizations
       responses:
         "200": {description: Scoped CRM activities}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [CRM]
       operationId: recordCrmActivity
@@ -1171,6 +1181,8 @@ paths:
       summary: List employee records in authorized organizations
       responses:
         "200": {description: Scoped employee directory}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Human Resources]
@@ -1194,6 +1206,8 @@ paths:
       summary: List leave requests in authorized organizations
       responses:
         "200": {description: Scoped leave requests}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Human Resources]
@@ -1251,6 +1265,8 @@ paths:
       summary: List payroll runs in authorized organizations
       responses:
         "200": {description: Scoped payroll runs}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Payroll]
@@ -1292,6 +1308,8 @@ paths:
       summary: List payment intents in authorized organizations
       responses:
         "200": {description: Scoped payment intents}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
         "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Payments]
@@ -1334,6 +1352,8 @@ paths:
       summary: List active catalog products in authorized organizations
       responses:
         "200": {description: Scoped commerce catalog}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Commerce]
       operationId: createCommerceProduct
@@ -1356,6 +1376,8 @@ paths:
       summary: List orders in authorized organizations
       responses:
         "200": {description: Scoped commerce orders}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Commerce]
       operationId: placeCommerceOrder
@@ -1379,6 +1401,8 @@ paths:
       summary: List assets in authorized organizations
       responses:
         "200": {description: Scoped asset register}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Assets & Maintenance]
       operationId: createAsset
@@ -1401,6 +1425,8 @@ paths:
       summary: List maintenance work orders in authorized organizations
       responses:
         "200": {description: Scoped maintenance work orders}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Assets & Maintenance]
       operationId: createMaintenanceWorkOrder
@@ -1441,6 +1467,8 @@ paths:
       summary: List projects in authorized organizations
       responses:
         "200": {description: Scoped projects}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Project Management]
       operationId: createProject
@@ -1482,6 +1510,8 @@ paths:
         - {name: projectId, in: path, required: true, schema: {type: string}}
       responses:
         "200": {description: Scoped project time entries}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
     post:
       tags: [Project Management]
       operationId: submitProjectTimeEntry
