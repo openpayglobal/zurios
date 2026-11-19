@@ -109,12 +109,15 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
         createdAt: now,
         updatedAt: now,
       });
+      await writeAudit(db, request, String(userResult.insertedId), "platform.bootstrap.completed", "platform", "success");
     } catch (error) {
-      if (tenantId) await db.collection("tenants").deleteOne({ _id: tenantId });
+      if (tenantId) {
+        await db.collection("memberships").deleteOne({ tenantId: String(tenantId), userId: String(userResult.insertedId) });
+        await db.collection("tenants").deleteOne({ _id: tenantId });
+      }
       await db.collection("users").deleteOne({ _id: userResult.insertedId });
       throw error;
     }
-    await writeAudit(db, request, String(userResult.insertedId), "platform.bootstrap.completed", "platform", "success");
     return reply.code(201).send({ status: "bootstrapped", userId: String(userResult.insertedId), note: "Owner created. Sign in to obtain a session." });
   });
 
