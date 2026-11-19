@@ -114,6 +114,9 @@ function sendError(error:unknown,reply:FastifyReply){
  if(code==="RESERVATION_EXPIRY_MUST_BE_FUTURE"||code==="NEW_RESERVATION_MUST_BE_RESERVED")return reply.code(422).send({error:code});
  if(["CRM_OPPORTUNITY_VERSION_CONFLICT","CRM_OPPORTUNITY_STAGE_UNCHANGED","FISCAL_PERIOD_OVERLAP","FISCAL_PERIOD_NOT_OPEN_FOR_POSTING_DATE","JOURNAL_ENTRY_MUST_BE_POSTED","JOURNAL_ACCOUNT_NOT_ACTIVE"].includes(code))return reply.code(409).send({error:code});
  if(["CRM_RELATED_RESOURCE_NOT_FOUND","CRM_OPPORTUNITY_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
+ if(["HR_LEAVE_VERSION_CONFLICT","HR_LEAVE_REQUEST_NOT_PENDING","HR_LEAVE_SELF_APPROVAL_DENIED"].includes(code))return reply.code(409).send({error:code});
+ if(["HR_MANAGER_NOT_FOUND","HR_ACTIVE_EMPLOYEE_NOT_FOUND"].includes(code))return reply.code(422).send({error:code});
+ if(code==="HR_LEAVE_REQUEST_NOT_FOUND")return reply.code(404).send({error:code});
  reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 function idempotencyKey(request:FastifyRequest):string|undefined{
