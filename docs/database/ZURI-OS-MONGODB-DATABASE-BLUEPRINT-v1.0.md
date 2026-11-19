@@ -253,7 +253,7 @@ Index names should be explicit and stable. The following are baseline patterns; 
 - `cash_sessions`: `tenantId, branchId, tillId, status`.
 
 ### Finance
-- `journal_entries`: unique `tenantId, bookId, journalNumber`; unique `tenantId, sourceType, sourceId, postingPurpose`; `tenantId, bookId, postedAt desc`.
+- `journal_entries`: unique `tenantId, bookId, journalNumber`; unique `tenantId, source.type, source.id, source.postingPurpose`; `tenantId, bookId, postedAt desc`.
 - `journal_lines`: `tenantId, bookId, accountId, postedAt`; `tenantId, journalEntryId`.
 - `financial_periods`: unique `tenantId, bookId, periodCode`; `tenantId, bookId, status, startDate`.
 

@@ -120,7 +120,7 @@ For every request:
 7. Validate request schema and idempotency key where required.
 8. Execute application use case within an explicit transaction boundary.
 9. Persist domain state and outbox events atomically when the operation requires durable event delivery.
-10. Write security/business audit metadata.
+10. Persist required security/business audit metadata in the same transaction as the protected mutation, or commit an audit outbox envelope atomically with it. A privileged mutation must not succeed when its required audit record cannot be durably committed.
 11. Return a safe response with no secret or internal stack disclosure.
 
 No route may bypass this pipeline without a documented health/public endpoint exception.

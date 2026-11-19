@@ -16,14 +16,27 @@ security:
   - bearerAuth: []
 tags:
   - name: Tenant
+    description: Tenant-scoped organization and operating context.
   - name: Organizations
+    description: Tenant organization hierarchy and assignments.
   - name: Locations
+    description: Physical and operational locations.
   - name: Memberships
+    description: Tenant membership lifecycle and scope.
   - name: Roles
+    description: Tenant role and permission catalogue.
   - name: Policies
+    description: Attribute-based access-control policies.
   - name: Feature flags
+    description: Tenant feature availability and rollout rules.
   - name: Sessions
+    description: Tenant-user session management.
   - name: Audit
+    description: Tenant-scoped audit event history.
+  - name: MAC Authentication
+    description: Independent global platform-operator authentication and sessions.
+  - name: MAC
+    description: Global platform command and administrative read APIs.
 paths:
   /platform/tenant:
     get:
@@ -370,6 +383,635 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/login:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: loginTenantUser
+      summary: Authenticate a tenant user with email, password and tenant slug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, tenantSlug]
+              properties:
+                email: {type: string, format: email}
+                password: {type: string, minLength: 1, maxLength: 128}
+                tenantSlug: {type: string, minLength: 2, maxLength: 64}
+      responses:
+        "200": {description: Login response or MFA challenge}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {description: Invalid credentials}
+        "429": {description: Rate limit exceeded}
+  /auth/mfa/verify:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: verifyTenantLoginMfa
+      summary: Complete tenant login with an MFA challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeToken, code]
+              properties:
+                challengeToken: {type: string}
+                code: {type: string, minLength: 6, maxLength: 64}
+      responses:
+        "200": {description: Tenant session and access token issued}
+        "401": {description: MFA verification failed}
+  /auth/refresh:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: refreshTenantSession
+      summary: Rotate a tenant refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, refreshToken]
+              properties:
+                sessionId: {type: string}
+                refreshToken: {type: string}
+      responses:
+        "200": {description: Rotated tenant session}
+        "401": {description: Refresh token invalid or expired}
+  /auth/invitations/{userId}/accept:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: acceptTenantInvitation
+      summary: Accept a tenant membership invitation and set password
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: {type: string, minLength: 20}
+                password: {type: string, minLength: 12, maxLength: 128}
+      responses:
+        "204": {description: Invitation accepted}
+        "401": {description: Invitation invalid or expired}
+  /auth/email/verify:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: verifyTenantEmail
+      summary: Verify a tenant user's email address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, token]
+              properties:
+                userId: {type: string}
+                token: {type: string, minLength: 20}
+      responses:
+        "204": {description: Email verified}
+        "401": {description: Verification token invalid}
+  /auth/password/reset:
+    post:
+      security: []
+      tags: [Authentication]
+      operationId: resetTenantPassword
+      summary: Reset a tenant user's password with a one-time token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId, token, newPassword]
+              properties:
+                userId: {type: string}
+                token: {type: string, minLength: 20}
+                newPassword: {type: string, minLength: 12, maxLength: 128}
+      responses:
+        "204": {description: Password reset}
+        "401": {description: Reset token invalid or expired}
+  /auth/me:
+    get:
+      tags: [Authentication]
+      operationId: getTenantPrincipal
+      summary: Return the authenticated tenant principal
+      responses:
+        "200": {description: Authenticated tenant and membership context}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      operationId: logoutTenantSession
+      summary: Revoke the current tenant session
+      responses:
+        "204": {description: Tenant session revoked}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/mfa/enroll:
+    post:
+      tags: [Authentication]
+      operationId: beginTenantMfaEnrollment
+      summary: Begin tenant MFA enrollment
+      responses:
+        "200": {description: TOTP enrollment secret and URI}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/mfa/confirm:
+    post:
+      tags: [Authentication]
+      operationId: confirmTenantMfaEnrollment
+      summary: Confirm tenant MFA enrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, minLength: 6, maxLength: 64}
+      responses:
+        "200": {description: MFA enabled and recovery codes returned once}
+        "401": {description: MFA code invalid}
+  /auth/mfa/disable:
+    post:
+      tags: [Authentication]
+      operationId: disableTenantMfa
+      summary: Disable tenant MFA after password and TOTP verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, code]
+              properties:
+                password: {type: string}
+                code: {type: string}
+      responses:
+        "204": {description: MFA disabled}
+        "401": {description: Reauthentication failed}
+  /inventory/products:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryProducts
+      summary: List active tenant products
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+        - in: query
+          name: search
+          schema: {type: string, maxLength: 80}
+      responses:
+        "200": {description: Tenant-scoped product catalogue}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: createInventoryProduct
+      summary: Create a tenant product
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sku, name, baseUnitCode]
+              properties:
+                sku: {type: string, maxLength: 80}
+                name: {type: string, minLength: 2, maxLength: 200}
+                baseUnitCode: {type: string, maxLength: 12}
+                categoryId: {type: string}
+                trackLot: {type: boolean, default: false}
+                trackSerial: {type: boolean, enum: [false], default: false}
+                allowNegativeStock: {type: boolean, default: false}
+      responses:
+        "201": {description: Product created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "409": {description: SKU conflict or idempotency conflict}
+  /inventory/locations:
+    get:
+      tags: [Inventory]
+      operationId: listStockLocations
+      summary: List stock locations within authorized organizations
+      responses:
+        "200": {description: Organization-scoped stock locations}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: createStockLocation
+      summary: Create a stock location within an authorized organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organizationId, code, name]
+              properties:
+                organizationId: {type: string}
+                code: {type: string, maxLength: 40}
+                name: {type: string, maxLength: 150}
+                type: {type: string, enum: [warehouse, store, stockroom, transit, other]}
+      responses:
+        "201": {description: Stock location created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /inventory/lots:
+    post:
+      tags: [Inventory]
+      operationId: createStockLot
+      summary: Create a lot for a lot-tracked product
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, lotNumber]
+              properties:
+                productId: {type: string}
+                lotNumber: {type: string, maxLength: 100}
+                supplierLotNumber: {type: string, maxLength: 100}
+                expiryDate: {type: string, format: date-time}
+                receivedAt: {type: string, format: date-time}
+      responses:
+        "201": {description: Stock lot created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "404": {description: Product not found}
+  /inventory/movements:
+    get:
+      tags: [Inventory]
+      operationId: listStockMovements
+      summary: List immutable stock movement facts within authorized organizations
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+        - in: query
+          name: productId
+          schema: {type: string}
+        - in: query
+          name: stockLocationId
+          schema: {type: string}
+      responses:
+        "200": {description: Organization-scoped immutable movement history}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: recordStockMovement
+      summary: Record an immutable receipt, issue, adjustment or atomic transfer
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, stockLocationId, movementType, quantity, unitCode, source]
+              properties:
+                productId: {type: string}
+                stockLocationId: {type: string}
+                destinationStockLocationId: {type: string}
+                movementType: {type: string, enum: [receipt, issue, adjustment_in, adjustment_out, transfer]}
+                quantity: {type: string, pattern: "^(?:0|[1-9][0-9]{0,17})(?:\\.[0-9]{1,6})?$"}
+                unitCode: {type: string}
+                lotId: {type: string}
+                source:
+                  type: object
+                  required: [type, id]
+                  properties:
+                    type: {type: string}
+                    id: {type: string}
+                reason: {type: string, minLength: 5, maxLength: 300}
+      responses:
+        "201": {description: Movement recorded; transfer writes paired source/destination facts atomically}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {description: Idempotency or movement conflict}
+        "422": {description: Insufficient stock or invalid inventory state}
+  /inventory/balances:
+    get:
+      tags: [Inventory]
+      operationId: getStockBalance
+      summary: Read a product balance for an authorized stock location
+      parameters:
+        - in: query
+          name: productId
+          required: true
+          schema: {type: string}
+        - in: query
+          name: stockLocationId
+          required: true
+          schema: {type: string}
+        - in: query
+          name: lotId
+          schema: {type: string}
+      responses:
+        "200": {description: "Decimal quantity on hand, reserved, in transit and available"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Stock location not found}
+  /mac/auth/bootstrap:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: bootstrapPlatformOperator
+      summary: Create the one-time initial platform operator
+      description: Requires the out-of-band bootstrap token. Available only while no platform operator exists. Returns the TOTP secret once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacBootstrapInput"}
+      responses:
+        "201": {description: Initial operator created; TOTP enrollment secret returned once}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "409": {description: Bootstrap has already been completed}
+        "503": {description: MAC authentication secrets are not configured}
+  /mac/auth/bootstrap/confirm:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: confirmPlatformOperatorBootstrap
+      summary: Confirm initial operator MFA and activate the platform
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacBootstrapConfirmInput"}
+      responses:
+        "201": {description: Operator activated and initial session issued}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "409": {description: Bootstrap already completed}
+  /mac/auth/login:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: loginPlatformOperator
+      summary: Authenticate a platform operator with password and TOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacLoginInput"}
+      responses:
+        "200": {description: Independent MAC access and refresh tokens}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "429": {description: Rate limit exceeded}
+        "503": {description: MAC authentication secrets are not configured}
+  /mac/auth/refresh:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: refreshPlatformOperatorSession
+      summary: Rotate a platform operator refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacRefreshInput"}
+      responses:
+        "200": {description: Rotated refresh token and new access token}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/auth/logout:
+    post:
+      tags: [MAC Authentication]
+      operationId: logoutPlatformOperator
+      summary: Revoke the current platform operator session
+      responses:
+        "204": {description: Session revoked}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/auth/me:
+    get:
+      tags: [MAC Authentication]
+      operationId: getCurrentPlatformOperator
+      summary: Get the current global platform operator
+      responses:
+        "200": {description: Current operator identity and permissions}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/operators/invitations:
+    post:
+      tags: [MAC]
+      operationId: createMacOperatorInvitation
+      summary: Create a least-privilege read-only operator invitation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, displayName]
+              properties:
+                email: {type: string, format: email}
+                displayName: {type: string, minLength: 2, maxLength: 120}
+                tenantIds: {type: array, maxItems: 50, items: {type: string}}
+      responses:
+        "201": {description: One-time invitation token returned once for secure manual transfer}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {description: Operator already exists or invitation is pending}
+  /mac/auth/invitations/accept:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: acceptMacOperatorInvitation
+      summary: Accept a one-time operator invitation and enroll TOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteToken, password]
+              properties:
+                inviteToken: {type: string, minLength: 40, maxLength: 100}
+                password: {type: string, minLength: 12, maxLength: 128}
+      responses:
+        "201": {description: Pending operator created; TOTP enrollment secret returned once}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {description: Invitation invalid or expired}
+        "429": {description: Rate limit exceeded}
+  /mac/auth/invitations/confirm:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: confirmMacOperatorInvitation
+      summary: Verify TOTP and activate an invited operator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inviteToken, code]
+              properties:
+                inviteToken: {type: string, minLength: 40, maxLength: 100}
+                code: {type: string, pattern: "^[0-9]{6}$"}
+      responses:
+        "201": {description: Operator activated and MAC session issued}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {description: Invitation invalid or MFA verification failed}
+  /mac/operators/{operatorId}/suspend:
+    post:
+      tags: [MAC]
+      operationId: suspendMacOperator
+      summary: Suspend an operator and revoke all their active sessions
+      parameters:
+        - in: path
+          name: operatorId
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 10, maxLength: 300}
+      responses:
+        "204": {description: Operator suspended and sessions revoked}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active operator not found}
+        "409": {description: Self-suspension is not allowed or operator state changed}
+  /mac/operators:
+    get:
+      tags: [MAC]
+      operationId: listMacOperators
+      summary: List global platform operators without credential fields
+      responses:
+        "200": {description: Sanitized platform operator inventory}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/sessions:
+    get:
+      tags: [MAC]
+      operationId: listMacOperatorSessions
+      summary: List active and recently expired platform operator sessions
+      responses:
+        "200": {description: Session metadata; refresh-token hashes are never returned}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/sessions/{sessionId}/revoke:
+    post:
+      tags: [MAC]
+      operationId: revokeMacOperatorSession
+      summary: Revoke another platform operator session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 10, maxLength: 300}
+      responses:
+        "204": {description: Session revoked}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active session not found}
+        "409": {description: Use logout to revoke the current session}
+  /mac/configurations:
+    get:
+      tags: [MAC]
+      operationId: listMacConfigurationMetadata
+      summary: Read configuration metadata without returning secret values
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        "200": {description: Configuration metadata; valuesReturned and secretValuesExposed are false}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/providers:
+    get:
+      tags: [MAC]
+      operationId: listMacProviderRegistry
+      summary: Read provider registry and capability metadata
+      responses:
+        "200": {description: Provider metadata; credentialsReturned is false}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/overview:
+    get:
+      tags: [MAC]
+      operationId: getMacOverview
+      summary: Read platform control-plane overview metrics
+      responses:
+        "200": {description: Aggregated platform counts and explicit integration status}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/tenants:
+    get:
+      tags: [MAC]
+      operationId: listMacTenants
+      summary: List tenants using bounded cursor pagination
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - in: query
+          name: after
+          schema: {type: string}
+      responses:
+        "200": {description: Paginated tenant records}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/audit:
+    get:
+      tags: [MAC]
+      operationId: listMacAuditEvents
+      summary: Read global administrative audit events
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - in: query
+          name: before
+          schema: {type: string, format: date-time}
+      responses:
+        "200": {description: Administrative audit events}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
 components:
   parameters:
     IdempotencyKey:
@@ -564,6 +1206,32 @@ components:
         expiresAt: {type: string, format: date-time}
         lastUsedAt: {type: string, format: date-time}
         revokedAt: {type: string, format: date-time}
+    MacBootstrapInput:
+      type: object
+      required: [email, displayName, password]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        displayName: {type: string, minLength: 2, maxLength: 120}
+        password: {type: string, minLength: 12, maxLength: 128}
+    MacBootstrapConfirmInput:
+      type: object
+      required: [email, code]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        code: {type: string, pattern: "^[0-9]{6}$"}
+    MacLoginInput:
+      type: object
+      required: [email, password, code]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        password: {type: string, maxLength: 128}
+        code: {type: string, pattern: "^[0-9]{6}$"}
+    MacRefreshInput:
+      type: object
+      required: [sessionId, refreshToken]
+      properties:
+        sessionId: {type: string, format: uuid}
+        refreshToken: {type: string, minLength: 40, maxLength: 200}
     AuditEvent:
       type: object
       properties:

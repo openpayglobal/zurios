@@ -5,6 +5,8 @@ import {config,corsOrigins} from "./config.js";
 import {connectMongo,closeMongo} from "./db/mongo.js";
 import {authRoutes} from "./platform/auth-routes.js";
 import {platformRoutes} from "./platform/platform-routes.js";
+import {macOperatorRoutes} from "./platform/mac-operator-routes.js";
+import {inventoryRoutes} from "./inventory/inventory-routes.js";
 import type {AuthConfig} from "./platform/auth-service.js";
 import {createMongoEventBusPublisher,runOutboxWorker} from "@zuri/core-platform";
 const app=Fastify({logger:true,bodyLimit:1_048_576});
@@ -18,9 +20,12 @@ app.setErrorHandler((error,_request,reply)=>{app.log.error(error);return reply.c
 const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.JWT_SECRET,accessTokenTtlSeconds:config.ACCESS_TOKEN_TTL_SECONDS,sessionTtlSeconds:config.SESSION_TTL_SECONDS,mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??""};
 try{
  const db=await connectMongo();
+ await app.register(authRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(authRoutes(db,authConfig));
  await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(platformRoutes(db,authConfig));
+ await app.register(macOperatorRoutes(db,{issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,...(config.MAC_JWT_SECRET?{jwtSecret:config.MAC_JWT_SECRET}:{}),...(config.MAC_BOOTSTRAP_TOKEN?{bootstrapToken:config.MAC_BOOTSTRAP_TOKEN}:{}),mfaEncryptionKey:config.MAC_MFA_ENCRYPTION_KEY??"",sessionTtlSeconds:config.MAC_SESSION_TTL_SECONDS}),{prefix:"/v1"});
+ await app.register(inventoryRoutes(db,authConfig),{prefix:"/v1"});
  await app.listen({host:config.API_HOST,port:config.API_PORT});
  outboxWorkerPromise=runOutboxWorker(db,createMongoEventBusPublisher(db),outboxAbortController.signal).catch(error=>{app.log.error({err:error},"Platform outbox worker stopped unexpectedly");});
 }catch(error){app.log.error(error);process.exitCode=1;}
