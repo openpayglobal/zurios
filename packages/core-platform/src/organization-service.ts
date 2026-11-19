@@ -9,3 +9,18 @@ export async function createOrganization(db:Db,tenantId:string,actorId:string,in
  const path=parent?[...parent.path,parent.organizationId]:[],now=new Date(),doc={tenantId,organizationId:newId("org"),...rest,...(parentOrganizationId?{parentOrganizationId}:{}),path,status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await c.organizations.insertOne(doc,session?{session}:{});return doc;
 }
+
+export async function setOrganizationStatus(db:Db,tenantId:string,organizationId:string,status:"active"|"inactive",actorId:string,session?:ClientSession){
+ const c=coreCollections(db),now=new Date();
+ if(status==="inactive"){
+  const [children,locations,memberships]=await Promise.all([
+   c.organizations.countDocuments({tenantId,parentOrganizationId:organizationId,status:"active"},session?{session}:{}),
+   c.locations.countDocuments({tenantId,organizationId,status:"active"},session?{session}:{}),
+   c.memberships.countDocuments({tenantId,organizationIds:organizationId,status:"active"},session?{session}:{})
+  ]);
+  if(children||locations||memberships)throw new Error("ORGANIZATION_HAS_ACTIVE_DEPENDENCIES");
+ }
+ const result=await c.organizations.updateOne({tenantId,organizationId,status:{$ne:"inactive"}},{$set:{status,updatedAt:now,updatedBy:actorId}},session?{session}:{});
+ if(!result.matchedCount)throw new Error("ORGANIZATION_NOT_FOUND_OR_INACTIVE");
+ return c.organizations.findOne({tenantId,organizationId},session?{session}:{});
+}
