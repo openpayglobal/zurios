@@ -67,6 +67,7 @@ Implemented in this phase:
 - Sanitized operator inventory, session inventory and audited revocation of other operator sessions.
 - One-time 24-hour operator invitations with fixed read-only permission profile, TOTP enrollment and single-use activation.
 - Operator suspension that revokes all active sessions; self-suspension is denied.
+- Read-only configuration metadata and provider registry APIs. Their MongoDB projections explicitly exclude encrypted values, tokens and credential fields.
 - Read-only MAC overview, tenant listing and administrative audit endpoints with permission checks.
 - OpenAPI 3.1 route contract and MongoDB replica-set integration coverage, including session revocation and invalid-input handling.
 
@@ -76,6 +77,6 @@ Required preview configuration before the endpoints can operate:
 - `MAC_MFA_ENCRYPTION_KEY`: separate 32-byte base64 key used only for TOTP secret encryption.
 
 Not implemented by this phase:
-- Elevated permission-grant workflows and two-person approvals, operator reactivation/recovery, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters and production activation.
+- Elevated permission-grant workflows and two-person approvals, operator reactivation/recovery, full audit export/retention controls, encrypted/versioned runtime configuration write APIs, provider credential adapters, deployment controls and production activation.
 
 The API remains unavailable when its required MAC secrets are absent. It does not silently fall back to tenant JWT credentials.
