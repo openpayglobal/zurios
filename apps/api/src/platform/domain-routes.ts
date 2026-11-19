@@ -103,13 +103,14 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/inventory/warehouses",async(request,reply)=>{
    const p=getPrincipal(request);
    try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
     const body=WarehouseSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId});
     if(!body.locationId)return reply.code(422).send({error:"WAREHOUSE_LOCATION_REQUIRED"});
     const scope=await resolveLocationScope(db,p.tenantId,body.locationId);
     if(!scope)return reply.code(422).send({error:"ACTIVE_LOCATION_REQUIRED"});
     const denied=await permit(db,request,reply,p,"inventory.warehouse.create",scope);
     if(denied)return denied;
-    const result=await createWarehouse(db,body,p.userId);
+    const result=await createWarehouse(db,body,p.userId,key);
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
@@ -132,7 +133,8 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/inventory/stock-movements",async(request,reply)=>{
    const p=getPrincipal(request);
    try{
-    const body=StockMovementSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId});
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=StockMovementSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId,idempotencyKey:key});
     const source=await resolveWarehouseScope(db,p.tenantId,body.warehouseId);
     if(!source)return reply.code(422).send({error:"ACTIVE_SOURCE_WAREHOUSE_REQUIRED"});
     const denied=await permit(db,request,reply,p,"inventory.stock.write",source);
@@ -151,7 +153,8 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/inventory/reservations",async(request,reply)=>{
    const p=getPrincipal(request);
    try{
-    const body=StockReservationSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId});
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=StockReservationSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId,idempotencyKey:key});
     const scope=await resolveWarehouseScope(db,p.tenantId,body.warehouseId);
     if(!scope)return reply.code(422).send({error:"ACTIVE_WAREHOUSE_REQUIRED"});
     const denied=await permit(db,request,reply,p,"inventory.stock.reserve",scope);
