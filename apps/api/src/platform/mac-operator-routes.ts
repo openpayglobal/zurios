@@ -98,7 +98,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     await enforceMacRateLimit(db,request,"bootstrap");
     if(await collection.estimatedDocumentCount()>0)return reply.code(409).send({error:"BOOTSTRAP_CLOSED"});
     const email=normalized(body.email),operatorId=randomUUID(),secret=generateTotpSecret(),now=new Date();
-    const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.read","mac.sessions.read","mac.operators.manage","mac.security.read"];
+    const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.read","mac.sessions.read","mac.operators.manage","mac.security.read","mac.config.read","mac.providers.read"];
     await collection.insertOne({operatorId,emailNormalized:email,displayName:body.displayName,passwordHash:await hashPassword(body.password),permissions,tenantIds:[],status:"pending_mfa",bootstrapOwner:true,mfaEnabled:false,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),pendingMfaExpiresAt:new Date(now.getTime()+24*60*60*1000),createdAt:now,updatedAt:now});
     await writeAdminAudit(db,{actorId:operatorId,action:"mac.auth.bootstrap.started",resourceType:"platform_operator",resourceId:operatorId,outcome:"success",request});
     const label=encodeURIComponent(email),issuer=encodeURIComponent("Zuri OS MAC");
@@ -252,6 +252,18 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    if(!result.modifiedCount)return reply.code(404).send({error:"SESSION_NOT_FOUND"});
    await writeAdminAudit(db,{actorId:principal.operatorId,action:"mac.sessions.revoke",resourceType:"platform_operator_session",resourceId:params.sessionId,outcome:"success",request,metadata:{reason:body.reason}});
    return reply.code(204).send();
+  });
+  app.get("/mac/configurations",{preHandler:[authenticated,permission("mac.config.read")]},async(request,reply)=>{
+   const parsed=z.object({limit:z.coerce.number().int().min(1).max(100).default(50)}).safeParse(request.query);
+   if(!parsed.success)return reply.code(400).send({error:"INVALID_REQUEST"});
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.configurations.read",resourceType:"platform_configuration_metadata",outcome:"success",request});
+   const items=await db.collection("platform_configurations").find({},{projection:{_id:0,configId:1,scope:1,tenantId:1,key:1,version:1,classification:1,status:1,updatedAt:1,updatedBy:1}}).sort({key:1}).limit(parsed.data.limit).toArray();
+   return {data:items,valuesReturned:false,secretValuesExposed:false};
+  });
+  app.get("/mac/providers",{preHandler:[authenticated,permission("mac.providers.read")]},async request=>{
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.providers.read",resourceType:"provider_registry",outcome:"success",request});
+   const items=await db.collection("provider_registry").find({},{projection:{_id:0,providerId:1,name:1,category:1,capabilities:1,status:1,connectionState:1,updatedAt:1}}).sort({name:1}).limit(100).toArray();
+   return {data:items,credentialsReturned:false};
   });
   app.get("/mac/overview",{preHandler:[authenticated,permission("mac.overview.read")]},async request=>{
    await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.overview.read",resourceType:"platform_overview",outcome:"success",request});
