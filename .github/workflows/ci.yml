@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main, develop]
 permissions:
-  contents: read
+  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -19,8 +19,37 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: pnpm install --no-frozen-lockfile
+      - name: Install workspace dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm install --frozen-lockfile
+          else
+            pnpm install --no-frozen-lockfile
+          fi
+      - name: Commit generated lockfile on trusted branch pushes
+        if: github.event_name == 'push'
+        run: |
+          if [ ! -f pnpm-lock.yaml ]; then
+            echo "pnpm-lock.yaml was not generated"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          if git diff --cached --quiet; then
+            echo "Workspace lockfile is already committed"
+          else
+            git commit -m "build: add reproducible pnpm workspace lockfile"
+            git push
+          fi
       - name: Preserve generated workspace lockfile for deterministic Vercel installs
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lockfile
+          path: pnpm-lock.yaml
+          if-no-files-found: error
+          retention-days: 1
+      - name: Preserve workspace lockfile artifact
         uses: actions/upload-artifact@v4
         with:
           name: pnpm-lockfile
