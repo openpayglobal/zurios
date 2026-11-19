@@ -49,3 +49,13 @@ test("denies an elevation without an approval reference",()=>{
 test("denies missing principals",()=>{
   assert.deepEqual(authorizePlatformOperator(null,{permission:"mac.overview.read",now}),{allowed:false,reason:"INVALID_PRINCIPAL"});
 });
+
+test("denies stale MFA verification for privileged actions",()=>{
+  const stale={...operator,mfaVerifiedAt:new Date("2026-11-19T07:54:59.000Z")};
+  assert.deepEqual(authorizePlatformOperator(stale,{permission:"mac.overview.read",now}),{allowed:false,reason:"MFA_REQUIRED"});
+});
+
+test("allows an explicitly configured MFA freshness window",()=>{
+  const recent={...operator,mfaVerifiedAt:new Date("2026-11-19T07:55:30.000Z")};
+  assert.deepEqual(authorizePlatformOperator(recent,{permission:"mac.overview.read",now,mfaMaxAgeSeconds:300}),{allowed:true,source:"standing"});
+});
