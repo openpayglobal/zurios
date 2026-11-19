@@ -29,6 +29,12 @@ function sameSecret(actual:string|undefined,expected:string|undefined):boolean{
  return a.length===b.length&&timingSafeEqual(a,b);
 }
 function unavailable(config:MacOperatorConfig){return !config.jwtSecret||!config.bootstrapToken||!config.mfaEncryptionKey;}
+async function enforceMacRateLimit(db:Db,request:FastifyRequest,identity:string){
+ const bucket=Math.floor(Date.now()/60_000),keyValue=createHash("sha256").update(identity+"|"+request.ip+"|"+bucket).digest("hex");
+ await db.collection("mac_auth_rate_limits").updateOne({key:keyValue},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((bucket+2)*60_000)}},{upsert:true});
+ const row=await db.collection("mac_auth_rate_limits").findOne({key:keyValue});
+ if((row?.count??0)>8)throw new Error("MAC_AUTH_RATE_LIMITED");
+}
 function publicOperator(row:any){return {operatorId:row.operatorId,email:row.emailNormalized,displayName:row.displayName,permissions:row.permissions,status:row.status,mfaEnabled:row.mfaEnabled===true};}
 async function writeAdminAudit(db:Db,input:{actorId?:string;action:string;resourceType:string;resourceId?:string;outcome:"success"|"denied"|"failure";request:FastifyRequest;metadata?:Record<string,unknown>}){
  await db.collection("admin_audit_events").insertOne({
@@ -91,15 +97,15 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    if(unavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    if(!sameSecret(request.headers["x-mac-bootstrap-token"] as string|undefined,config.bootstrapToken))return reply.code(401).send({error:"UNAUTHENTICATED"});
    try{
-    const body=bootstrapSchema.parse(request.body),collection=db.collection("platform_operators");
+    const body=bootstrapSchema.parse(request.body),collection=db.collection("platform_operators");\n    await enforceMacRateLimit(db,request,"bootstrap");
     if(await collection.estimatedDocumentCount()>0)return reply.code(409).send({error:"BOOTSTRAP_CLOSED"});
     const email=normalized(body.email),operatorId=randomUUID(),secret=generateTotpSecret(),now=new Date();
     const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.manage","mac.security.read"];
-    await collection.insertOne({operatorId,emailNormalized:email,displayName:body.displayName,passwordHash:await hashPassword(body.password),permissions,tenantIds:[],status:"pending_mfa",mfaEnabled:false,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),createdAt:now,updatedAt:now});
+    await collection.insertOne({operatorId,emailNormalized:email,displayName:body.displayName,passwordHash:await hashPassword(body.password),permissions,tenantIds:[],status:"pending_mfa",bootstrapOwner:true,mfaEnabled:false,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),createdAt:now,updatedAt:now});
     await writeAdminAudit(db,{actorId:operatorId,action:"mac.auth.bootstrap.started",resourceType:"platform_operator",resourceId:operatorId,outcome:"success",request});
     const label=encodeURIComponent(email),issuer=encodeURIComponent("Zuri OS MAC");
     return reply.code(201).send({operatorId,email,totpSecret:secret,otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`,nextStep:"Confirm the authenticator code using /mac/auth/bootstrap/confirm. The secret is shown only once."});
-   }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});if((error as any)?.code===11000)return reply.code(409).send({error:"OPERATOR_ALREADY_EXISTS"});request.log.error({err:error},"MAC bootstrap failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
+   }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});if(error instanceof Error&&error.message==="MAC_AUTH_RATE_LIMITED")return reply.code(429).send({error:"RATE_LIMITED"});if((error as any)?.code===11000)return reply.code(409).send({error:"OPERATOR_ALREADY_EXISTS"});request.log.error({err:error},"MAC bootstrap failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
   });
   app.post("/mac/auth/bootstrap/confirm",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
@@ -122,14 +128,14 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    reply.header("Cache-Control","no-store");
    if(unavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
    try{
-    const body=loginSchema.parse(request.body),email=normalized(body.email),operator=await db.collection("platform_operators").findOne({emailNormalized:email,status:"active",mfaEnabled:true});
+    const body=loginSchema.parse(request.body),email=normalized(body.email);\n    await enforceMacRateLimit(db,request,email);\n    const operator=await db.collection("platform_operators").findOne({emailNormalized:email,status:"active",mfaEnabled:true});
     if(!operator?.passwordHash||!await verifyPassword(body.password,operator.passwordHash)||!operator.mfaSecretEncrypted)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
     const secret=decryptMfaSecret(operator.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,body.code);
     if(step===null)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
     const consumed=await db.collection("platform_operators").updateOne({operatorId:operator.operatorId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},{$set:{mfaLastUsedStep:step,updatedAt:new Date()}});
     if(!consumed.modifiedCount)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
     return await issueSession(db,config,operator,request);
-   }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});request.log.error({err:error},"MAC login failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
+   }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});if(error instanceof Error&&error.message==="MAC_AUTH_RATE_LIMITED")return reply.code(429).send({error:"RATE_LIMITED"});request.log.error({err:error},"MAC login failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
   });
   app.post("/mac/auth/refresh",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
