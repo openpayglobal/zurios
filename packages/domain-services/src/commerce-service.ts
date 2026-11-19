@@ -20,6 +20,9 @@ export async function createCommerceOrder(db:Db,input:unknown,actorId:string,key
    tenantId:order.tenantId,reservationId:order.reservationId,warehouseId:order.warehouseId,orderId:order.orderId,status:"reserved"
   },{session});
   if(!reservation)throw new Error("COMMERCE_ACTIVE_STOCK_RESERVATION_REQUIRED");
+  const reserved=new Map<string,number>();for(const line of reservation.lines??[])reserved.set(line.sku,(reserved.get(line.sku)??0)+line.quantityMilli);
+  const requested=new Map<string,number>();for(const line of order.lines)requested.set(line.sku,(requested.get(line.sku)??0)+line.quantityMilli);
+  if(reserved.size!==requested.size||[...requested].some(([sku,quantity])=>reserved.get(sku)!==quantity))throw new Error("COMMERCE_RESERVATION_LINES_MISMATCH");
   const products=await db.collection<any>("commerce_products").find({
    tenantId:order.tenantId,organizationId:order.organizationId,sku:{$in:order.lines.map(line=>line.sku)},status:"active"
   },{session}).toArray();
