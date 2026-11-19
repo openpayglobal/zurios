@@ -69,6 +69,24 @@ test("administration workspace enforces invitation, two-person approval and brea
   const operatorA=await token("operator-a","membership-a","session-a");
   const operatorB=await token("operator-b","membership-b","session-b");
 
+  const noTenantAllow=await app.inject({method:"GET",url:"/platform/admin/overview",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(noTenantAllow.statusCode,403);
+  assert.equal(noTenantAllow.json().error,"ABAC_POLICY_NO_MATCHING_ALLOW");
+  const noPlatformAllow=await app.inject({method:"GET",url:"/platform/admin/tenants",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(noPlatformAllow.statusCode,403);
+  assert.equal(noPlatformAllow.json().error,"ABAC_POLICY_NO_MATCHING_ALLOW");
+  const tenantAllowDocuments=[] as any[];
+  for(const userId of ["operator-a","operator-b"]){
+   permissionKeys.forEach((action,index)=>tenantAllowDocuments.push({tenantId:"tenant-a",policyId:"tenant-allow-"+userId+"-"+index,key:"tenant-allow-"+userId+"-"+index,effect:"allow",priority:0,subject:{userId},resource:{},actions:[action],conditions:{},status:"active"}));
+  }
+  const platformPermissions=["platform.tenants.read","platform.tenants.provision","platform.tenants.lifecycle.request","platform.tenants.lifecycle.approve","platform.approvals.read","platform.approvals.approve"];
+  const platformAllowDocuments=[] as any[];
+  for(const userId of ["operator-a","operator-b"]){
+   platformPermissions.forEach((action,index)=>platformAllowDocuments.push({tenantId:"platform",policyId:"platform-allow-"+userId+"-"+index,key:"platform-allow-"+userId+"-"+index,effect:"allow",priority:0,subject:{userId},resource:{resourceType:"platform_admin"},actions:[action],conditions:{},status:"active"}));
+  }
+  tenantAllowDocuments.push({tenantId:"tenant-a",policyId:"emergency-route-allow",key:"emergency-route-allow",effect:"allow",priority:0,subject:{userId:"emergency-user"},resource:{},actions:["platform.sessions.revoke"],conditions:{},status:"active"});
+  await db.collection("policies").insertMany([...tenantAllowDocuments,...platformAllowDocuments]);
+
   const overview=await app.inject({method:"GET",url:"/platform/admin/overview",headers:{authorization:"Bearer "+operatorA}});
   assert.equal(overview.statusCode,200);
   assert.equal(overview.json().data.tenant.tenantId,"tenant-a");
