@@ -53,6 +53,8 @@ tags:
     description: Provider-configured payment intents, verified event reconciliation and refund requests
   - name: Commerce
     description: Organization-scoped catalog and inventory-reservation-backed orders
+  - name: Assets & Maintenance
+    description: Asset register, straight-line depreciation inputs and maintenance work orders
 paths:
   /platform/tenant:
     get:
@@ -1368,6 +1370,68 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
         "422": {description: Reservation or product unavailable}
+  /assets:
+    get:
+      tags: [Assets & Maintenance]
+      operationId: listAssets
+      summary: List assets in authorized organizations
+      responses:
+        "200": {description: Scoped asset register}
+    post:
+      tags: [Assets & Maintenance]
+      operationId: createAsset
+      summary: Register an asset with acquisition and depreciation parameters
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Asset"}
+      responses:
+        "201": {description: Asset registered}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /assets/maintenance-work-orders:
+    get:
+      tags: [Assets & Maintenance]
+      operationId: listMaintenanceWorkOrders
+      summary: List maintenance work orders in authorized organizations
+      responses:
+        "200": {description: Scoped maintenance work orders}
+    post:
+      tags: [Assets & Maintenance]
+      operationId: createMaintenanceWorkOrder
+      summary: Create a preventive or corrective maintenance work order
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MaintenanceWorkOrder"}
+      responses:
+        "201": {description: Maintenance work order created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active asset not found}
+  /assets/maintenance-work-orders/{workOrderId}/complete:
+    post:
+      tags: [Assets & Maintenance]
+      operationId: completeMaintenanceWorkOrder
+      summary: Complete a maintenance work order with version-checked actual cost
+      parameters:
+        - {name: workOrderId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MaintenanceCompletion"}
+      responses:
+        "200": {description: Work order completed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Work order not found}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -1855,6 +1919,44 @@ components:
               sku: {type: string}
               quantityMilli: {type: integer, minimum: 1}
         status: {type: string, enum: [placed]}
+    Asset:
+      type: object
+      required: [organizationId, assetId, assetTag, name, category, acquiredAt, acquisitionCostMinor, residualValueMinor, usefulLifeMonths, currency, depreciationMethod]
+      properties:
+        organizationId: {type: string}
+        assetId: {type: string}
+        assetTag: {type: string, maxLength: 64}
+        name: {type: string, minLength: 2, maxLength: 180}
+        category: {type: string}
+        acquiredAt: {type: string, format: date-time}
+        acquisitionCostMinor: {type: integer, minimum: 0}
+        residualValueMinor: {type: integer, minimum: 0}
+        usefulLifeMonths: {type: integer, minimum: 1, maximum: 1200}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        depreciationMethod: {type: string, enum: [straight_line]}
+        status: {type: string, enum: [active, disposed, written_off], default: active}
+    MaintenanceWorkOrder:
+      type: object
+      required: [organizationId, workOrderId, assetId, workType, priority, description, scheduledAt]
+      properties:
+        organizationId: {type: string}
+        workOrderId: {type: string}
+        assetId: {type: string}
+        workType: {type: string, enum: [preventive, corrective]}
+        priority: {type: string, enum: [low, normal, high, critical]}
+        description: {type: string, minLength: 5, maxLength: 2000}
+        scheduledAt: {type: string, format: date-time}
+        assignedToUserId: {type: string}
+        estimatedCostMinor: {type: integer, minimum: 0, default: 0}
+        status: {type: string, enum: [open]}
+    MaintenanceCompletion:
+      type: object
+      required: [organizationId, actualCostMinor, completionNotes, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        actualCostMinor: {type: integer, minimum: 0}
+        completionNotes: {type: string, minLength: 5, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
       required: [error]
