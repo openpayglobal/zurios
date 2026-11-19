@@ -258,7 +258,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/approvals/:requestId/reject",async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({requestId:z.string().min(1)}).parse(request.params),query=z.object({scope:approvalScopeSchema.default("tenant")}).parse(request.query),body=z.object({reason:z.string().min(10).max(1000)}).parse(request.body);
+    const params=z.object({requestId:z.string().min(1)}).parse(request.params),query=z.object({scope:approvalScopeSchema.default("tenant")}).parse(request.query),body=approvalDecisionSchema.parse(request.body);
     const scopeTenantId=query.scope==="platform"?"platform":p.tenantId;
     if(query.scope==="platform"&&!p.platformPermissions?.includes("platform.approvals.approve"))return reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});
     if(query.scope==="tenant"&&!p.permissions.includes("platform.approvals.approve"))return reply.code(403).send({error:"FORBIDDEN"});
