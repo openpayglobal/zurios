@@ -29,6 +29,12 @@ importers:
       '@zuri/core-platform':
         specifier: workspace:*
         version: link:../../packages/core-platform
+      '@zuri/domain-contracts':
+        specifier: workspace:*
+        version: link:../../packages/domain-contracts
+      '@zuri/domain-services':
+        specifier: workspace:*
+        version: link:../../packages/domain-services
       argon2:
         specifier: ^0.41.1
         version: 0.41.1
