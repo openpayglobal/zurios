@@ -10,7 +10,7 @@ Zuri OS has two related but distinct global administration surfaces:
 - **Master Admin Console (MAC):** the authoritative management, configuration, policy, and execution interface for the entire Zuri OS ecosystem.
 - **Master Admin Dashboard (MAD):** the executive operational command centre for observing ecosystem condition, activity, risk, capacity, service health, and decisions requiring attention.
 
-MAC is the control plane. MAD is the operational picture and command surface. MAD may initiate approved workflows, but it does not bypass MAC policies, authorization, approvals, or audit controls.
+MAC is the control plane. MAD is the operational picture and command surface. MAD may initiate approved workflows, but it does not bypass MAC policies, authorization, approvals, or audit controls.\n\n**Canonical web entry point:** `https://zurios.vercel.app/mac`. This route is the entry point for the MAC experience and its integrated MAD dashboard. MAD is a first-class workspace/view within the MAC shell; it does not use a separate public administration URL unless a future route decision explicitly establishes one.
 
 These are global platform capabilities, not ordinary tenant-admin screens. Tenant administrators remain restricted to their own tenant and authorized resources.
 
