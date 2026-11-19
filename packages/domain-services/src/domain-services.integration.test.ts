@@ -28,6 +28,7 @@ test("tenant-scoped Inventory, ERP and POS commands commit with idempotency and 
   await db.collection("erp_payment_allocations").createIndex({tenantId:1,paymentId:1,invoiceId:1},{unique:true});
   await db.collection("pos_terminals").createIndex({tenantId:1,terminalId:1},{unique:true});
   await db.collection("pos_cashier_shifts").createIndex({tenantId:1,shiftId:1},{unique:true});
+  await db.collection("pos_cashier_shifts").createIndex({tenantId:1,terminalId:1},{unique:true,partialFilterExpression:{status:"open"}});
   await db.collection("pos_sales").createIndex({tenantId:1,saleId:1},{unique:true});
   await db.collection("pos_refunds").createIndex({tenantId:1,refundId:1},{unique:true});
   await db.collection("pos_offline_commands").createIndex({tenantId:1,terminalId:1,sequence:1},{unique:true});
@@ -83,6 +84,7 @@ test("tenant-scoped Inventory, ERP and POS commands commit with idempotency and 
   assert.equal(await db.collection("pos_offline_commands").countDocuments({tenantId}),1);
 
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId})>=10);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId})>=10);
   const foreignTenant=await db.collection("inventory_stock_balances").findOne({tenantId:"tenant-b",warehouseId:"warehouse-a",sku:"SKU-1"});
   assert.equal(foreignTenant,null);
  }finally{
