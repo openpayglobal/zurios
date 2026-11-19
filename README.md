@@ -2,50 +2,63 @@
 
 **A modular, multi-tenant Business Operating System by OIPTECH / ODEL Developers.**
 
-## Foundation status
+Zuri OS is being built as one governed platform with shared identity, tenant boundaries, authorization, audit, event delivery and design-system foundations. ERP, POS, Inventory and subsequent business ecosystems must consume those shared authorities rather than creating parallel identity, permission or ledger systems.
 
-The initial monorepo foundation is being implemented on `develop`. It includes the React/Vite application shell, Fastify API bootstrap, MongoDB connection/index initialization, password/JWT primitives, tenant-scoped authorization primitives, audit event writer and GitHub Actions CI. These are foundation components, not a production-ready identity provider or complete business application.
+## Current engineering status
 
-## Stack
+The repository is in active foundation implementation. The current `main` baseline contains:
+
+- A pnpm/Turborepo TypeScript monorepo with React/Vite web and Fastify API applications.
+- MongoDB as the application database, with transaction-backed services requiring a replica set.
+- Tenant, organization, location, membership, user, session, RBAC and ABAC platform services.
+- Password/JWT authentication, MFA flows, recovery-code and session lifecycle logic.
+- Versioned platform API routes, Zod request schemas, OpenAPI 3.1 contract and route/schema drift validation.
+- Idempotent mutation handling, transactional audit/outbox writes, a MongoDB-backed event stream and consumer receipt primitives.
+- Governance/admin API and workspace capabilities for approvals, tenant lifecycle, invitations, policy simulation, audit, configuration and break-glass controls.
+
+**Latest CI repair:** [PR #8](https://github.com/openpayglobal/zurios/pull/8) fixes the OpenAPI schema-property parser and invalid escaped newlines in the location service. GitHub Actions [run #615](https://github.com/openpayglobal/zurios/actions/runs/44552128620) passed replica-set startup, OpenAPI lint, route/schema drift checks, typecheck, tests and build. The PR remains open; this is not a claim that the changes are merged or deployed.
+
+## What is not yet accepted
+
+- The 6A foundation has not completed independent security, tenant-isolation, operational and production-readiness acceptance.
+- The outbox currently hands events to the internal MongoDB event stream. External broker/provider adapters, deployed consumer registry, alerting, replay operations and runbooks remain to be completed.
+- The governance/admin implementation still needs full route-by-route acceptance, provider integration and UX/accessibility review.
+- A separately packaged, shared design system has not yet been accepted.
+- ERP, POS and Inventory are roadmap deliverables, not production-ready modules in this repository baseline.
+- Vercel deployment status contexts for the current PR commit are failing and must be diagnosed before release.
+
+See [the whole-ecosystem roadmap](docs/architecture/WHOLE-ECOSYSTEM-ROADMAP.md) for the implementation sequence, dependencies, acceptance gates and progress ledger. No compliance certification or production readiness is claimed.
+
+## Technology and repository layout
 
 - pnpm workspaces + Turborepo
-- TypeScript
+- TypeScript, Node.js 22+
 - React + Vite + Tailwind CSS
-- Fastify API on Node.js
-- MongoDB as the sole application database
+- Fastify API
+- MongoDB (transaction workflows require a replica set)
 - GitHub Actions CI
-- Vercel as the initial web deployment direction
-
-## Repository layout
-
-- `apps/web` — React/Vite application shell
-- `apps/api` — API bootstrap and platform services
-- `packages/*` — shared contracts and libraries (next implementation increment)
-- `.github/workflows` — CI workflows
+- `apps/web` — web application
+- `apps/api` — API and platform routes
+- `packages/*` — shared platform/domain packages
+- `docs/architecture` — architecture decisions, contracts, roadmap and acceptance records
 
 ## Local development
 
-1. Install Node.js 20.11+ and pnpm 9.15.4.
-2. Start a MongoDB replica set for local development if transaction-backed workflows are being tested.
-3. Copy `.env.example` to `.env`; set a unique random `JWT_SECRET` of at least 32 characters.
+1. Install Node.js 22.12+ and pnpm 9.15.4.
+2. Start MongoDB as a replica set for transaction-backed workflows.
+3. Copy `.env.example` to `.env` and configure unique secrets (never commit them).
 4. Run `pnpm install`.
 5. Run `pnpm dev`.
 
-The API uses port 4000 and the web application uses port 5173.
+The API defaults to port 4000 and the web application to port 5173.
 
-## Platform security invariants
+## Non-negotiable platform invariants
 
-- Tenant identity is required for tenant-owned operations.
-- Organization and location scopes narrow access within a tenant.
-- Authorization is default-deny; role-derived permissions and ABAC predicates must both be satisfied.
-- Never accept tenant identifiers as proof of access. Resolve tenant membership from a verified identity/session.
-- Audit events are append-only through the application service. Production database permissions, tamper evidence, retention and export controls remain required.
+- Tenant identity is derived from a verified principal and active membership, never trusted from a caller-supplied tenant ID.
+- Organization and location scopes narrow tenant access.
+- Authorization is default-deny; RBAC and ABAC must both permit the operation.
+- Mutations are idempotent where retryable; domain change, audit and outbox writes share a transaction.
+- Event delivery is at-least-once; consumers deduplicate using stable event IDs and idempotent side effects.
+- Financial postings use a balanced, immutable double-entry ledger; inventory movements use an append-only stock movement ledger.
 - Secrets, credentials, private keys and production data must never be committed.
-
-## Delivery status and limitations
-
-This is an initial development scaffold. Login/registration endpoints, refresh-token rotation and revocation, invitation and recovery flows, persistent role/policy administration, migrations, comprehensive tests, rate limiting, CSRF strategy, production key management, deployment configuration and operational hardening remain future increments. No compliance certification or production readiness is claimed.
-
-## Engineering governance
-
-Keep `main` releasable. Work on `develop` and feature branches, review through pull requests, and record material architecture changes as ADRs. Preserve the approved MongoDB-native architecture and test tenant isolation, authorization boundaries, ledger correctness and audit integrity before enabling business modules.
+- Keep `main` releasable. Work on feature branches, use reviewed pull requests, and preserve the approved MongoDB-native architecture.
