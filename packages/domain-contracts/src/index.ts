@@ -403,3 +403,46 @@ export const HrLeaveDecisionSchema=z.object({
  decision:z.enum(["approved","rejected"]),reason:z.string().min(10).max(1000),expectedVersion:z.number().int().nonnegative()
 });
 export type HrLeaveDecision=z.infer<typeof HrLeaveDecisionSchema>;
+
+
+export const PayrollLineSchema=z.object({
+ employeeId:z.string().min(1),grossMinor:z.number().int().nonnegative(),
+ statutoryDeductionMinor:z.number().int().nonnegative(),voluntaryDeductionMinor:z.number().int().nonnegative(),
+ employerContributionMinor:z.number().int().nonnegative(),netMinor:z.number().int().nonnegative()
+}).superRefine((line,ctx)=>{
+ if(line.statutoryDeductionMinor+line.voluntaryDeductionMinor>line.grossMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["netMinor"],message:"Payroll deductions cannot exceed gross pay"});
+ if(line.netMinor!==line.grossMinor-line.statutoryDeductionMinor-line.voluntaryDeductionMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["netMinor"],message:"Net pay must reconcile to gross less employee deductions"});
+});
+export const PayrollRunSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),payrollRunId:z.string().min(1),
+ periodStart:z.string().datetime(),periodEnd:z.string().datetime(),jurisdiction:z.string().regex(/^[A-Z]{2}$/),
+ currency:z.string().regex(/^[A-Z]{3}$/),calculationProvider:z.string().min(2).max(120),
+ rulesetVersion:z.string().min(1).max(80),calculatedAt:z.string().datetime(),
+ lines:z.array(PayrollLineSchema).min(1),
+ totalGrossMinor:z.number().int().nonnegative(),totalStatutoryDeductionsMinor:z.number().int().nonnegative(),
+ totalVoluntaryDeductionsMinor:z.number().int().nonnegative(),totalEmployerContributionsMinor:z.number().int().nonnegative(),
+ totalNetMinor:z.number().int().nonnegative(),status:z.literal("draft").default("draft")
+}).superRefine((run,ctx)=>{
+ if(run.periodEnd<run.periodStart)ctx.addIssue({code:z.ZodIssueCode.custom,path:["periodEnd"],message:"Payroll period end cannot precede start"});
+ const ids=run.lines.map(line=>line.employeeId);
+ if(new Set(ids).size!==ids.length)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines"],message:"Payroll run cannot contain duplicate employees"});
+ const totals={
+  gross:run.lines.reduce((sum,line)=>sum+line.grossMinor,0),
+  statutory:run.lines.reduce((sum,line)=>sum+line.statutoryDeductionMinor,0),
+  voluntary:run.lines.reduce((sum,line)=>sum+line.voluntaryDeductionMinor,0),
+  employer:run.lines.reduce((sum,line)=>sum+line.employerContributionMinor,0),
+  net:run.lines.reduce((sum,line)=>sum+line.netMinor,0)
+ };
+ if(totals.gross!==run.totalGrossMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalGrossMinor"],message:"Payroll gross total does not reconcile"});
+ if(totals.statutory!==run.totalStatutoryDeductionsMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalStatutoryDeductionsMinor"],message:"Statutory deductions total does not reconcile"});
+ if(totals.voluntary!==run.totalVoluntaryDeductionsMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalVoluntaryDeductionsMinor"],message:"Voluntary deductions total does not reconcile"});
+ if(totals.employer!==run.totalEmployerContributionsMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalEmployerContributionsMinor"],message:"Employer contribution total does not reconcile"});
+ if(totals.net!==run.totalNetMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalNetMinor"],message:"Payroll net total does not reconcile"});
+});
+export type PayrollRun=z.infer<typeof PayrollRunSchema>;
+
+export const PayrollApprovalSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),payrollRunId:z.string().min(1),
+ reason:z.string().min(20).max(2000),expectedVersion:z.number().int().nonnegative()
+});
+export type PayrollApproval=z.infer<typeof PayrollApprovalSchema>;
