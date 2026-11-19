@@ -7,6 +7,9 @@ const schema = z.object({
  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900).default(900),
  SESSION_TTL_SECONDS: z.coerce.number().int().positive().max(7_776_000).default(2_592_000),
  MFA_ENCRYPTION_KEY: z.string().optional(),
+ MAC_JWT_SECRET: z.string().min(32).optional(),
+ MAC_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
+ MAC_SESSION_TTL_SECONDS: z.coerce.number().int().positive().max(604800).default(28800),
  CORS_ORIGINS: z.string().default("http://localhost:5173")
 }).superRefine((v,ctx)=>{if(v.NODE_ENV==="production"&&(!v.MFA_ENCRYPTION_KEY||Buffer.from(v.MFA_ENCRYPTION_KEY,"base64").length!==32))ctx.addIssue({code:"custom",path:["MFA_ENCRYPTION_KEY"],message:"Production requires a base64-encoded 32-byte MFA_ENCRYPTION_KEY"});});
 export const config = schema.parse(process.env);
