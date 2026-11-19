@@ -8,7 +8,7 @@
 
 - Product definition: **Complete** — name, owner, standalone model, all five objectives and MAC/MAD requirement recorded.
 - Repository foundation: **In progress** — product documentation, isolated React/Vite MAC/MAD web shell and Fastify API bootstrap committed on a feature branch.
-- Phase 1 security primitives: **In progress** — separate platform/tenant RBAC maps, active-membership tenant checks, opaque token/hash utilities, scrypt password hashing/verification, constrained audit-event builder, MongoDB foundation indexes and security tests added.
+- Phase 1 security primitives: **In progress** — separate platform/tenant RBAC maps, active-membership tenant checks, opaque token/hash utilities, scrypt password hashing/verification, one-time platform-owner bootstrap, bearer login/me/logout, protected MAC tenant/audit reads, audited tenant provisioning, read-only MAD aggregates, constrained audit-event builder, MongoDB foundation indexes and security tests added.
 - API authentication/session lifecycle: **In progress** — one-time owner bootstrap, scrypt password verification, opaque bearer sessions, expiry/revocation and current-user endpoint committed; production rate limiting, recovery, invitation acceptance and stronger operational hardening remain.
 - Live Meta configuration: **Deferred by owner** — Business Portfolio and developer app will be created later.
 - Production readiness: **Not started**.
@@ -28,7 +28,7 @@
 | Phase | Name | Status | Exit gate |
 |---:|---|---|---|
 | 0 | External prerequisites & product governance | In progress (Meta setup deferred) | Meta account/app checklist ready; owner later completes external setup |
-| 1 | Standalone platform foundation | In progress | Product docs, frontend shell, API bootstrap, RBAC/tenant-scope primitives, audit-event builder, MongoDB indexes and initial security tests committed; next: session issuance/validation and revocation, protected MAC/MAD endpoints, owner bootstrap, tenant provisioning with audit event, MongoDB owner uniqueness and initial security tests committed; next: invitations, robust rate limiting, audit coverage, tenant-level API routes, CSRF/session transport review and test/build execution |
+| 1 | Standalone platform foundation | In progress | Product docs, frontend shell, API bootstrap, RBAC/tenant-scope primitives, audit-event builder, MongoDB indexes and initial security tests committed; next: session issuance/validation and revocation, owner bootstrap, protected MAC tenant/audit reads, audited MAC tenant provisioning, read-only MAD aggregates, MongoDB owner uniqueness and initial security tests committed; next: invitations, distributed rate limiting, audit coverage, tenant-scoped API routes, step-up/MFA, session transport review and test/build execution |
 | 2 | Facebook & Instagram | Not started | Tested supported asset and publishing/messaging capabilities |
 | 3 | Advertising | Not started | Tested campaign lifecycle and spend controls |
 | 4 | WhatsApp | Not started | Tested WABA onboarding, messaging and webhooks |
@@ -47,3 +47,18 @@
 ## Change control
 
 Any scope reduction, phase reordering, data-model change, new Meta permission, or security exception must be documented with rationale, impact and approval. The five objectives remain in scope unless the product owner explicitly changes them.
+
+
+## Latest implementation log
+
+**Authentication and administration milestone:** committed to `feat/zuri-mebumip-foundation`.
+
+- Added one-time platform-owner bootstrap, creating Blockchain Innovations LTD's initial tenant and assigning the owner membership.
+- Added scrypt password hashes, bearer login, current-session identity lookup and logout revocation. Only session token hashes are stored.
+- Added server-authorized MAC tenant directory and audit-event read endpoints.
+- Added audited MAC tenant provisioning for an existing active user.
+- Added MAD read-only database aggregates for tenant/user/session counts and Meta/webhook status counts.
+- Added a partial unique MongoDB index enforcing one platform-owner account.
+- Added API setup and endpoint documentation.
+
+**Verification:** no build, typecheck, database integration test or automated test suite has yet been run. These commits are implementation work, not a production release. Authentication abuse controls, invitations, recovery, step-up/MFA, immutable audit retention and tenant-scoped business routes remain open.
