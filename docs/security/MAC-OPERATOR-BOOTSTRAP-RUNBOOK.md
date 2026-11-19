@@ -10,7 +10,7 @@ Configure these values in the API project's encrypted Preview environment only:
 
 - `MAC_JWT_SECRET`: a cryptographically random value with at least 32 characters. It must be different from `JWT_SECRET`.
 - `MAC_BOOTSTRAP_TOKEN`: a one-time high-entropy secret used only to authorize initial bootstrap.
-- `MFA_ENCRYPTION_KEY`: the existing base64-encoded 32-byte key. It encrypts TOTP secrets at rest.
+- `MAC_MFA_ENCRYPTION_KEY`: a separate base64-encoded 32-byte key, distinct from tenant MFA encryption. It encrypts TOTP secrets at rest.
 - `MAC_SESSION_TTL_SECONDS`: default 28,800 seconds (8 hours).
 
 The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host only, no trailing `/v1`). Add the exact web origin to API `CORS_ORIGINS`. Do not put any MAC secret in a Vite variable, browser configuration or client bundle.
@@ -25,7 +25,7 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 6. The response contains the TOTP enrollment secret exactly once. Transfer it directly into an authenticator app; do not log, screenshot, email or paste it into chat.
 7. Send a TLS-protected POST request to `/v1/mac/auth/bootstrap/confirm` with the same bootstrap header and the owner email plus current six-digit authenticator code.
 8. Store the returned refresh token in an approved secure credential store. The access token is short-lived.
-9. Immediately remove `MAC_BOOTSTRAP_TOKEN` from the Preview environment and redeploy when quota allows. Login and refresh use `MAC_JWT_SECRET` and `MFA_ENCRYPTION_KEY`; they do not require the bootstrap token.
+9. Immediately remove `MAC_BOOTSTRAP_TOKEN` from the Preview environment and redeploy when quota allows. Login and refresh use `MAC_JWT_SECRET` and `MAC_MFA_ENCRYPTION_KEY`; they do not require the bootstrap token.
 10. Verify login, refresh rotation, logout and revoked-session rejection. Confirm audit records are written to `admin_audit_events`.
 
 ## API operations
