@@ -115,6 +115,7 @@ export const PosSaleSchema=z.object({
  tenantId:z.string().min(1),
  idempotencyKey:z.string().min(8).max(200),
  saleId:z.string().min(1),
+ reservationId:z.string().min(1).optional(),
  terminalId:z.string().min(1),
  cashierId:z.string().min(1),
  currency:z.string().regex(/^[A-Z]{3}$/),
