@@ -10,3 +10,11 @@ export async function createLocation(db:Db,tenantId:string,actorId:string,input:
  const now=new Date(),doc={tenantId,locationId:newId("loc"),...rest,...(parentLocationId?{parentLocationId}:{}),...(address?{address}:{}),status:"active" as const,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await c.locations.insertOne(doc,session?{session}:{});return doc;
 }
+
+export async function setLocationStatus(db:Db,tenantId:string,locationId:string,status:"active"|"inactive",actorId:string,session?:ClientSession){
+ const c=coreCollections(db),now=new Date();
+ if(status==="inactive"&&await c.memberships.countDocuments({tenantId,locationIds:locationId,status:"active"},session?{session}:{})>0)throw new Error("LOCATION_HAS_ACTIVE_MEMBERSHIPS");
+ const result=await c.locations.updateOne({tenantId,locationId,status:{$ne:"inactive"}},{$set:{status,updatedAt:now,updatedBy:actorId}},session?{session}:{});
+ if(!result.matchedCount)throw new Error("LOCATION_NOT_FOUND_OR_INACTIVE");
+ return c.locations.findOne({tenantId,locationId},session?{session}:{});
+}
