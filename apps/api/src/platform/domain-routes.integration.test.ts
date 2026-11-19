@@ -47,7 +47,9 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "inventory.stock.write","inventory.stock.reserve","inventory.stock.consume","inventory.stock.release",
    "pos.terminal.create","pos.shift.open","pos.shift.close","pos.sale.complete","pos.refund.complete","pos.offline.sync",
    "erp.account.read","erp.account.create","erp.fiscal_period.read","erp.fiscal_period.create","erp.purchase_order.create",
-   "erp.invoice.read","erp.invoice.create","erp.invoice.payment.allocate","erp.journal.post"
+   "erp.invoice.read","erp.invoice.create","erp.invoice.payment.allocate","erp.journal.post",
+   "crm.account.read","crm.account.create","crm.contact.read","crm.contact.create","crm.lead.read","crm.lead.create",
+   "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -217,7 +219,52 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
     status:"posted",postedAt:now.toISOString()}
   });
   assert.equal(journal.statusCode,201);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=16);
+
+  const crmAccount=await app.inject({
+   method:"POST",url:"/v1/crm/accounts",headers:{...headers,"idempotency-key":"crm-account-api-001"},
+   payload:{organizationId:"org-a",accountId:"crm-account-api-001",name:"Acme Customer",accountType:"customer",status:"active"}
+  });
+  assert.equal(crmAccount.statusCode,201);
+  const crmContact=await app.inject({
+   method:"POST",url:"/v1/crm/contacts",headers:{...headers,"idempotency-key":"crm-contact-api-001"},
+   payload:{organizationId:"org-a",contactId:"crm-contact-api-001",accountId:"crm-account-api-001",firstName:"Amina",lastName:"N.",
+    email:"amina.crm@example.test",marketingConsent:"granted",consentCapturedAt:now.toISOString(),consentSource:"web form",status:"active"}
+  });
+  assert.equal(crmContact.statusCode,201);
+  const crmLead=await app.inject({
+   method:"POST",url:"/v1/crm/leads",headers:{...headers,"idempotency-key":"crm-lead-api-001"},
+   payload:{organizationId:"org-a",leadId:"crm-lead-api-001",firstName:"Brian",lastName:"K.",source:"referral",status:"new",marketingConsent:"unknown"}
+  });
+  assert.equal(crmLead.statusCode,201);
+  const crmOpportunity=await app.inject({
+   method:"POST",url:"/v1/crm/opportunities",headers:{...headers,"idempotency-key":"crm-opportunity-api-001"},
+   payload:{organizationId:"org-a",opportunityId:"crm-opportunity-api-001",accountId:"crm-account-api-001",contactId:"crm-contact-api-001",
+    name:"Annual supply contract",stage:"prospecting",amountMinor:2500000,currency:"UGX",expectedCloseAt:"2026-12-31T00:00:00.000Z",ownerUserId:"inventory-user",version:0}
+  });
+  assert.equal(crmOpportunity.statusCode,201);
+  const crmActivity=await app.inject({
+   method:"POST",url:"/v1/crm/activities",headers:{...headers,"idempotency-key":"crm-activity-api-001"},
+   payload:{organizationId:"org-a",activityId:"crm-activity-api-001",relatedType:"opportunity",relatedId:"crm-opportunity-api-001",
+    activityType:"meeting",subject:"Discovery call",occurredAt:now.toISOString(),status:"completed"}
+  });
+  assert.equal(crmActivity.statusCode,201);
+  const crmStage=await app.inject({
+   method:"PATCH",url:"/v1/crm/opportunities/crm-opportunity-api-001/stage",headers:{...headers,"idempotency-key":"crm-stage-api-001"},
+   payload:{organizationId:"org-a",stage:"qualification",expectedVersion:0}
+  });
+  assert.equal(crmStage.statusCode,200);
+  const crmAccounts=await app.inject({method:"GET",url:"/v1/crm/accounts",headers});
+  assert.equal(crmAccounts.statusCode,200);
+  assert.equal(crmAccounts.json().data.length,1);
+  const crmOpportunities=await app.inject({method:"GET",url:"/v1/crm/opportunities",headers});
+  assert.equal(crmOpportunities.statusCode,200);
+  assert.equal(crmOpportunities.json().data[0].stage,"qualification");
+  const deniedCrmAccount=await app.inject({
+   method:"POST",url:"/v1/crm/accounts",headers:{...headers,"idempotency-key":"crm-account-api-002"},
+   payload:{organizationId:"org-b",accountId:"crm-account-denied",name:"Out of scope",accountType:"prospect"}
+  });
+  assert.equal(deniedCrmAccount.statusCode,403);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=22);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
