@@ -1,4 +1,5 @@
 import {useMemo,useState} from "react";
+import type {ReactNode} from "react";
 import {
   Activity,AlertTriangle,ArrowUpRight,Blocks,Boxes,Building2,CheckCircle2,
   ChevronDown,ChevronRight,Cloud,Command,Database,FileKey2,Globe2,HardDrive,
@@ -31,7 +32,7 @@ const bootstrapVariables=[
  {name:"CORS_ORIGINS",classification:"Network policy",exposure:"Non-secret"}
 ];
 
-function StatePill({children,kind="neutral"}:{children:React.ReactNode;kind?:"neutral"|"warning"|"success"}) {
+function StatePill({children,kind="neutral"}:{children:ReactNode;kind?:"neutral"|"warning"|"success"}) {
  const style=kind==="warning"?"border-amber-300/20 bg-amber-300/[0.07] text-amber-200":kind==="success"?"border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-200":"border-white/10 bg-white/[0.035] text-slate-400";
  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium ${style}`}><span className="h-1.5 w-1.5 rounded-full bg-current"/>{children}</span>;
 }
