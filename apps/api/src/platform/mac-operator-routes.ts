@@ -84,7 +84,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
   const permission=(name:string)=>async(request:FastifyRequest,reply:FastifyReply)=>{
    const principal=request.macOperator;
    const decision=authorizePlatformOperator(principal,{permission:name,mfaMaxAgeSeconds:configurableMfaWindowSeconds});
-   if(!decision.allowed){
+   if(decision.allowed===false){
     try{await writeAdminAudit(db,{...(principal?.operatorId?{actorId:principal.operatorId}:{}),action:"mac.authorization.denied",resourceType:"route",...(request.routeOptions.url?{resourceId:request.routeOptions.url}:{}),outcome:"denied",request,metadata:{permission:name,reason:decision.reason}});}catch(error){request.log.error({err:error},"Failed to persist MAC authorization audit");}
     return reply.code(403).send({error:"FORBIDDEN",reason:decision.reason});
    }
