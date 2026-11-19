@@ -83,6 +83,7 @@ async function emit(db:Db,session:ClientSession,tenantId:string,request:FastifyR
  await appendOutboxEvent(db,session,{tenantId,eventType,aggregateType,aggregateId,payload,correlationId:request.id});
 }
 const reasonSchema=z.string().min(20).max(2000);
+const auditExportFiltersSchema=z.object({action:z.string().optional(),actorUserId:z.string().optional(),resourceType:z.string().optional(),outcome:z.enum(["success","denied","failure"]).optional(),correlationId:z.string().optional(),from:z.string().datetime().optional(),to:z.string().datetime().optional(),limit:z.number().int().min(1).max(10000).default(10000)}).refine(value=>!value.from||!value.to||new Date(value.from)<=new Date(value.to),{message:"from must be earlier than to"});
 const approvalScopeSchema=z.enum(["tenant","platform"]);
 const approvalActionSchema=z.enum(["membership.suspend","membership.reactivate","membership.revoke","policy.apply","feature_flag.set","break_glass.grant","tenant.activate","tenant.suspend","tenant.close"]);
 function validateApprovalPayload(action:string,payload:unknown){
@@ -279,9 +280,13 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return {data:await c.auditEvents.find(filter,{projection:{_id:0}}).sort({occurredAt:-1}).limit(q.limit).toArray()};
    }catch(error){return fail(error,reply);}
   });
+  app.get("/platform/admin/audit-exports",{preHandler:tenantGuard(db,config.jwtSecret,"platform.audit.export")},async request=>{
+   const p=principal(request),query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25)}).parse(request.query);
+   return {data:await db.collection("audit_export_jobs").find({tenantId:p.tenantId},{projection:{_id:0}}).sort({createdAt:-1}).limit(query.limit).toArray()};
+  });
   app.post("/platform/admin/audit-exports",{preHandler:tenantGuard(db,config.jwtSecret,"platform.audit.export")},async(request,reply)=>{
    const p=principal(request);try{
-    const body=z.object({filters:z.record(z.unknown()).default({}),reason:reasonSchema}).parse(request.body);
+    const body=z.object({filters:auditExportFiltersSchema.default({}),reason:reasonSchema}).parse(request.body);
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.audit.export.request",async session=>{
      const now=new Date(),jobId="aex_"+randomUUID(),doc={jobId,tenantId:p.tenantId,filters:body.filters,reason:body.reason,requestedBy:p.userId,status:"queued",createdAt:now,updatedAt:now};
      await db.collection("audit_export_jobs").insertOne(doc,{session});
