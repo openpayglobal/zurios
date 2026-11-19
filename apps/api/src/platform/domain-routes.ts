@@ -405,7 +405,7 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
     const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
     if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
-    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
     const denied=await permit(db,request,reply,p,"erp.invoice.create",scope);if(denied)return denied;
     const body=InvoiceSchema.parse({...raw,tenantId:p.tenantId,idempotencyKey:key,organizationId});
     const result=await createInvoice(db,body,p.userId);
@@ -422,7 +422,7 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const invoice=await db.collection<{tenantId:string;invoiceId:string;organizationId?:string}>("erp_invoices").findOne({tenantId:p.tenantId,invoiceId});
     if(!invoice)return reply.code(404).send({error:"INVOICE_NOT_FOUND"});
     if(!invoice.organizationId)return reply.code(403).send({error:"INVOICE_ORGANIZATION_SCOPE_MISSING"});
-    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:invoice.organizationId};
+    const scope=await resolveOrganizationScope(db,p.tenantId,invoice.organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
     const denied=await permit(db,request,reply,p,"erp.invoice.payment.allocate",scope);if(denied)return denied;
     const result=await allocateInvoicePayment(db,{tenantId:p.tenantId,actorId:p.userId,key,paymentId:body.paymentId,invoiceId,amountMinor:body.amountMinor,currency:body.currency});
     return reply.code(result.statusCode).send(result.body);
