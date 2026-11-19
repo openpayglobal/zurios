@@ -30,7 +30,7 @@ function fail(error:unknown,reply:FastifyReply){
  if(/NOT_FOUND/.test(code))return reply.code(404).send({error:code});
  if(/CONFLICT|ALREADY_EXISTS|SELF_APPROVAL|IDEMPOTENCY/.test(code))return reply.code(409).send({error:code});
  if(/DENIED|NOT_PERMITTED|ESCALATION|FORBIDDEN/.test(code))return reply.code(403).send({error:code});
- if(/INVALID|REQUIRED|EXPIRED|NOT_ACTIVE|NOT_PENDING|STATE_|ELIGIBLE/.test(code))return reply.code(422).send({error:code});
+ if(/INVALID|REQUIRED|EXPIRED|NOT_ACTIVE|NOT_PENDING|STATE_|ELIGIBLE|DEPENDENCIES/.test(code))return reply.code(422).send({error:code});
  return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 async function writeAudit(db:Db,tenantId:string,p:Principal,request:FastifyRequest,secret:string,action:string,resourceType:string,resourceId:string|undefined,outcome:"success"|"denied"|"failure",metadata:Record<string,unknown>={},session?:ClientSession){
