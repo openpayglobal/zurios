@@ -373,6 +373,32 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     });
    }catch(error){return fail(error,reply);}
   });
+  app.post("/platform/admin/organizations/:organizationId/lifecycle-requests",{preHandler:tenantGuard(db,config.jwtSecret,"platform.approvals.create")},async(request,reply)=>{
+   const p=principal(request);try{
+    const params=z.object({organizationId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
+    if(!p.permissions.includes("platform.organizations.manage.request"))return reply.code(403).send({error:"ORGANIZATION_LIFECYCLE_REQUEST_NOT_PERMITTED"});
+    if(!orgIds(p).includes(params.organizationId)||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:params.organizationId,status:"active"}))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});
+    return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.organizations.lifecycle.request",async session=>{
+     const approval=await createApprovalRequest(db,session,{tenantId:p.tenantId,scope:"tenant",action:"organization.deactivate",targetType:"organization",targetId:params.organizationId,payload:{},reason:body.reason,requestedBy:p.userId,correlationId:request.id});
+     await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"platform.organization.lifecycle.requested","approval",approval.requestId,"success",{organizationId:params.organizationId,reason:body.reason},session);
+     await emit(db,session,p.tenantId,request,"platform.organization.lifecycle.requested","approval",approval.requestId,{requestId:approval.requestId,organizationId:params.organizationId});
+     return {statusCode:201,body:{data:approval}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
+  app.post("/platform/admin/locations/:locationId/lifecycle-requests",{preHandler:tenantGuard(db,config.jwtSecret,"platform.approvals.create")},async(request,reply)=>{
+   const p=principal(request);try{
+    const params=z.object({locationId:z.string().min(1)}).parse(request.params),body=z.object({reason:reasonSchema}).parse(request.body);
+    if(!p.permissions.includes("platform.locations.manage.request"))return reply.code(403).send({error:"LOCATION_LIFECYCLE_REQUEST_NOT_PERMITTED"});
+    if(!locIds(p).includes(params.locationId)||!await c.locations.findOne({tenantId:p.tenantId,locationId:params.locationId,status:"active"}))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
+    return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.locations.lifecycle.request",async session=>{
+     const approval=await createApprovalRequest(db,session,{tenantId:p.tenantId,scope:"tenant",action:"location.deactivate",targetType:"location",targetId:params.locationId,payload:{},reason:body.reason,requestedBy:p.userId,correlationId:request.id});
+     await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"platform.location.lifecycle.requested","approval",approval.requestId,"success",{locationId:params.locationId,reason:body.reason},session);
+     await emit(db,session,p.tenantId,request,"platform.location.lifecycle.requested","approval",approval.requestId,{requestId:approval.requestId,locationId:params.locationId});
+     return {statusCode:201,body:{data:approval}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
   app.post("/platform/admin/tenants/:tenantId/lifecycle-requests",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.lifecycle.request")},async(request,reply)=>{
    const p=principal(request);try{
     const params=z.object({tenantId:z.string().min(1)}).parse(request.params),body=z.object({action:z.enum(["tenant.activate","tenant.suspend","tenant.close"]),reason:reasonSchema}).parse(request.body);
