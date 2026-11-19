@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Db } from "mongodb";
+import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { createAuditEvent } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
@@ -60,7 +60,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     });
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
-    const owner = await db.collection("users").findOne({ _id: new (await import("mongodb")).ObjectId(parsed.data.ownerUserId), status: "active" });
+    const owner = await db.collection("users").findOne({ _id: new ObjectId(parsed.data.ownerUserId), status: "active" });
     if (!owner) return reply.code(404).send({ error: "ACTIVE_OWNER_USER_NOT_FOUND" });
     const now = new Date();
     const tenantResult = await db.collection("tenants").insertOne({
