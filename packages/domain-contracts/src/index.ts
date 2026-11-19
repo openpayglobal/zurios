@@ -199,6 +199,9 @@ export const StockReservationSchema=z.object({
  lines:z.array(z.object({sku:z.string().min(1),quantityMilli:z.number().int().positive()})).min(1),
  status:z.enum(["reserved","committed","released","expired"]),
  expiresAt:z.string().datetime()
+}).superRefine((reservation,ctx)=>{
+ const skus=reservation.lines.map(line=>line.sku);
+ if(new Set(skus).size!==skus.length)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines"],message:"Reservation lines must have unique SKUs"});
 });
 export type StockReservation=z.infer<typeof StockReservationSchema>;
 
