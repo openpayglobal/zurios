@@ -4,18 +4,18 @@ import {auditDomainMutation} from "./audit.js";
 import {CashierShiftSchema,PosRefundSchema,PosSaleSchema,PosTerminalSchema} from "@zuri/domain-contracts";
 import {commitReservationInTransaction} from "./inventory-service.js";
 
-export async function registerPosTerminal(db:Db,input:unknown,actorId:string){
+export async function registerPosTerminal(db:Db,input:unknown,actorId:string,idempotencyKey?:string){
  const terminal=PosTerminalSchema.parse(input);
- return runIdempotentMutation(db,{tenantId:terminal.tenantId,actorId,operation:"pos.terminal.register",key:"terminal-"+terminal.terminalId,request:terminal},async session=>{
+ return runIdempotentMutation(db,{tenantId:terminal.tenantId,actorId,operation:"pos.terminal.register",key:idempotencyKey??"terminal-"+terminal.terminalId,request:terminal},async session=>{
   await db.collection("pos_terminals").insertOne({...terminal,createdAt:new Date(),updatedAt:new Date(),createdBy:actorId},{session});
   await auditDomainMutation(db,session,terminal.tenantId,actorId,"pos.terminal.registered","pos_terminal",terminal.terminalId);
   return {statusCode:201,body:{terminalId:terminal.terminalId}};
  });
 }
-export async function openCashierShift(db:Db,input:unknown,actorId:string){
+export async function openCashierShift(db:Db,input:unknown,actorId:string,idempotencyKey?:string){
  const shift=CashierShiftSchema.parse(input);
  if(shift.status!=="open")throw new Error("NEW_SHIFT_MUST_BE_OPEN");
- return runIdempotentMutation(db,{tenantId:shift.tenantId,actorId,operation:"pos.shift.open",key:"shift-open-"+shift.shiftId,request:shift},async session=>{
+ return runIdempotentMutation(db,{tenantId:shift.tenantId,actorId,operation:"pos.shift.open",key:idempotencyKey??"shift-open-"+shift.shiftId,request:shift},async session=>{
   const terminal=await db.collection("pos_terminals").findOne({tenantId:shift.tenantId,terminalId:shift.terminalId,status:"active"},{session});
   if(!terminal)throw new Error("POS_TERMINAL_NOT_ACTIVE");
   if(await db.collection("pos_cashier_shifts").findOne({tenantId:shift.tenantId,terminalId:shift.terminalId,status:"open"},{session}))throw new Error("POS_TERMINAL_SHIFT_ALREADY_OPEN");
@@ -77,10 +77,10 @@ export async function refundPosSale(db:Db,input:unknown,actorId:string){
   return {statusCode:201,body:{refundId:refund.refundId,status:"completed"}};
  });
 }
-export async function acceptOfflinePosCommand(db:Db,input:{tenantId:string;terminalId:string;commandId:string;sequence:number;commandType:string;payload:Record<string,unknown>;issuedAt:string},actorId:string){
+export async function acceptOfflinePosCommand(db:Db,input:{tenantId:string;terminalId:string;commandId:string;sequence:number;commandType:string;payload:Record<string,unknown>;issuedAt:string},actorId:string,idempotencyKey?:string){
  if(!Number.isSafeInteger(input.sequence)||input.sequence<1)throw new Error("INVALID_OFFLINE_SEQUENCE");
  if(input.commandId.length<8)throw new Error("INVALID_OFFLINE_COMMAND_ID");
- return runIdempotentMutation(db,{tenantId:input.tenantId,actorId,operation:"pos.offline.command",key:input.commandId,request:input},async session=>{
+ return runIdempotentMutation(db,{tenantId:input.tenantId,actorId,operation:"pos.offline.command",key:idempotencyKey??input.commandId,request:input},async session=>{
   const terminal=await db.collection("pos_terminals").findOne({tenantId:input.tenantId,terminalId:input.terminalId},{session});
   if(!terminal)throw new Error("POS_TERMINAL_NOT_FOUND");
   const existing=await db.collection("pos_offline_commands").findOne({tenantId:input.tenantId,terminalId:input.terminalId,sequence:input.sequence},{session});
