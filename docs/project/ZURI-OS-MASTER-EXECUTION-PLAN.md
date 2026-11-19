@@ -286,8 +286,9 @@ The MVP must be end-to-end usable for a controlled test business before vertical
 ## 9. Current verified baseline at plan creation
 
 - Repository: `openpayglobal/zurios`.
-- PR #4: open and ready for review; its branch was reconciled with the then-current `feature/6a3-platform-api` head using a two-parent merge commit. GitHub reported the PR mergeable but unstable pending checks at the last inspection.
-- Reconciled branch commit: `ad252ca39fb50c3a0bef742a3b8200280ceaa9d5`.
+- PR #4: merged on 2026-11-19 into `feature/6a3-platform-api` after branch reconciliation; merge commit `b3abd3af7f6442a00b780eb755428c7aed492617`.
+- PR #6: open; carries the product/architecture/database/UX specifications and the first MAC/MAD web foundation. CI is being run and failures are being corrected before merge.
+- PR #4 reconciliation commit before squash merge: `ad252ca39fb50c3a0bef742a3b8200280ceaa9d5`.
 - Existing CI run on the earlier PR head passed frozen pnpm install, MongoDB replica-set startup, OpenAPI lint, typecheck, tests, builds and Fastify health smoke tests.
 - Current Vercel deployment quota had returned HTTP 402 for the free daily deployment limit; no paid upgrade is authorized.
 - Preview API environment variables have been configured, but the current deployment has not yet consumed the latest values.
