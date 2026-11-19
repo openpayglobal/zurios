@@ -2,7 +2,8 @@ import type {ClientSession,Db,Filter} from "mongodb";
 import {createHmac} from "node:crypto";
 import type {AuditEventDocument,SessionDocument} from "@zuri/core-platform";
 import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
-import {z,ZodError} from "zod";
+import {ZodError} from "zod";
+import {createOrganizationSchema,createLocationSchema,createMembershipSchema,createRoleSchema,upsertPolicySchema,featureFlagSchema,policyKeyParamsSchema,featureFlagKeyParamsSchema,sessionIdParamsSchema,sessionsQuerySchema,auditEventsQuerySchema} from "./platform-schemas.js";
 import {
  coreCollections,createOrganization,createLocation,createMembership,createRole,
  upsertPolicy,setFeatureFlag,appendAuditEvent,appendOutboxEvent,runIdempotentMutation,evaluatePolicy
@@ -82,7 +83,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/organizations",{preHandler:permit(db,config.jwtSecret,"platform.organizations.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const b=z.object({code:z.string(),name:z.string(),type:z.enum(["group","company","business_unit","department","branch"]),parentOrganizationId:z.string().optional()}).parse(request.body);
+    const b=createOrganizationSchema.parse(request.body);
     if(b.parentOrganizationId&&!orgs(p).includes(b.parentOrganizationId))return denied(db,request,reply,p,config.jwtSecret,"ORGANIZATION_SCOPE_DENIED","organization");
     if(!b.parentOrganizationId&&!p.permissions.includes("platform.organizations.create.root"))return denied(db,request,reply,p,config.jwtSecret,"ROOT_ORGANIZATION_CREATION_DENIED","organization");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.organizations.create",async session=>{
@@ -99,7 +100,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/locations",{preHandler:permit(db,config.jwtSecret,"platform.locations.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const b=z.object({organizationId:z.string(),code:z.string(),name:z.string(),type:z.enum(["site","store","warehouse","office","other"]),parentLocationId:z.string().optional(),timezone:z.string().optional(),address:z.record(z.string()).optional()}).parse(request.body);
+    const b=createLocationSchema.parse(request.body);
     if(!orgs(p).includes(b.organizationId))return reply.code(403).send({error:"ORGANIZATION_SCOPE_DENIED"});
     if(b.parentLocationId&&!locations(p).includes(b.parentLocationId))return denied(db,request,reply,p,config.jwtSecret,"LOCATION_SCOPE_DENIED","location");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.locations.create",async session=>{
@@ -118,7 +119,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/memberships",{preHandler:permit(db,config.jwtSecret,"platform.memberships.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const b=z.object({userId:z.string(),organizationIds:z.array(z.string()).min(1),locationIds:z.array(z.string()).default([]),roleIds:z.array(z.string()).default([])}).parse(request.body);
+    const b=createMembershipSchema.parse(request.body);
     if(b.organizationIds.some(x=>!orgs(p).includes(x))||b.locationIds.some(x=>!locations(p).includes(x)))return denied(db,request,reply,p,config.jwtSecret,"MEMBERSHIP_SCOPE_DENIED","membership");
     if(b.roleIds.length&&!p.permissions.includes("platform.memberships.assign.roles"))return denied(db,request,reply,p,config.jwtSecret,"ROLE_ASSIGNMENT_NOT_PERMITTED","membership");
     if(b.roleIds.length){
@@ -140,7 +141,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/roles",{preHandler:permit(db,config.jwtSecret,"platform.roles.create")},async(request,reply)=>{
    const p=principal(request);try{
-    const b=z.object({key:z.string(),name:z.string(),description:z.string().optional(),permissionKeys:z.array(z.string()).max(500),isSystem:z.boolean().default(false)}).parse(request.body);
+    const b=createRoleSchema.parse(request.body);
     if(b.isSystem&&!p.permissions.includes("platform.roles.create.system"))return denied(db,request,reply,p,config.jwtSecret,"SYSTEM_ROLE_CREATION_DENIED","role");
     if(b.permissionKeys.some(permission=>!p.permissions.includes(permission))&&!p.permissions.includes("platform.roles.grant.privileged"))return denied(db,request,reply,p,config.jwtSecret,"ROLE_PERMISSION_ESCALATION_DENIED","role");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.roles.create",async session=>{
@@ -156,8 +157,8 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.put("/platform/policies/:key",{preHandler:permit(db,config.jwtSecret,"platform.policies.write")},async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({key:z.string().min(2).max(100)}).parse(request.params);
-    const b=z.object({effect:z.enum(["allow","deny"]),priority:z.number().int().min(0).max(10000),subject:z.record(z.unknown()).default({}),resource:z.record(z.unknown()).default({}),actions:z.array(z.string()).min(1),conditions:z.record(z.unknown()).default({})}).parse(request.body);
+    const params=policyKeyParamsSchema.parse(request.params);
+    const b=upsertPolicySchema.parse(request.body);
     if(b.effect==="allow"&&!p.permissions.includes("platform.policies.write.allow"))return denied(db,request,reply,p,config.jwtSecret,"POLICY_ALLOW_NOT_PERMITTED","policy");
     if(b.effect==="deny"&&!p.permissions.includes("platform.policies.write.deny"))return denied(db,request,reply,p,config.jwtSecret,"POLICY_DENY_NOT_PERMITTED","policy");
     if(!Object.keys(b.subject).length&&!Object.keys(b.resource).length&&!Object.keys(b.conditions).length&&!p.permissions.includes("platform.policies.write.global"))return denied(db,request,reply,p,config.jwtSecret,"GLOBAL_POLICY_NOT_PERMITTED","policy");
@@ -174,8 +175,8 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.put("/platform/feature-flags/:key",{preHandler:permit(db,config.jwtSecret,"platform.feature-flags.write")},async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({key:z.string().min(2).max(100)}).parse(request.params);
-    const b=z.object({enabled:z.boolean(),description:z.string().max(500).optional(),environments:z.array(z.string()).default(["development"]),rules:z.array(z.record(z.unknown())).default([])}).parse(request.body);
+    const params=featureFlagKeyParamsSchema.parse(request.params);
+    const b=featureFlagSchema.parse(request.body);
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.feature-flags.upsert",async session=>{
      const result=await setFeatureFlag(db,p.tenantId,p.userId,{...b,key:params.key},session);
      await audit(db,p,request,config.jwtSecret,"platform.feature-flag.updated","feature_flag",params.key,session);
@@ -185,14 +186,14 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/sessions",{preHandler:permit(db,config.jwtSecret,"platform.sessions.read")},async request=>{
-   const p=principal(request),q=z.object({userId:z.string().optional(),activeOnly:z.coerce.boolean().default(true)}).parse(request.query);
+   const p=principal(request),q=sessionsQuerySchema.parse(request.query);
    const all=p.permissions.includes("platform.sessions.read.all"),userId=all?q.userId??undefined:p.userId;
    const filter:Filter<SessionDocument>={tenantId:p.tenantId,...(userId?{userId}:{}),...(q.activeOnly?{revokedAt:{$exists:false}}:{})};
    return {data:await c.sessions.find(filter,{projection:{_id:0,refreshTokenHash:0,refreshTokenHistory:0}}).sort({lastUsedAt:-1}).limit(200).toArray()};
   });
   app.post("/platform/sessions/:sessionId/revoke",{preHandler:permit(db,config.jwtSecret,"platform.sessions.revoke")},async(request,reply)=>{
    const p=principal(request);try{
-    const {sessionId}=z.object({sessionId:z.string().min(1)}).parse(request.params);
+    const {sessionId}=sessionIdParamsSchema.parse(request.params);
     const filter={tenantId:p.tenantId,sessionId,...(p.permissions.includes("platform.sessions.revoke.all")?{}:{userId:p.userId}),revokedAt:{$exists:false}};
     return await mutate(db,request,reply,p,config.jwtSecret,"platform.sessions.revoke",async session=>{
      const now=new Date(),result=await c.sessions.updateOne(filter,{$set:{revokedAt:now,updatedAt:now,updatedBy:p.userId}},{session});
@@ -204,7 +205,7 @@ export function platformRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    }catch(e){return fail(e,reply);}
   });
   app.get("/platform/audit-events",{preHandler:permit(db,config.jwtSecret,"platform.audit.read")},async request=>{
-   const p=principal(request),q=z.object({action:z.string().optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(request.query);
+   const p=principal(request),q=auditEventsQuerySchema.parse(request.query);
    const filter:Filter<AuditEventDocument>={tenantId:p.tenantId,...(q.action?{action:q.action}:{})};
    return {data:await c.auditEvents.find(filter,{projection:{_id:0}}).sort({occurredAt:-1}).limit(q.limit).toArray()};
   });
