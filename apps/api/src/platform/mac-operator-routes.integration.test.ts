@@ -24,11 +24,12 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   const bootstrap=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"owner@example.test",displayName:"Platform Owner",password:"A-strong-test-password-2026"}});
   assert.equal(bootstrap.statusCode,201);
   const secret=bootstrap.json().totpSecret as string;
-  const confirm=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap/confirm",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"owner@example.test",code:totpCode(secret)}});
+  const bootstrapCode=totpCode(secret);
+  const confirm=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap/confirm",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"owner@example.test",code:bootstrapCode}});
   assert.equal(confirm.statusCode,201);
   const session=confirm.json() as {accessToken:string;refreshToken:string;sessionId:string};
   assert.ok(session.accessToken);assert.ok(session.refreshToken);
-  const replayedBootstrapCode=await app.inject({method:"POST",url:"/v1/mac/auth/login",payload:{email:"owner@example.test",password:"A-strong-test-password-2026",code:"999999"}});
+  const replayedBootstrapCode=await app.inject({method:"POST",url:"/v1/mac/auth/login",payload:{email:"owner@example.test",password:"A-strong-test-password-2026",code:bootstrapCode}});
   assert.equal(replayedBootstrapCode.statusCode,401);
   const authOnlyConfig={issuer:config.issuer,audience:config.audience,jwtSecret:config.jwtSecret,mfaEncryptionKey:config.mfaEncryptionKey,sessionTtlSeconds:config.sessionTtlSeconds};
   await authApp.register(macOperatorRoutes(db,authOnlyConfig),{prefix:"/v1"});await authApp.ready();
