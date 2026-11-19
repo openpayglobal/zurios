@@ -30,13 +30,13 @@ function fail(error:unknown,reply:FastifyReply){
  return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 async function denied(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,ipHashSecret:string,code:string,resourceType="authorization"){
- try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:"authorization.denied",resourceType,resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{code}});}
+ try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:"authorization.denied",resourceType,resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{code,...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}});}
  catch(error){request.log.error({err:error,correlationId:request.id},"Failed to persist denied-action audit event");}
  return reply.code(403).send({error:code});
 }
 async function auditFailure(db:Db,request:FastifyRequest,p:Principal,ipHashSecret:string,operation:string,error:unknown){
  const errorCode=error instanceof Error&&/^[A-Z0-9_]{3,100}$/.test(error.message)?error.message:"MUTATION_FAILED";
- await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:`${operation}.failed`,resourceType:"platform_api",resourceId:request.routeOptions.url,outcome:"failure",correlationId:request.id,metadata:{operation,errorCode}});
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:`${operation}.failed`,resourceType:"platform_api",resourceId:request.routeOptions.url,outcome:"failure",correlationId:request.id,metadata:{operation,errorCode,...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}});
 }
 function permit(db:Db,ipHashSecret:string,permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{
  const p=principal(request);
@@ -49,7 +49,7 @@ function permit(db:Db,ipHashSecret:string,permission:string){return async(reques
  if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,ipHashSecret,"ABAC_POLICY_DENIED");
 };}
 async function audit(db:Db,p:Principal,request:FastifyRequest,ipHashSecret:string,action:string,type:string,id:string|undefined,session:ClientSession){
- await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}},session);
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}},session);
 }
 async function mutate(
  db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,ipHashSecret:string,operation:string,
