@@ -39,7 +39,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("idempotency_records").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("outbox_events").createIndex({eventId:1},{unique:true}),
   db.collection("outbox_events").createIndex({status:1,availableAt:1,occurredAt:1}),
-  db.collection("outbox_events").createIndex({status:1,leaseUntil:1}),
+  db.collection("outbox_events").createIndex({status:1,leaseUntil:1}),\n  db.collection("event_consumer_receipts").createIndex({consumerId:1,eventId:1},{unique:true}),\n  db.collection("event_consumer_receipts").createIndex({tenantId:1,processedAt:-1}),
   db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),
   db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),
