@@ -2,9 +2,12 @@ import {readFileSync} from "node:fs";
 import {PLATFORM_BODY_CONTRACTS} from "../src/platform/platform-schemas.js";
 
 const routeSource=readFileSync("src/platform/platform-routes.ts","utf8");
+const macRouteSource=readFileSync("src/platform/mac-operator-routes.ts","utf8");
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
 const routeDefinitions=[...routeSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
-const routePaths=new Set(routeDefinitions.map(([, ,path])=>path.replace(/:([A-Za-z0-9_]+)/g,"{$1}")));
+const macRouteDefinitions=[...macRouteSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
+const allRouteDefinitions=[...routeDefinitions,...macRouteDefinitions];
+const routePaths=new Set(allRouteDefinitions.map(([, ,path])=>path.replace(/:([A-Za-z0-9_]+)/g,"{$1}")));
 const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)[0]??"";
 const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path));
 const missingFromContract=[...routePaths].filter(path=>!contractPaths.has(path));
