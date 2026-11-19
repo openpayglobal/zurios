@@ -41,6 +41,8 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 | `GET /v1/mac/overview` | Platform counts and integration status | `mac.overview.read` |
 | `GET /v1/mac/tenants` | Paginated tenant inventory | `mac.tenants.read` |
 | `GET /v1/mac/audit` | Global admin audit events | `mac.audit.read` |
+| `GET /v1/mac/configurations` | Safe configuration metadata only; no values | `mac.config.read` |
+| `GET /v1/mac/providers` | Provider registry and capability metadata only | `mac.providers.read` |
 | `GET /v1/mac/operators` | Sanitized global operator inventory | `mac.operators.manage` |
 | `GET /v1/mac/sessions` | Active/recent operator session metadata | `mac.operators.manage` |
 | `POST /v1/mac/operators/invitations` | Create a one-time, 24-hour read-only operator invitation | `mac.operators.manage` |
@@ -59,7 +61,7 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 
 ## Current limitations
 
-- The API supports the initial bootstrap owner, read-only operator invitations, operator inventory, session listing/revocation and operator suspension. The web UI supports invitation creation and acceptance at `/mac/invite`. Invitation profiles cannot grant management permissions. Permission-grant approvals, elevated roles, operator reactivation and recovery workflows are not yet implemented.
+- The API supports the initial bootstrap owner, read-only operator invitations, operator inventory, session listing/revocation and operator suspension. The web UI supports invitation creation and acceptance at `/mac/invite`, provider metadata, and safe configuration metadata. Invitation profiles cannot grant management permissions. Configuration/provider write operations remain disabled. Permission-grant approvals, elevated roles, operator reactivation and recovery workflows are not yet implemented.
 - MAC read APIs are implemented; runtime configuration writes, provider changes, deployments, rollbacks and other high-impact mutations remain disabled.
 - The MAC frontend reads authenticated overview, tenant and audit data. It keeps tokens in React memory only; reloading the tab requires a new sign-in.
 - No live deployment, production promotion, paid Vercel feature or new recurring cost is authorized by this runbook.
