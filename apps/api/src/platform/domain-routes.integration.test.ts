@@ -53,7 +53,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "hr.employee.read","hr.employee.create","hr.leave.read","hr.leave.request","hr.leave.approve",
    "payroll.run.read","payroll.run.create","payroll.run.approve",
    "payments.intent.read","payments.intent.create","payments.refund.request",
-   "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create"
+   "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create",
+   "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -370,7 +371,27 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const commerceOrders=await app.inject({method:"GET",url:"/v1/commerce/orders",headers});
   assert.equal(commerceOrders.statusCode,200);
   assert.equal(commerceOrders.json().data.length,1);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=37);
+  const asset=await app.inject({
+   method:"POST",url:"/v1/assets",headers:{...headers,"idempotency-key":"asset-api-001"},
+   payload:{organizationId:"org-a",assetId:"asset-api-001",assetTag:"ASSET-API-001",name:"Service vehicle",category:"vehicle",
+    acquiredAt:now.toISOString(),acquisitionCostMinor:12000000,residualValueMinor:1200000,usefulLifeMonths:60,currency:"UGX",depreciationMethod:"straight_line",status:"active"}
+  });
+  assert.equal(asset.statusCode,201);
+  const workOrder=await app.inject({
+   method:"POST",url:"/v1/assets/maintenance-work-orders",headers:{...headers,"idempotency-key":"asset-work-api-001"},
+   payload:{organizationId:"org-a",workOrderId:"asset-work-api-001",assetId:"asset-api-001",workType:"preventive",priority:"normal",
+    description:"Scheduled service and inspection",scheduledAt:new Date(now.getTime()+86400000).toISOString(),estimatedCostMinor:150000}
+  });
+  assert.equal(workOrder.statusCode,201);
+  const completedWork=await app.inject({
+   method:"POST",url:"/v1/assets/maintenance-work-orders/asset-work-api-001/complete",headers:{...headers,"idempotency-key":"asset-work-complete-api-001"},
+   payload:{organizationId:"org-a",actualCostMinor:140000,completionNotes:"Service completed and inspection checklist signed",expectedVersion:0}
+  });
+  assert.equal(completedWork.statusCode,200);
+  const assetList=await app.inject({method:"GET",url:"/v1/assets",headers});
+  assert.equal(assetList.statusCode,200);
+  assert.equal(assetList.json().data.length,1);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=40);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
