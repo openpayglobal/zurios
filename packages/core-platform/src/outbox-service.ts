@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
+import {queueWebhookDeliveries} from "./webhook-delivery-service.js";
 
 export type PlatformEventEnvelope={
  eventId:string;tenantId:string;eventType:string;schemaVersion:1;aggregateType:string;aggregateId?:string;
@@ -135,6 +136,7 @@ export async function publishOutboxToMongoEventBus(db:Db,event:OutboxEventDocume
  await db.collection<PlatformEventEnvelope>("platform_events").updateOne(
   {eventId:envelope.eventId},{$setOnInsert:envelope},{upsert:true}
  );
+ await queueWebhookDeliveries(db,envelope);
 }
 export function createMongoEventBusPublisher(db:Db):OutboxPublisher{
  return async event=>publishOutboxToMongoEventBus(db,event);
