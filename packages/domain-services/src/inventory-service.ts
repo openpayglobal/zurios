@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {appendOutboxEvent,runIdempotentMutation} from "@zuri/core-platform";
+import {auditDomainMutation} from "./audit.js";
 import {StockMovementSchema,StockReservationSchema,WarehouseSchema} from "@zuri/domain-contracts";
 
 type Balance={tenantId:string;warehouseId:string;sku:string;quantityOnHandMilli:number;quantityReservedMilli:number;quantityAvailableMilli:number;version:number;updatedAt:Date};
@@ -38,6 +39,7 @@ export async function createWarehouse(db:Db,input:unknown,actorId:string){
  const warehouse=WarehouseSchema.parse(input);
  return runIdempotentMutation(db,{tenantId:warehouse.tenantId,actorId,operation:"inventory.warehouse.create",key:"warehouse-"+warehouse.warehouseId,request:warehouse},async session=>{
   await db.collection("inventory_warehouses").insertOne({...warehouse,createdAt:new Date(),updatedAt:new Date(),createdBy:actorId},{session});
+  await auditDomainMutation(db,session,warehouse.tenantId,actorId,"inventory.warehouse.created","inventory_warehouse",warehouse.warehouseId);
   return {statusCode:201,body:{warehouseId:warehouse.warehouseId}};
  });
 }
@@ -60,6 +62,7 @@ export async function recordStockMovement(db:Db,input:unknown,actorId:string){
   }
   const suffix=movement.movementType==="receipt"?"received":movement.movementType==="issue"?"issued":movement.movementType==="transfer"?"transferred":"adjusted";
   await appendOutboxEvent(db,session,{tenantId:movement.tenantId,eventType:"inventory.stock."+suffix,aggregateType:"stock",aggregateId:movement.warehouseId,payload:{movementId:movement.movementId,sku:movement.sku,quantityMilli:movement.quantityMilli,warehouseId:movement.warehouseId,...(movement.destinationWarehouseId?{destinationWarehouseId:movement.destinationWarehouseId}:{})}});
+  await auditDomainMutation(db,session,movement.tenantId,actorId,"inventory.stock_movement.recorded","inventory_stock_movement",movement.movementId,{movementType:movement.movementType,sku:movement.sku,quantityMilli:movement.quantityMilli});
   return {statusCode:201,body:{movementId:movement.movementId}};
  });
 }
@@ -75,6 +78,7 @@ async function settleReservation(db:Db,session:ClientSession,tenantId:string,res
  const update=await c.updateOne({tenantId,reservationId,status:"reserved"},{$set:{status:action==="commit"?"committed":"released",updatedAt:now}},{session});
  if(update.matchedCount!==1)throw new Error("RESERVATION_CONCURRENT_MODIFICATION");
  await appendOutboxEvent(db,session,{tenantId,eventType:action==="commit"?"inventory.stock.consumed":"inventory.stock.reserved",aggregateType:"reservation",aggregateId:reservationId,payload:{reservationId,orderId:reservation.orderId,warehouseId:reservation.warehouseId,lines:reservation.lines}});
+ await auditDomainMutation(db,session,tenantId,actorId,action==="commit"?"inventory.reservation.committed":"inventory.reservation.released","inventory_reservation",reservationId,{orderId:reservation.orderId,warehouseId:reservation.warehouseId});
 }
 export async function reserveStock(db:Db,input:unknown,actorId:string){
  const reservation=StockReservationSchema.parse(input);
@@ -88,6 +92,7 @@ export async function reserveStock(db:Db,input:unknown,actorId:string){
   const now=new Date();
   await db.collection<Reservation>("inventory_reservations").insertOne({...reservation,expiresAt,createdAt:now,updatedAt:now},{session});
   await appendOutboxEvent(db,session,{tenantId:reservation.tenantId,eventType:"inventory.stock.reserved",aggregateType:"reservation",aggregateId:reservation.reservationId,payload:{reservationId:reservation.reservationId,orderId:reservation.orderId,warehouseId:reservation.warehouseId,lines:reservation.lines}});
+  await auditDomainMutation(db,session,reservation.tenantId,actorId,"inventory.reservation.created","inventory_reservation",reservation.reservationId,{orderId:reservation.orderId,warehouseId:reservation.warehouseId});
   return {statusCode:201,body:{reservationId:reservation.reservationId}};
  });
 }
