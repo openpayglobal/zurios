@@ -48,7 +48,16 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),
   db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),
-  db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
+  db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0}),
+  db.collection("platform_operators").createIndex({operatorId:1},{unique:true}),
+  db.collection("platform_operators").createIndex({emailNormalized:1},{unique:true}),
+  db.collection("platform_operators").createIndex({bootstrapOwner:1},{unique:true,partialFilterExpression:{bootstrapOwner:true}}),
+  db.collection("platform_operator_sessions").createIndex({sessionId:1},{unique:true}),
+  db.collection("platform_operator_sessions").createIndex({operatorId:1,createdAt:-1}),
+  db.collection("platform_operator_sessions").createIndex({expiresAt:1},{expireAfterSeconds:0}),
+  db.collection("admin_audit_events").createIndex({eventId:1},{unique:true}),
+  db.collection("admin_audit_events").createIndex({occurredAt:-1}),
+  db.collection("admin_audit_events").createIndex({actor.operatorId:1,occurredAt:-1})
  ]);
 }
 export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
