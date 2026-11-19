@@ -1,7 +1,7 @@
 import type {Db} from "mongodb";
 import type {FastifyReply,FastifyRequest} from "fastify";
 import {jwtVerify} from "jose";
-import {coreCollections,permissionsForMembership} from "@zuri/core-platform";
+import {coreCollections,permissionsForMembership,platformPermissionsForUser} from "@zuri/core-platform";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 export type AuthenticatedPrincipal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -23,11 +23,16 @@ export function authenticate(db:Db,config:AuthConfig){
     c.memberships.findOne({tenantId,membershipId,userId,status:"active"})
    ]);
    if(!session||!tenant||!user||!membership)throw new Error("INACTIVE_PRINCIPAL");
-   const [permissions,roles]=await Promise.all([
+   const [permissions,roles,emergencyGrants,platformPermissions]=await Promise.all([
     permissionsForMembership(db,tenantId,membershipId),
-    c.roles.find({tenantId,roleId:{$in:membership.roleIds},status:"active"}).toArray()
+    c.roles.find({tenantId,roleId:{$in:membership.roleIds},status:"active"}).toArray(),
+    db.collection("break_glass_grants").find({tenantId,userId,status:"active",startsAt:{$lte:now},expiresAt:{$gt:now}}).toArray(),
+    platformPermissionsForUser(db,userId,now)
    ]);
-   request.principal={userId,tenantId,membershipId,sessionId,organizationIds:membership.organizationIds,...(membership.organizationIds.length===1?{organizationId:membership.organizationIds[0]}:{}),locationIds:membership.locationIds,roleKeys:roles.map(r=>r.key),permissions,attributes:{}};
+   const emergencyPermissions=emergencyGrants.flatMap(grant=>grant.permissionKeys as string[]);
+   const organizationIds=[...new Set([...membership.organizationIds,...emergencyGrants.flatMap(grant=>grant.organizationIds as string[])])];
+   const locationIds=[...new Set([...membership.locationIds,...emergencyGrants.flatMap(grant=>grant.locationIds as string[])])];
+   request.principal={userId,tenantId,membershipId,sessionId,organizationIds,...(organizationIds.length===1?{organizationId:organizationIds[0]}:{}),locationIds,roleKeys:roles.map(r=>r.key),permissions:[...new Set([...permissions,...emergencyPermissions])],platformPermissions,emergencyGrantIds:emergencyGrants.map(grant=>grant.grantId as string),attributes:{}};
   }catch{return reply.code(401).send({error:"UNAUTHENTICATED"});}
  };
 }
