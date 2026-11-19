@@ -52,6 +52,10 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   assert.equal(overview.statusCode,200);assert.equal(overview.json().data.tenants,2);
   const tenantList=await authApp.inject({method:"GET",url:"/v1/mac/tenants?limit=1",headers:{authorization:`Bearer ${session.accessToken}`}});
   assert.equal(tenantList.statusCode,200);assert.equal(tenantList.json().data.length,1);assert.equal(tenantList.json().page.hasMore,true);
+  const invalidTenantQuery=await authApp.inject({method:"GET",url:"/v1/mac/tenants?limit=101",headers:{authorization:`Bearer ${session.accessToken}`}});
+  assert.equal(invalidTenantQuery.statusCode,400);
+  const revokeCurrent=await authApp.inject({method:"POST",url:`/v1/mac/sessions/${session.sessionId}/revoke`,headers:{authorization:`Bearer ${session.accessToken}`},payload:{reason:"Attempt to revoke own session"}});
+  assert.equal(revokeCurrent.statusCode,409);
   const refresh=await authApp.inject({method:"POST",url:"/v1/mac/auth/refresh",payload:{sessionId:session.sessionId,refreshToken:session.refreshToken}});
   assert.equal(refresh.statusCode,200);
   const rotated=refresh.json() as {accessToken:string;refreshToken:string};
