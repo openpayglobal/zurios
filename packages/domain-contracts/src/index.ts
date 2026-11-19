@@ -198,3 +198,108 @@ export type StockReservation=z.infer<typeof StockReservationSchema>;
 export const ERP_EVENT_TYPES=["erp.purchase_order.submitted","erp.purchase_order.received","erp.invoice.issued","erp.journal.posted"] as const;
 export const POS_EVENT_TYPES=["pos.sale.completed","pos.sale.voided","pos.refund.completed","pos.tender.captured"] as const;
 export const INVENTORY_EVENT_TYPES=["inventory.stock.received","inventory.stock.issued","inventory.stock.transferred","inventory.stock.adjusted","inventory.stock.reserved","inventory.stock.consumed"] as const;
+
+export const FiscalPeriodSchema=z.object({
+ tenantId:z.string().min(1),periodId:z.string().min(1),periodCode:z.string().min(1).max(32),
+ startsAt:z.string().datetime(),endsAt:z.string().datetime(),status:z.enum(["open","closed"])
+}).refine(period=>period.endsAt>=period.startsAt,{message:"Fiscal period end must not precede its start",path:["endsAt"]});
+export type FiscalPeriod=z.infer<typeof FiscalPeriodSchema>;
+
+export const InvoiceLineSchema=z.object({
+ description:z.string().min(1).max(250),quantityMilli:z.number().int().positive(),
+ unitPriceMinor:z.number().int().nonnegative(),discountMinor:z.number().int().nonnegative().default(0),
+ taxRateBps:z.number().int().min(0).max(10000)
+});
+export const InvoiceSchema=z.object({
+ tenantId:z.string().min(1),idempotencyKey:z.string().min(8).max(200),
+ invoiceId:z.string().min(1),invoiceNumber:z.string().min(1).max(64),
+ invoiceType:z.enum(["sales","purchase"]),partyId:z.string().min(1),
+ currency:z.string().regex(/^[A-Z]{3}$/),issuedAt:z.string().datetime(),dueAt:z.string().datetime(),
+ lines:z.array(InvoiceLineSchema).min(1),subtotalMinor:z.number().int().nonnegative(),
+ taxMinor:z.number().int().nonnegative(),totalMinor:z.number().int().positive(),
+ status:z.enum(["draft","issued","partially_paid","paid","void"])
+}).superRefine((invoice,ctx)=>{
+ let subtotal=0,tax=0;
+ for(const [index,line] of invoice.lines.entries()){
+  const gross=Math.round(line.quantityMilli*line.unitPriceMinor/1000);
+  if(line.discountMinor>gross)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines",index,"discountMinor"],message:"Invoice discount cannot exceed line gross"});
+  const net=Math.max(0,gross-line.discountMinor);subtotal+=net;tax+=Math.round(net*line.taxRateBps/10000);
+ }
+ if(subtotal!==invoice.subtotalMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["subtotalMinor"],message:"Invoice subtotal does not match its lines"});
+ if(tax!==invoice.taxMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["taxMinor"],message:"Invoice tax does not match its lines"});
+ if(subtotal+tax!==invoice.totalMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["totalMinor"],message:"Invoice total must equal subtotal plus tax"});
+ if(invoice.dueAt<invoice.issuedAt)ctx.addIssue({code:z.ZodIssueCode.custom,path:["dueAt"],message:"Invoice due date cannot precede issue date"});
+});
+export type Invoice=z.infer<typeof InvoiceSchema>;
+
+export const PaymentAllocationSchema=z.object({
+ tenantId:z.string().min(1),idempotencyKey:z.string().min(8).max(200),
+ paymentId:z.string().min(1),invoiceId:z.string().min(1),
+ amountMinor:z.number().int().positive(),currency:z.string().regex(/^[A-Z]{3}$/),
+ allocatedAt:z.string().datetime()
+});
+export type PaymentAllocation=z.infer<typeof PaymentAllocationSchema>;
+
+export const PosTerminalSchema=z.object({
+ tenantId:z.string().min(1),terminalId:z.string().min(1),code:z.string().min(1).max(32),
+ locationId:z.string().min(1),deviceId:z.string().min(1),
+ status:z.enum(["active","inactive","maintenance"])
+});
+export type PosTerminal=z.infer<typeof PosTerminalSchema>;
+
+export const CashierShiftSchema=z.object({
+ tenantId:z.string().min(1),shiftId:z.string().min(1),terminalId:z.string().min(1),
+ cashierId:z.string().min(1),currency:z.string().regex(/^[A-Z]{3}$/),
+ openedAt:z.string().datetime(),openingFloatMinor:z.number().int().nonnegative(),
+ status:z.enum(["open","closed"]),expectedCashMinor:z.number().int().nonnegative().optional(),
+ closingCountedMinor:z.number().int().nonnegative().optional(),closedAt:z.string().datetime().optional()
+}).superRefine((shift,ctx)=>{
+ if(shift.status==="closed"&&(shift.expectedCashMinor===undefined||shift.closingCountedMinor===undefined||!shift.closedAt)){
+  ctx.addIssue({code:z.ZodIssueCode.custom,path:["closedAt"],message:"Closed shifts require expected cash, counted cash and a close timestamp"});
+ }
+ if(shift.status==="open"&&(shift.closedAt||shift.closingCountedMinor!==undefined)){
+  ctx.addIssue({code:z.ZodIssueCode.custom,path:["status"],message:"Open shifts cannot carry closing values"});
+ }
+});
+export type CashierShift=z.infer<typeof CashierShiftSchema>;
+
+export const PosRefundSchema=z.object({
+ tenantId:z.string().min(1),idempotencyKey:z.string().min(8).max(200),
+ refundId:z.string().min(1),saleId:z.string().min(1),
+ originalSaleTotalMinor:z.number().int().positive(),amountMinor:z.number().int().positive(),
+ currency:z.string().regex(/^[A-Z]{3}$/),reason:z.string().min(3).max(500),
+ status:z.enum(["pending","completed","rejected"]),completedAt:z.string().datetime().optional()
+}).superRefine((refund,ctx)=>{
+ if(refund.amountMinor>refund.originalSaleTotalMinor)ctx.addIssue({code:z.ZodIssueCode.custom,path:["amountMinor"],message:"Refund cannot exceed the original sale total"});
+ if(refund.status==="completed"&&!refund.completedAt)ctx.addIssue({code:z.ZodIssueCode.custom,path:["completedAt"],message:"Completed refunds require a timestamp"});
+});
+export type PosRefund=z.infer<typeof PosRefundSchema>;
+
+export const StockBalanceSchema=z.object({
+ tenantId:z.string().min(1),warehouseId:z.string().min(1),sku:z.string().min(1),
+ quantityOnHandMilli:z.number().int().nonnegative(),quantityReservedMilli:z.number().int().nonnegative(),
+ quantityAvailableMilli:z.number().int().nonnegative(),version:z.number().int().nonnegative()
+}).superRefine((balance,ctx)=>{
+ if(balance.quantityReservedMilli>balance.quantityOnHandMilli)ctx.addIssue({code:z.ZodIssueCode.custom,path:["quantityReservedMilli"],message:"Reserved quantity cannot exceed on-hand quantity"});
+ if(balance.quantityAvailableMilli!==balance.quantityOnHandMilli-balance.quantityReservedMilli)ctx.addIssue({code:z.ZodIssueCode.custom,path:["quantityAvailableMilli"],message:"Available stock must equal on-hand less reserved"});
+});
+export type StockBalance=z.infer<typeof StockBalanceSchema>;
+
+export const InventoryValuationSchema=z.object({
+ tenantId:z.string().min(1),warehouseId:z.string().min(1),sku:z.string().min(1),
+ costingMethod:z.enum(["fifo","weighted_average","standard"]),
+ quantityMilli:z.number().int().nonnegative(),unitCostMinor:z.number().int().nonnegative(),
+ totalValueMinor:z.number().int().nonnegative(),currency:z.string().regex(/^[A-Z]{3}$/)
+}).refine(value=>value.totalValueMinor===Math.round(value.quantityMilli*value.unitCostMinor/1000),{
+ message:"Inventory value must reconcile to quantity and unit cost",path:["totalValueMinor"]
+});
+export type InventoryValuation=z.infer<typeof InventoryValuationSchema>;
+
+export const ReorderPolicySchema=z.object({
+ tenantId:z.string().min(1),warehouseId:z.string().min(1),sku:z.string().min(1),
+ minimumQuantityMilli:z.number().int().nonnegative(),reorderQuantityMilli:z.number().int().positive(),
+ maximumQuantityMilli:z.number().int().positive(),leadTimeDays:z.number().int().nonnegative()
+}).refine(policy=>policy.minimumQuantityMilli<=policy.reorderQuantityMilli&&policy.reorderQuantityMilli<=policy.maximumQuantityMilli,{
+ message:"Reorder quantity must be between minimum and maximum levels",path:["reorderQuantityMilli"]
+});
+export type ReorderPolicy=z.infer<typeof ReorderPolicySchema>;
