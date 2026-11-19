@@ -41,6 +41,8 @@ jobs:
           exit 1
       - name: Validate OpenAPI 3.1 contract
         run: pnpm --package=@redocly/cli dlx redocly lint docs/api/openapi.yaml
-      - name: Check OpenAPI route drift\n        run: pnpm --filter @zuri/api openapi:check\n      - run: pnpm typecheck
+      - name: Check OpenAPI route drift
+        run: pnpm --filter @zuri/api openapi:check
+      - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
