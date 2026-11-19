@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Db } from "mongodb";
+import { z } from "zod";
+import { createAuditEvent } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission } from "./security.js";
 
@@ -43,6 +45,44 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       id: String(tenant._id), name: tenant.name, slug: tenant.slug,
       status: tenant.status, createdAt: tenant.createdAt,
     })), limit: 100 });
+  });
+
+  app.post("/v1/mac/tenants", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:tenants:write")) {
+      return reply.code(403).send({ error: "FORBIDDEN" });
+    }
+    const schema = z.object({
+      name: z.string().trim().min(2).max(160),
+      slug: z.string().trim().min(3).max(48).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+      ownerUserId: z.string().refine((value) => /^[a-f0-9]{24}$/i.test(value), "Invalid user ID"),
+    });
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
+    const owner = await db.collection("users").findOne({ _id: new (await import("mongodb")).ObjectId(parsed.data.ownerUserId), status: "active" });
+    if (!owner) return reply.code(404).send({ error: "ACTIVE_OWNER_USER_NOT_FOUND" });
+    const now = new Date();
+    const tenantResult = await db.collection("tenants").insertOne({
+      name: parsed.data.name, slug: parsed.data.slug, status: "active",
+      createdAt: now, updatedAt: now, createdBy: resolved.principal.userId,
+    });
+    try {
+      await db.collection("memberships").insertOne({
+        tenantId: String(tenantResult.insertedId), userId: String(owner._id),
+        role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
+      });
+      await db.collection("auditEvents").insertOne(createAuditEvent({
+        actorUserId: resolved.principal.userId, action: "platform.tenant.created",
+        targetType: "tenant", targetId: String(tenantResult.insertedId),
+        outcome: "success", correlationId: request.id,
+      }));
+    } catch (error) {
+      await db.collection("memberships").deleteOne({ tenantId: String(tenantResult.insertedId) });
+      await db.collection("tenants").deleteOne({ _id: tenantResult.insertedId });
+      throw error;
+    }
+    return reply.code(201).send({ id: String(tenantResult.insertedId), name: parsed.data.name, slug: parsed.data.slug, ownerUserId: String(owner._id), status: "active" });
   });
 
   app.get("/v1/mac/audit-events", async (request, reply) => {
