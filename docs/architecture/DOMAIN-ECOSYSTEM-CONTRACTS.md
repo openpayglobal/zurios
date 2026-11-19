@@ -15,19 +15,19 @@ The @zuri/domain-contracts package is the shared schema boundary for phases 6B, 
 
 ### 6B — ERP
 
-ERP owns the chart of accounts, fiscal periods, journals, general ledger, accounts payable/receivable, supplier/customer invoices, purchase orders, tax and financial reporting. Journal entries must balance debit and credit totals, use a single currency per entry and reference a fiscal period. Posted entries require a timestamp; reversals reference the original entry.
+ERP owns the chart of accounts, fiscal periods, journals, general ledger, accounts payable/receivable, supplier/customer invoices, payment allocations, purchase orders, tax and financial reporting. The current contract package defines fiscal periods, invoice totals and allocation identity in addition to journals and purchase orders. Journal entries must balance debit and credit totals, use a single currency per entry and reference a fiscal period. Posted entries require a timestamp; reversals reference the original entry.
 
 ERP consumes inventory receipt and valuation events and emits purchase-order, invoice and journal events. Inventory remains the source of truth for physical stock.
 
 ### 6C — POS
 
-POS owns terminal registration, cashier shifts, carts, sales, tenders, receipts, voids, refunds and offline command synchronization. Completed sales require captured tenders equal to the sale total. Tax and discounts reconcile to integer minor-unit totals.
+POS owns terminal registration, cashier shifts, carts, sales, tenders, receipts, voids, refunds and offline command synchronization. The current contracts define terminal identity, cash-shift close reconciliation and refund limits in addition to sale/tender reconciliation. Completed sales require captured tenders equal to the sale total. Tax and discounts reconcile to integer minor-unit totals.
 
 POS requests inventory reservations and consumption through commands; it does not decrement stock by writing inventory data directly. It emits sale, refund and tender events for ERP accounting and analytics.
 
 ### 6D — Inventory
 
-Inventory owns warehouses, SKU stock ledger, reservations, transfers, receipts, issues, adjustments, stock availability and valuation. A transfer must identify distinct source and destination warehouses. Adjustments require an auditable reason. Stock ledger entries are append-only; corrections are compensating movements.
+Inventory owns warehouses, SKU stock ledger, reservations, transfers, receipts, issues, adjustments, stock availability, valuation and replenishment. The current contracts define stock-balance arithmetic, valuation totals and min/reorder/max thresholds. A transfer must identify distinct source and destination warehouses. Adjustments require an auditable reason. Stock ledger entries are append-only; corrections are compensating movements.
 
 Inventory consumes approved ERP purchase receipts and POS reservation/consumption commands. It emits stock received, issued, transferred, adjusted, reserved and consumed events.
 
