@@ -8,7 +8,7 @@ export async function createUser(db:Db,actorId:string,input:unknown,session?:Cli
  const doc={userId,emailNormalized:d.email.trim().toLowerCase(),displayName:d.displayName,...(d.phoneE164?{phoneE164:d.phoneE164}:{}),status:"invited" as const,mfaEnabled:false,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await coreCollections(db).users.insertOne(doc,session?{session}:{});return doc;
 }
-export async function setUserStatus(db:Db,userId:string,status:"active"|"suspended"|"locked",actorId:string){
+export async function setUserStatus(db:Db,userId:string,status:"active"|"suspended"|"locked",actorId:string,session?:ClientSession){
  const c=coreCollections(db),now=new Date();
  const result=await c.users.updateOne({userId},{$set:{status,updatedAt:now,updatedBy:actorId}},session?{session}:{});
  if(!result.matchedCount)throw new Error("USER_NOT_FOUND");
