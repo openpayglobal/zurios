@@ -17,7 +17,7 @@ if(!userId||!permissions.length||reason.length<20){
   if(active)throw new Error("ACTIVE_PLATFORM_OPERATOR_GRANT_ALREADY_EXISTS");
   await session.withTransaction(async()=>{
    const grant=await grantPlatformOperator(db,session,{userId,permissionKeys:permissions,reason}, "bootstrap:controlled-operator-provisioning");
-   await appendAuditEvent(db,{tenantId:"platform",actor:{service:"platform-bootstrap"},action:"platform.operator.granted",resourceType:"platform_operator_grant",resourceId:grant.grantId,outcome:"success",metadata:{userId,permissionKeys:permissions,reason}});
+   await appendAuditEvent(db,{tenantId:"platform",actor:{service:"platform-bootstrap"},action:"platform.operator.granted",resourceType:"platform_operator_grant",resourceId:grant.grantId,outcome:"success",metadata:{userId,permissionKeys:permissions,reason}},session);
   },{writeConcern:{w:"majority"}});
   process.stdout.write("Platform operator grant provisioned. Verify the assigned permission set and record the approval outside this script.\n");
  }catch(error){
