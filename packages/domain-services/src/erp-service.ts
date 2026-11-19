@@ -3,18 +3,18 @@ import {appendOutboxEvent,runIdempotentMutation} from "@zuri/core-platform";
 import {auditDomainMutation} from "./audit.js";
 import {AccountSchema,FiscalPeriodSchema,InvoiceSchema,JournalEntrySchema,PurchaseOrderSchema} from "@zuri/domain-contracts";
 
-export async function createAccount(db:Db,tenantId:string,actorId:string,input:unknown){
+export async function createAccount(db:Db,tenantId:string,actorId:string,input:unknown,idempotencyKey?:string){
  const account=AccountSchema.parse(input);
- return runIdempotentMutation(db,{tenantId,actorId,operation:"erp.account.create",key:"account-"+tenantId+"-"+account.accountCode,request:account},async session=>{
+ return runIdempotentMutation(db,{tenantId,actorId,operation:"erp.account.create",key:idempotencyKey??"account-"+tenantId+"-"+account.accountCode,request:account},async session=>{
   const now=new Date();
   await db.collection("erp_accounts").insertOne({tenantId,...account,createdAt:now,updatedAt:now,createdBy:actorId},{session});
   await auditDomainMutation(db,session,tenantId,actorId,"erp.account.created","erp_account",account.accountCode);
   return {statusCode:201,body:{accountCode:account.accountCode}};
  });
 }
-export async function createFiscalPeriod(db:Db,tenantId:string,actorId:string,input:Record<string,unknown>){
+export async function createFiscalPeriod(db:Db,tenantId:string,actorId:string,input:Record<string,unknown>,idempotencyKey?:string){
  const period=FiscalPeriodSchema.parse({...input,tenantId});
- return runIdempotentMutation(db,{tenantId,actorId,operation:"erp.fiscal_period.create",key:"period-"+tenantId+"-"+period.periodId,request:period},async session=>{
+ return runIdempotentMutation(db,{tenantId,actorId,operation:"erp.fiscal_period.create",key:idempotencyKey??"period-"+tenantId+"-"+period.periodId,request:period},async session=>{
   const overlap=await db.collection("erp_fiscal_periods").findOne({tenantId,startsAt:{$lte:new Date(period.endsAt)},endsAt:{$gte:new Date(period.startsAt)}},{session});
   if(overlap)throw new Error("FISCAL_PERIOD_OVERLAP");
   await db.collection("erp_fiscal_periods").insertOne({...period,startsAt:new Date(period.startsAt),endsAt:new Date(period.endsAt),createdAt:new Date(),createdBy:actorId},{session});
