@@ -140,12 +140,15 @@ test("auth HTTP routes validate and complete the complete identity lifecycle", {
   const refreshedBody=refreshed.json() as {accessToken:string;refreshToken:string;sessionId:string};
   const refreshReplay=await app.inject({method:"POST",url:"/auth/refresh",payload:{sessionId:loginBody.sessionId,refreshToken:loginBody.refreshToken}});
   assert.equal(refreshReplay.statusCode,401);
+  const freshLogin=await app.inject({method:"POST",url:"/auth/login",payload:{email,password,tenantSlug:tenant.slug}});
+  assert.equal(freshLogin.statusCode,200);
+  const freshAccessToken=(freshLogin.json() as {accessToken:string}).accessToken;
 
-  const enrollment=await app.inject({method:"POST",url:"/auth/mfa/enroll",headers:{authorization:"Bearer "+refreshedBody.accessToken}});
+  const enrollment=await app.inject({method:"POST",url:"/auth/mfa/enroll",headers:{authorization:"Bearer "+freshAccessToken}});
   assert.equal(enrollment.statusCode,200);
   const enrollmentBody=enrollment.json() as {secret:string;otpauthUrl:string};
   assert.match(enrollmentBody.otpauthUrl,/^otpauth:\/\/totp\//);
-  const confirm=await app.inject({method:"POST",url:"/auth/mfa/confirm",headers:{authorization:"Bearer "+refreshedBody.accessToken},payload:{code:totpCode(enrollmentBody.secret)}});
+  const confirm=await app.inject({method:"POST",url:"/auth/mfa/confirm",headers:{authorization:"Bearer "+freshAccessToken},payload:{code:totpCode(enrollmentBody.secret)}});
   assert.equal(confirm.statusCode,200);
   const recoveryCodes=(confirm.json() as {recoveryCodes:string[]}).recoveryCodes;
   assert.equal(recoveryCodes.length,10);
