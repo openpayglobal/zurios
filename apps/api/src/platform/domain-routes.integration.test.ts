@@ -44,7 +44,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   ]);
   const permissions=[
    "inventory.warehouse.read","inventory.warehouse.create","inventory.stock.read",
-   "inventory.stock.write","inventory.stock.reserve","inventory.stock.consume","inventory.stock.release"
+   "inventory.stock.write","inventory.stock.reserve","inventory.stock.consume","inventory.stock.release",
+   "pos.terminal.create","pos.shift.open","pos.shift.close","pos.sale.complete","pos.refund.complete","pos.offline.sync"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -120,7 +121,47 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const finalBalance=await db.collection<any>("inventory_stock_balances").findOne({tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-API"});
   assert.equal(finalBalance.quantityOnHandMilli,3000);
   assert.equal(finalBalance.quantityReservedMilli,0);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=4);
+
+  const terminal=await app.inject({
+   method:"POST",url:"/v1/pos/terminals",headers:{...headers,"idempotency-key":"pos-terminal-api-001"},
+   payload:{terminalId:"terminal-api-001",code:"POS-API-1",locationId:"loc-a",deviceId:"device-api-1",status:"active"}
+  });
+  assert.equal(terminal.statusCode,201);
+  const deniedTerminal=await app.inject({
+   method:"POST",url:"/v1/pos/terminals",headers:{...headers,"idempotency-key":"pos-terminal-api-002"},
+   payload:{terminalId:"terminal-api-002",code:"POS-API-2",locationId:"loc-b",deviceId:"device-api-2",status:"active"}
+  });
+  assert.equal(deniedTerminal.statusCode,403);
+  const openedShift=await app.inject({
+   method:"POST",url:"/v1/pos/shifts/open",headers:{...headers,"idempotency-key":"pos-shift-open-api-001"},
+   payload:{shiftId:"shift-api-001",terminalId:"terminal-api-001",cashierId:"inventory-user",currency:"UGX",openedAt:now.toISOString(),openingFloatMinor:10000,status:"open"}
+  });
+  assert.equal(openedShift.statusCode,201);
+  const sale=await app.inject({
+   method:"POST",url:"/v1/pos/sales/complete",headers:{...headers,"idempotency-key":"pos-sale-api-001"},
+   payload:{saleId:"sale-api-001",terminalId:"terminal-api-001",cashierId:"inventory-user",currency:"UGX",
+    lines:[{sku:"SKU-POS-API",description:"POS API test item",quantityMilli:1000,unitPriceMinor:2000,discountMinor:0,taxRateBps:0}],
+    subtotalMinor:2000,taxMinor:0,totalMinor:2000,
+    tenders:[{tenderId:"tender-api-001",method:"cash",amountMinor:2000,currency:"UGX",status:"captured"}],
+    status:"completed",completedAt:now.toISOString()}
+  });
+  assert.equal(sale.statusCode,201);
+  const refund=await app.inject({
+   method:"POST",url:"/v1/pos/refunds",headers:{...headers,"idempotency-key":"pos-refund-api-001"},
+   payload:{refundId:"refund-api-001",saleId:"sale-api-001",originalSaleTotalMinor:2000,amountMinor:500,currency:"UGX",reason:"API integration return",status:"completed",completedAt:now.toISOString()}
+  });
+  assert.equal(refund.statusCode,201);
+  const closedShift=await app.inject({
+   method:"POST",url:"/v1/pos/shifts/shift-api-001/close",headers:{...headers,"idempotency-key":"pos-shift-close-api-001"},
+   payload:{expectedCashMinor:2000,countedCashMinor:2000}
+  });
+  assert.equal(closedShift.statusCode,200);
+  const offline=await app.inject({
+   method:"POST",url:"/v1/pos/offline-commands",headers:{...headers,"idempotency-key":"offline-command-api-001"},
+   payload:{terminalId:"terminal-api-001",commandId:"offline-command-api-001",sequence:1,commandType:"sale",payload:{saleId:"offline-sale-api-001"},issuedAt:now.toISOString()}
+  });
+  assert.equal(offline.statusCode,202);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=9);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
