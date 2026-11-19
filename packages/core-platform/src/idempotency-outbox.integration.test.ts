@@ -4,6 +4,7 @@ import {randomUUID} from "node:crypto";
 import {MongoClient} from "mongodb";
 import {runIdempotentMutation,IdempotencyConflictError} from "./idempotency-service.js";
 import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent,consumeEventOnce,createMongoEventBusPublisher,runOutboxWorker} from "./outbox-service.js";
+import {registerWebhookSubscription,queueWebhookDeliveries,dispatchWebhookBatch,replayDeadLetterWebhookDelivery} from "./webhook-delivery-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 test("idempotency, audit-compatible outbox and delivery lifecycle are transactional",{skip:!uri},async()=>{
@@ -85,6 +86,20 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(consumerEffects,1);
   assert.equal(await db.collection("consumer_effects").countDocuments({}),1);
 
+  await assert.rejects(()=>registerWebhookSubscription(db,{tenantId:"tenant-a",endpointId:"unsafe-hook",url:"http://127.0.0.1/hook",secretRef:"vault/unsafe",eventTypes:["resource.created"]},"admin-a",["127.0.0.1"]),/WEBHOOK_DESTINATION_NOT_ALLOWED/);
+  await registerWebhookSubscription(db,{tenantId:"tenant-a",endpointId:"hook-a",url:"https://hooks.example.test/events",secretRef:"vault/tenant-a/hook-a",eventTypes:["resource.created"]},"admin-a",["hooks.example.test"]);
+  assert.equal(await queueWebhookDeliveries(db,sourceEvent as any),1);
+  let receivedSignature="",receivedEventId="";
+  const delivery=await dispatchWebhookBatch(db,{resolveSecret:async()=> "s".repeat(32),fetch:async(_url,init)=>{
+   const headers=new Headers(init.headers);
+   receivedSignature=headers.get("x-zuri-signature")??"";
+   receivedEventId=headers.get("x-zuri-event-id")??"";
+   return new Response(null,{status:204});
+  }},{workerId:"webhook-worker-a",batchSize:5});
+  assert.equal(delivery.delivered,1);
+  assert.equal(receivedEventId,sourceEvent!.eventId);
+  assert.match(receivedSignature,/^sha256=[a-f0-9]{64}$/);
+  assert.equal(await db.collection("webhook_deliveries").countDocuments({endpointId:"hook-a",status:"delivered"}),1);
 
   await db.collection("outbox_events").insertOne({
    eventId:"dead-letter-event",tenantId:"tenant-a",eventType:"resource.dead",aggregateType:"resource",
