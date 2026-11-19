@@ -168,7 +168,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     if(!operator?.pendingMfaSecretEncrypted)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
     const secret=decryptMfaSecret(operator.pendingMfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,body.code);
     if(step===null)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
-    const activated=await operators.updateOne({operatorId:operator.operatorId,status:"pending_mfa",invitationId:invitation.invitationId},{$set:{status:"active",mfaEnabled:true,mfaSecretEncrypted:operator.pendingMfaSecretEncrypted,mfaLastUsedStep:step,updatedAt:new Date()},$unset:{pendingMfaSecretEncrypted:""}});
+    const activated=await operators.updateOne({operatorId:operator.operatorId,status:"pending_mfa",invitationId:invitation.invitationId},{$set:{status:"active",mfaEnabled:true,mfaSecretEncrypted:operator.pendingMfaSecretEncrypted,mfaLastUsedStep:step,updatedAt:new Date()},$unset:{pendingMfaSecretEncrypted:"",pendingMfaExpiresAt:""}});
     if(!activated.modifiedCount)return reply.code(409).send({error:"INVITATION_ALREADY_COMPLETED"});
     await invitations.updateOne({invitationId:invitation.invitationId,status:"pending_mfa"},{$set:{status:"completed",completedAt:new Date()}});
     const active=await operators.findOne({operatorId:operator.operatorId});
