@@ -4,7 +4,7 @@ import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {ZodError,z} from "zod";
 import {
  coreCollections,authorize,evaluatePolicy,runIdempotentMutation,appendAuditEvent,appendOutboxEvent,
- provisionTenant,createUser,createMembership,setMembershipStatus,
+ provisionTenant,createOrganization,createRole,createUser,createMembership,setMembershipStatus,
  createApprovalRequest,approveApprovalRequest,rejectApprovalRequest,completeApprovalRequest,
  upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,
  type AuditEventDocument,type ApprovalRequestDocument,BREAK_GLASS_ALLOWED_PERMISSIONS
@@ -321,13 +321,36 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.provision")},async(request,reply)=>{
    const p=principal(request);try{
-    const body=z.object({slug:z.string().min(2).max(64).regex(/^[a-z0-9-]+$/),legalName:z.string().min(2).max(200),displayName:z.string().min(2).max(100),defaultLocale:z.string().default("en"),defaultCurrency:z.string().length(3).default("UGX"),timezone:z.string().default("Africa/Kampala"),reason:reasonSchema}).parse(request.body);
-    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.tenants.provision",async session=>{
+    const body=z.object({slug:z.string().min(2).max(64).regex(/^[a-z0-9-]+$/),legalName:z.string().min(2).max(200),displayName:z.string().min(2).max(100),defaultLocale:z.string().default("en"),defaultCurrency:z.string().length(3).default("UGX"),timezone:z.string().default("Africa/Kampala"),owner:z.object({email:z.string().email().max(254),displayName:z.string().min(2).max(120),phoneE164:z.string().regex(/^\\+[1-9]\\d{7,14}$/).optional()}),reason:reasonSchema}).parse(request.body);
+    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"INVITATION_ENCRYPTION_NOT_CONFIGURED"});\n    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.tenants.provision",async session=>{
      const reason=body.reason,tenantInput={slug:body.slug,legalName:body.legalName,displayName:body.displayName,defaultLocale:body.defaultLocale,defaultCurrency:body.defaultCurrency,timezone:body.timezone};
      const tenant=await provisionTenant(db,p.userId,tenantInput,session);
-     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.tenant.provisioned","tenant",tenant.tenantId,"success",{reason},session);
+     const root=await createOrganization(db,tenant.tenantId,p.userId,{code:"ROOT",name:tenant.displayName,type:"company"},session);
+     const ownerPermissions=[
+      "platform.tenant.read","platform.admin.overview.read","platform.admin.overview.read.all",
+      "platform.organizations.read","platform.organizations.create","platform.organizations.create.root","platform.organizations.manage",
+      "platform.locations.read","platform.locations.create","platform.locations.manage",
+      "platform.memberships.read","platform.memberships.create","platform.memberships.manage","platform.memberships.manage.request","platform.memberships.assign.roles","platform.memberships.assign.privileged",
+      "platform.users.read","platform.users.read.all","platform.users.invite",
+      "platform.roles.read","platform.roles.create","platform.roles.create.system","platform.roles.grant.privileged",
+      "platform.policies.read","platform.policies.write","platform.policies.write.request","platform.policies.write.allow","platform.policies.write.deny","platform.policies.write.global","platform.policies.simulate",
+      "platform.feature-flags.read","platform.feature-flags.write","platform.feature-flags.write.request",
+      "platform.sessions.read","platform.sessions.revoke","platform.sessions.revoke.all",
+      "platform.audit.read","platform.audit.export","platform.approvals.read","platform.approvals.create","platform.approvals.approve",
+      "platform.breakglass.read","platform.breakglass.request","platform.breakglass.grant","platform.breakglass.revoke",
+      "platform.configuration.read","platform.configuration.write"
+     ];
+     const ownerRole=await createRole(db,tenant.tenantId,p.userId,{key:"tenant-owner",name:"Tenant Owner",description:"Initial tenant-wide administration role",permissionKeys:ownerPermissions,isSystem:false},session);
+     const email=body.owner.email.trim().toLowerCase(),existing=await c.users.findOne({emailNormalized:email},{session});
+     if(existing&&!(existing.status==="active"||existing.status==="invited"))throw new Error("TENANT_OWNER_USER_NOT_ELIGIBLE");
+     const owner=existing??await createUser(db,p.userId,{email,displayName:body.owner.displayName,...(body.owner.phoneE164?{phoneE164:body.owner.phoneE164}:{})},session);
+     const membership=await createMembership(db,tenant.tenantId,p.userId,{userId:owner.userId,organizationIds:[root.organizationId],locationIds:[],roleIds:[ownerRole.roleId]},session,{allowInvitedUser:true,forceInvited:true,allowProvisioningTenant:true});
+     const invitationToken=await issueMembershipInvitation(db,membership.membershipId,7*24*60*60,session);
+     const encryptedInvitationToken=encryptMfaSecret(invitationToken,config.mfaEncryptionKey);
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.tenant.provisioned","tenant",tenant.tenantId,"success",{reason,ownerMembershipId:membership.membershipId},session);
      await emit(db,session,"platform",request,"platform.tenant.provisioned","tenant",tenant.tenantId,{tenantId:tenant.tenantId,slug:tenant.slug});
-     return {statusCode:201,body:{data:tenant}};
+     await emit(db,session,tenant.tenantId,request,"identity.membership.invitation.requested","membership",membership.membershipId,{membershipId:membership.membershipId,userId:owner.userId,recipientEmail:email,displayName:body.owner.displayName,encryptedInvitationToken,deliveryChannel:"email"});
+     return {statusCode:201,body:{data:{...tenant,ownerMembershipId:membership.membershipId,ownerInvitationStatus:"queued"}}};
     });
    }catch(error){return fail(error,reply);}
   });
