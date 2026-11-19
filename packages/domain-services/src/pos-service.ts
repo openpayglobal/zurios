@@ -40,7 +40,14 @@ export async function completePosSale(db:Db,input:unknown,actorId:string){
   if(!terminal)throw new Error("POS_TERMINAL_NOT_ACTIVE");
   const shift=await db.collection("pos_cashier_shifts").findOne({tenantId:sale.tenantId,terminalId:sale.terminalId,cashierId:sale.cashierId,status:"open",currency:sale.currency},{session});
   if(!shift)throw new Error("OPEN_CASHIER_SHIFT_REQUIRED");
-  if(sale.reservationId)await commitReservationInTransaction(db,session,sale.tenantId,sale.reservationId,actorId);
+  if(sale.reservationId){
+   const reservation=await db.collection<any>("inventory_reservations").findOne({tenantId:sale.tenantId,reservationId:sale.reservationId,status:"reserved"},{session});
+   if(!reservation)throw new Error("ACTIVE_RESERVATION_NOT_FOUND");
+   const sold=new Map<string,number>();for(const line of sale.lines)sold.set(line.sku,(sold.get(line.sku)??0)+line.quantityMilli);
+   const reserved=new Map<string,number>();for(const line of reservation.lines)reserved.set(line.sku,(reserved.get(line.sku)??0)+line.quantityMilli);
+   if(sold.size!==reserved.size||[...sold].some(([sku,qty])=>reserved.get(sku)!==qty))throw new Error("SALE_RESERVATION_LINES_MISMATCH");
+   await commitReservationInTransaction(db,session,sale.tenantId,sale.reservationId,actorId);
+  }
   const now=new Date();
   await db.collection("pos_sales").insertOne({...sale,completedAt:sale.completedAt?new Date(sale.completedAt):now,shiftId:shift.shiftId,createdAt:now,createdBy:actorId},{session});
   await appendOutboxEvent(db,session,{tenantId:sale.tenantId,eventType:"pos.sale.completed",aggregateType:"pos_sale",aggregateId:sale.saleId,payload:{saleId:sale.saleId,terminalId:sale.terminalId,cashierId:sale.cashierId,totalMinor:sale.totalMinor,currency:sale.currency,lines:sale.lines}});
@@ -54,9 +61,10 @@ export async function refundPosSale(db:Db,input:unknown,actorId:string){
   const sale=await db.collection<any>("pos_sales").findOne({tenantId:refund.tenantId,saleId:refund.saleId,status:"completed"},{session});
   if(!sale)throw new Error("COMPLETED_POS_SALE_NOT_FOUND");
   if(sale.currency!==refund.currency)throw new Error("REFUND_CURRENCY_MISMATCH");
-  const prior=await db.collection("pos_refunds").aggregate<{total:number}>([{$match:{tenantId:refund.tenantId,saleId:refund.saleId,status:"completed"}},{$group:{_id:null,total:{$sum:"$amountMinor"}}}],{session}).toArray();
-  if((prior[0]?.total??0)+refund.amountMinor>sale.totalMinor)throw new Error("REFUNDS_EXCEED_SALE_TOTAL");
-  await db.collection("pos_refunds").insertOne({...refund,completedAt:refund.completedAt?new Date(refund.completedAt):new Date(),createdAt:new Date(),createdBy:actorId},{session});
+  const now=new Date();
+  const refundGuard=await db.collection("pos_sales").updateOne({tenantId:refund.tenantId,saleId:refund.saleId,status:"completed",$or:[{refundedMinor:{$exists:false}},{refundedMinor:{$lte:sale.totalMinor-refund.amountMinor}}]},{$inc:{refundedMinor:refund.amountMinor},$set:{updatedAt:now}},{session});
+  if(refundGuard.matchedCount!==1)throw new Error("REFUNDS_EXCEED_SALE_TOTAL");
+  await db.collection("pos_refunds").insertOne({...refund,completedAt:refund.completedAt?new Date(refund.completedAt):now,createdAt:now,createdBy:actorId},{session});
   await appendOutboxEvent(db,session,{tenantId:refund.tenantId,eventType:"pos.refund.completed",aggregateType:"pos_refund",aggregateId:refund.refundId,payload:{refundId:refund.refundId,saleId:refund.saleId,amountMinor:refund.amountMinor,currency:refund.currency,reason:refund.reason}});
   return {statusCode:201,body:{refundId:refund.refundId,status:"completed"}};
  });
