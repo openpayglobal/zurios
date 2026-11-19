@@ -1,5 +1,6 @@
 import {readFileSync} from "node:fs";
 import {PLATFORM_BODY_CONTRACTS} from "../src/platform/platform-schemas.js";
+import {ADMIN_BODY_CONTRACTS} from "../src/platform/admin-schemas.js";
 
 const routeSource=readFileSync("src/platform/platform-routes.ts","utf8")+"\\n"+readFileSync("src/platform/admin-routes.ts","utf8");
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
@@ -28,7 +29,8 @@ function componentSchemaBlock(name:string):string{
 }
 function sorted(values:string[]){return [...values].sort();}
 function same(a:string[],b:string[]){return JSON.stringify(sorted(a))===JSON.stringify(sorted(b));}
-for(const bodyContract of PLATFORM_BODY_CONTRACTS){
+const allBodyContracts=[...PLATFORM_BODY_CONTRACTS,...ADMIN_BODY_CONTRACTS];
+for(const bodyContract of allBodyContracts){
  const pathStart=contract.indexOf(`  ${bodyContract.path}:\n`);
  const methodStart=contract.indexOf(`    ${bodyContract.method}:\n`,pathStart);
  const nextPath=contract.indexOf("\n  /",methodStart+1);
@@ -48,4 +50,4 @@ for(const bodyContract of PLATFORM_BODY_CONTRACTS){
  if(!same(zodRequired,required))failures.push(`Required-field drift in ${bodyContract.schemaName}: Zod=[${zodRequired.join(",")}], OpenAPI=[${required.join(",")}]`);
 }
 if(failures.length){for(const failure of failures)process.stderr.write(`ERROR: ${failure}\n`);process.exitCode=1;}
-else process.stdout.write(`OpenAPI contract drift check passed: ${routePaths.size} paths, ${mutatingRoutes} idempotent mutations and ${PLATFORM_BODY_CONTRACTS.length} shared Zod request schemas.\n`);
+else process.stdout.write(`OpenAPI contract drift check passed: ${routePaths.size} paths, ${mutatingRoutes} idempotent mutations and ${allBodyContracts.length} shared Zod request schemas.\n`);
