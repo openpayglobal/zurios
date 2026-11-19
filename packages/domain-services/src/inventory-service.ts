@@ -40,7 +40,7 @@ export async function recordStockMovement(db:Db,input:unknown,actorId:string){
  if(movement.movementType==="adjustment"&&!movement.adjustmentDirection)throw new Error("ADJUSTMENT_DIRECTION_REQUIRED");
  const now=new Date(movement.occurredAt);
  return runIdempotentMutation(db,{tenantId:movement.tenantId,actorId,operation:"inventory.stock_movement",key:movement.idempotencyKey,request:movement},async session=>{
-  const delta=movement.movementType==="receipt"?movement.quantityMilli:
+  const sourceWarehouse=await db.collection("inventory_warehouses").findOne({tenantId:movement.tenantId,warehouseId:movement.warehouseId,status:"active"},{session});\n  if(!sourceWarehouse)throw new Error("SOURCE_WAREHOUSE_NOT_ACTIVE");\n  if(movement.destinationWarehouseId){const destination=await db.collection("inventory_warehouses").findOne({tenantId:movement.tenantId,warehouseId:movement.destinationWarehouseId,status:"active"},{session});if(!destination)throw new Error("DESTINATION_WAREHOUSE_NOT_ACTIVE");}\n  const delta=movement.movementType==="receipt"?movement.quantityMilli:
    movement.movementType==="adjustment"?(movement.adjustmentDirection==="increase"?movement.quantityMilli:-movement.quantityMilli):-movement.quantityMilli;
   if(movement.movementType==="transfer"){
    await applyDelta(db,session,{onHand:-movement.quantityMilli,reserved:0,movementId:movement.movementId,movementType:"transfer_out",referenceType:movement.referenceType,referenceId:movement.referenceId,actorId,occurredAt:now,leg:"source"},movement.tenantId,movement.warehouseId,movement.sku,movement.quantityMilli);
@@ -48,7 +48,7 @@ export async function recordStockMovement(db:Db,input:unknown,actorId:string){
   }else{
    await applyDelta(db,session,{onHand:delta,reserved:0,movementId:movement.movementId,movementType:movement.movementType,referenceType:movement.referenceType,referenceId:movement.referenceId,actorId,...(movement.reason?{reason:movement.reason}:{}),occurredAt:now,leg:"single"},movement.tenantId,movement.warehouseId,movement.sku,movement.quantityMilli);
   }
-  await appendOutboxEvent(db,session,{tenantId:movement.tenantId,eventType:"inventory.stock."+({receipt:"received",issue:"issued",transfer:"transferred",adjustment:"adjusted"} as const)[movement.movementType],aggregateType:"stock",aggregateId:movement.warehouseId,payload:{movementId:movement.movementId,sku:movement.sku,quantityMilli:movement.quantityMilli,warehouseId:movement.warehouseId,...(movement.destinationWarehouseId?{destinationWarehouseId:movement.destinationWarehouseId}:{})}});
+  const suffix=movement.movementType==="receipt"?"received":movement.movementType==="issue"?"issued":movement.movementType==="transfer"?"transferred":"adjusted";\n  await appendOutboxEvent(db,session,{tenantId:movement.tenantId,eventType:"inventory.stock."+suffix,aggregateType:"stock",aggregateId:movement.warehouseId,payload:{movementId:movement.movementId,sku:movement.sku,quantityMilli:movement.quantityMilli,warehouseId:movement.warehouseId,...(movement.destinationWarehouseId?{destinationWarehouseId:movement.destinationWarehouseId}:{})}});
   return {statusCode:201,body:{movementId:movement.movementId}};
  });
 }
