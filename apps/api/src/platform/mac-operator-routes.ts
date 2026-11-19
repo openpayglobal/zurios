@@ -20,6 +20,10 @@ const bootstrapSchema=z.object({email:z.string().email().max(254),displayName:z.
 const confirmSchema=z.object({email:z.string().email().max(254),code:z.string().regex(/^\d{6}$/)});
 const loginSchema=confirmSchema.extend({password:z.string().min(1).max(128)});
 const refreshSchema=z.object({sessionId:z.string().uuid(),refreshToken:z.string().min(40).max(200)});
+const invitationCreateSchema=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),tenantIds:z.array(z.string().min(1).max(128)).max(50).default([])});
+const invitationAcceptSchema=z.object({inviteToken:z.string().min(40).max(100),password:z.string().min(12).max(128)});
+const invitationConfirmSchema=z.object({inviteToken:z.string().min(40).max(100),code:z.string().regex(/^\\d{6}$/)});
+const READ_ONLY_OPERATOR_PERMISSIONS=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.read","mac.sessions.read"];
 const key=(config:MacOperatorConfig)=>new TextEncoder().encode(config.jwtSecret??"");
 const normalized=(email:string)=>email.trim().toLowerCase();
 const hashIp=(request:FastifyRequest)=>createHash("sha256").update(request.ip).digest("hex");
@@ -117,6 +121,61 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     const session=await issueSession(db,config,active,request);
     return reply.code(201).send(session);
    }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});request.log.error({err:error},"MAC bootstrap confirmation failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
+  });
+  app.post("/mac/operators/invitations",{preHandler:[authenticated,permission("mac.operators.manage")]},async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   const parsed=invitationCreateSchema.safeParse(request.body);
+   if(!parsed.success)return reply.code(400).send({error:"INVALID_REQUEST"});
+   const body=parsed.data,email=normalized(body.email),now=new Date(),invitationId=randomUUID(),inviteToken=randomBytes(32).toString("base64url");
+   const operators=db.collection("platform_operators"),invitations=db.collection("platform_operator_invitations");
+   if(await operators.findOne({emailNormalized:email}))return reply.code(409).send({error:"OPERATOR_ALREADY_EXISTS"});
+   if(await invitations.findOne({emailNormalized:email,status:{$in:["pending","pending_mfa"]}}))return reply.code(409).send({error:"INVITATION_ALREADY_PENDING"});
+   const expiresAt=new Date(now.getTime()+24*60*60*1000);
+   await invitations.insertOne({invitationId,emailNormalized:email,displayName:body.displayName,permissions:READ_ONLY_OPERATOR_PERMISSIONS,tenantIds:body.tenantIds,tokenHash:hashOpaqueToken(inviteToken),status:"pending",createdBy:request.macOperator!.operatorId,createdAt:now,expiresAt});
+   try{await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.operators.invitation.created",resourceType:"platform_operator_invitation",resourceId:invitationId,outcome:"success",request,metadata:{email,permissionProfile:"read_only"}});}
+   catch(error){await invitations.deleteOne({invitationId});throw error;}
+   return reply.code(201).send({invitationId,email,inviteToken,permissions:READ_ONLY_OPERATOR_PERMISSIONS,expiresAt,delivery:"manual_secure_transfer_required"});
+  });
+  app.post("/mac/auth/invitations/accept",async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   if(authUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+   try{
+    const body=invitationAcceptSchema.parse(request.body);
+    await enforceMacRateLimit(db,request,"invitation-accept");
+    const invitations=db.collection("platform_operator_invitations"),now=new Date(),tokenHash=hashOpaqueToken(body.inviteToken);
+    const invitation=await invitations.findOne({tokenHash,status:"pending",expiresAt:{$gt:now}});
+    if(!invitation)return reply.code(401).send({error:"INVITATION_INVALID_OR_EXPIRED"});
+    const operatorId=randomUUID(),secret=generateTotpSecret();
+    const claimed=await invitations.updateOne({invitationId:invitation.invitationId,tokenHash,status:"pending",expiresAt:{$gt:now}},{$set:{status:"pending_mfa",operatorId,acceptedAt:now}});
+    if(!claimed.modifiedCount)return reply.code(409).send({error:"INVITATION_ALREADY_USED"});
+    try{
+     await db.collection("platform_operators").insertOne({operatorId,emailNormalized:invitation.emailNormalized,displayName:invitation.displayName,passwordHash:await hashPassword(body.password),permissions:invitation.permissions,tenantIds:invitation.tenantIds??[],status:"pending_mfa",mfaEnabled:false,invitationId:invitation.invitationId,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),createdAt:now,updatedAt:now});
+    }catch(error){await invitations.updateOne({invitationId:invitation.invitationId,status:"pending_mfa"},{$set:{status:"pending"},$unset:{operatorId:"",acceptedAt:""}});if((error as any)?.code===11000)return reply.code(409).send({error:"OPERATOR_ALREADY_EXISTS"});throw error;}
+    try{await writeAdminAudit(db,{actorId:operatorId,action:"mac.auth.invitation.accepted",resourceType:"platform_operator",resourceId:operatorId,outcome:"success",request,metadata:{invitationId:invitation.invitationId}});}
+    catch(error){await db.collection("platform_operators").deleteOne({operatorId,status:"pending_mfa"});await invitations.updateOne({invitationId:invitation.invitationId,status:"pending_mfa"},{$set:{status:"pending"},$unset:{operatorId:"",acceptedAt:""}});throw error;}
+    const label=encodeURIComponent(invitation.emailNormalized),issuer=encodeURIComponent("Zuri OS MAC");
+    return reply.code(201).send({operatorId,email:invitation.emailNormalized,totpSecret:secret,otpauthUrl:"otpauth://totp/"+issuer+":"+label+"?secret="+secret+"&issuer="+issuer+"&algorithm=SHA1&digits=6&period=30",nextStep:"Confirm the authenticator code using /mac/auth/invitations/confirm. The secret is shown only once."});
+   }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});if(error instanceof Error&&error.message==="MAC_AUTH_RATE_LIMITED")return reply.code(429).send({error:"RATE_LIMITED"});request.log.error({err:error},"MAC invitation acceptance failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
+  });
+  app.post("/mac/auth/invitations/confirm",async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   if(authUnavailable(config))return reply.code(503).send({error:"MAC_AUTH_NOT_CONFIGURED"});
+   try{
+    const body=invitationConfirmSchema.parse(request.body),tokenHash=hashOpaqueToken(body.inviteToken),invitations=db.collection("platform_operator_invitations");
+    const invitation=await invitations.findOne({tokenHash,status:"pending_mfa",expiresAt:{$gt:new Date()}});
+    if(!invitation?.operatorId)return reply.code(401).send({error:"INVITATION_INVALID_OR_EXPIRED"});
+    const operators=db.collection("platform_operators"),operator=await operators.findOne({operatorId:invitation.operatorId,status:"pending_mfa",invitationId:invitation.invitationId});
+    if(!operator?.pendingMfaSecretEncrypted)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
+    const secret=decryptMfaSecret(operator.pendingMfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,body.code);
+    if(step===null)return reply.code(401).send({error:"AUTHENTICATION_FAILED"});
+    const activated=await operators.updateOne({operatorId:operator.operatorId,status:"pending_mfa",invitationId:invitation.invitationId},{$set:{status:"active",mfaEnabled:true,mfaSecretEncrypted:operator.pendingMfaSecretEncrypted,mfaLastUsedStep:step,updatedAt:new Date()},$unset:{pendingMfaSecretEncrypted:""}});
+    if(!activated.modifiedCount)return reply.code(409).send({error:"INVITATION_ALREADY_COMPLETED"});
+    await invitations.updateOne({invitationId:invitation.invitationId,status:"pending_mfa"},{$set:{status:"completed",completedAt:new Date()}});
+    const active=await operators.findOne({operatorId:operator.operatorId});
+    const session=await issueSession(db,config,active,request);
+    await writeAdminAudit(db,{actorId:operator.operatorId,action:"mac.auth.invitation.completed",resourceType:"platform_operator",resourceId:operator.operatorId,outcome:"success",request,metadata:{invitationId:invitation.invitationId}});
+    return reply.code(201).send(session);
+   }catch(error){if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST"});request.log.error({err:error},"MAC invitation confirmation failed");return reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});}
   });
   app.post("/mac/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
