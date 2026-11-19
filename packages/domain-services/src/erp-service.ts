@@ -15,7 +15,7 @@ export async function createAccount(db:Db,tenantId:string,actorId:string,input:u
 export async function createFiscalPeriod(db:Db,tenantId:string,actorId:string,input:Record<string,unknown>){
  const period=FiscalPeriodSchema.parse({...input,tenantId});
  return runIdempotentMutation(db,{tenantId,actorId,operation:"erp.fiscal_period.create",key:"period-"+tenantId+"-"+period.periodId,request:period},async session=>{
-  const overlap=await db.collection("erp_fiscal_periods").findOne({tenantId,status:"open",startsAt:{$lte:new Date(period.endsAt)},endsAt:{$gte:new Date(period.startsAt)}},{session});
+  const overlap=await db.collection("erp_fiscal_periods").findOne({tenantId,startsAt:{$lte:new Date(period.endsAt)},endsAt:{$gte:new Date(period.startsAt)}},{session});
   if(overlap)throw new Error("FISCAL_PERIOD_OVERLAP");
   await db.collection("erp_fiscal_periods").insertOne({...period,startsAt:new Date(period.startsAt),endsAt:new Date(period.endsAt),createdAt:new Date(),createdBy:actorId},{session});
   await auditDomainMutation(db,session,tenantId,actorId,"erp.fiscal_period.created","erp_fiscal_period",period.periodId);
