@@ -93,8 +93,8 @@ export async function runOutboxWorker(
 
 export type EventConsumerReceiptDocument={consumerId:string;eventId:string;tenantId:string;processedAt:Date};
 export async function consumeEventOnce(
- db:Db,consumerId:string,event:OutboxEventDocument,
- handler:(session:ClientSession,event:OutboxEventDocument)=>Promise<void>
+ db:Db,consumerId:string,event:PlatformEventEnvelope,
+ handler:(session:ClientSession,event:PlatformEventEnvelope)=>Promise<void>
 ):Promise<{replayed:boolean}>{
  if(!consumerId.trim()||consumerId.length>160)throw new Error("INVALID_EVENT_CONSUMER_ID");
  const receipts=db.collection<EventConsumerReceiptDocument>("event_consumer_receipts");
