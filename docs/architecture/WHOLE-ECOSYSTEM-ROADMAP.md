@@ -1,6 +1,6 @@
 # Zuri OS — Whole-Ecosystem Implementation Roadmap
 
-**Roadmap baseline:** repository `main` at `cf863dc5bc19e6e84114d21e863f329df393c9e6`, with CI repair PR #8 at `0335e28fc5504027af018b823cdba83a0beeef65` (not yet merged at the time of this update).
+**Roadmap baseline:** original `main` baseline `cf863dc5bc19e6e84114d21e863f329df393c9e6`; active PR #8 head `403cc68aeeb259075e1fdcd7b6687e2d5cce90a4` (not merged). Stacked design-system PR #9 head `7096c84747e3f1f77512c69606dcae506039ef74` (not merged).
 
 **Status vocabulary**
 - **Implemented in source:** code or contract exists in the repository; this does not imply acceptance.
@@ -15,29 +15,30 @@ This roadmap is deliberately explicit about the difference between code presence
 
 | Workstream | Current evidence | Status |
 |---|---|---|
-| 6A.1 Shared platform core | MongoDB repositories, tenant/org/location/membership/user/session services, indexes, RBAC/ABAC, audit, migration and feature-flag services | Implemented in source; acceptance pending |
-| 6A.2 Identity and access | Password/JWT authentication, MFA, recovery-code and refresh/session lifecycle logic | Implemented in source; full threat-model and integration acceptance pending |
-| 6A.3 Platform API and reliability | Versioned API, Zod/OpenAPI contracts, idempotency, transaction-backed audit/outbox and MongoDB event stream | Substantial implementation; external delivery and operational acceptance pending |
-| 6A.3 CI repair | PR #8 fixes schema-property extraction and invalid TypeScript newline escapes; Actions run #615 passed replica-set startup, OpenAPI lint, drift check, typecheck, tests and build | CI verified on PR head; PR not merged |
-| 6A.4 Governance/admin | Tenant/platform admin routes, approvals, break-glass, audit export, configuration and web workspace | Implemented in source; full route/UX/provider/security acceptance pending |
-| 6A.5 Shared design system | Existing UI primitives are local to the web application; no separately accepted shared package found | Not started / incomplete |
-| 6A.6 Security, isolation and operations | Some route-level and transaction tests exist; independent review, complete isolation matrix, operational evidence and release sign-off are outstanding | Blocked on acceptance work |
+| 6A.1 Shared platform core | MongoDB repositories, tenant/org/location/membership/user/session services, indexes, RBAC/ABAC, audit, migration and feature-flag services; replica-set integration now executes | CI verified in run #681; isolation and production acceptance pending |
+| 6A.2 Identity and access | Password/JWT authentication, MFA, recovery-code and refresh/session lifecycle; route integration covers login, refresh/replay, MFA enroll/confirm/verify/disable, invitations, membership invitations, email verification, password reset, `/auth/me` and logout | Auth route integration passed in run #681; threat-model, abuse-case and independent security acceptance pending |
+| 6A.3 Platform API and reliability | Versioned API, Zod/OpenAPI contracts, idempotency, transaction-backed audit/outbox, consumer receipts and MongoDB event stream; replica-set tests exercise concurrency, rollback, delivery, dead-letter replay and consumption | Core and API integration suites passed in run #681 with zero skipped integration tests; external broker/provider delivery, exhaustive route matrix and operational acceptance pending |
+| 6A.3 CI and reliability repair | PR #8 adds committed pnpm v9 lockfile and frozen installs, fixes Turbo env propagation, initializes MongoDB with runner-reachable replica-set address, removes invalid `_id` index creation and fixes refresh-replay HTTP mapping and outbox/audit assertions | Full workflow run #681 passed with MongoDB integration tests executing; PR not merged |
+| 6A.4 Governance/admin | Tenant/platform admin routes, approvals, break-glass, audit export, configuration and web workspace; database-backed admin and platform route lifecycle tests now execute | CI verified in run #681; exhaustive route matrix, provider workflows and UX/accessibility/security acceptance pending |
+| 6A.5 Shared design system | Initial `@zuri/design-system` workspace package with semantic dark/light tokens, shared React primitives, admin-shell integration and SSR component tests | CI verified in run #679 with frozen lockfile; visual regression, keyboard testing, complete patterns and independent WCAG 2.2 AA review pending |
+| 6A.6 Security, isolation and operations | MongoDB replica-set tenant/session/transaction tests and route integration suites now execute in CI | Acceptance pending: independent security review, full isolation matrix, threat model, backup/restore, observability, incident runbooks and release sign-off |
 | 6B ERP | No accepted ERP domain package in inspected baseline | Not started; blocked on 6A.6 |
 | 6C POS | No accepted POS domain package in inspected baseline | Not started; blocked on 6A.6 and inventory contracts |
 | 6D Inventory | No accepted inventory domain package in inspected baseline | Not started; blocked on 6A.6 |
 
-### Immediate CI outcome
+### Latest CI outcome and corrections
 
-The linked failing job stopped at OpenAPI route drift. The original mismatches were caused by the checker truncating component properties after nested objects, so the top-level `reason` fields were missed. After correcting the parser, the check reported 19 shared request schemas passing. The next run exposed invalid literal newline escapes in `location-service.ts`; those were repaired. Actions run #615 then passed:
-1. dependency installation;
-2. MongoDB 7.0 replica-set startup;
-3. OpenAPI 3.1 lint;
-4. OpenAPI/Fastify/Zod route and request-schema drift check;
-5. monorepo TypeScript typecheck;
-6. test suite;
-7. monorepo build.
+The original linked failure was the OpenAPI route-drift parser truncating component properties after nested schemas. The parser now validates the 19 shared request schemas. The following pipeline defects were then discovered by enabling the database integration tests instead of allowing them to skip:
 
-The CI pass is limited to the configured workflow. It is not proof of production readiness. Vercel status contexts on the PR head still report failure and require separate diagnosis.
+1. Turbo strict environment filtering did not pass `MONGODB_TEST_URI` to workspace test tasks. Added it to `globalEnv`.
+2. MongoDB's default replica-set member advertised its ephemeral container hostname, which the GitHub runner could not resolve. CI now initializes the replica set with `127.0.0.1:27017`.
+3. The migration runner attempted to recreate MongoDB's built-in unique `_id` index with an invalid option. It now relies on the default unique index.
+4. The outbox integration test expected one event despite deliberately creating two transactional events.
+5. Refresh-token reuse correctly revoked the session family but was mapped to HTTP 500; it now returns the generic authentication failure (401).
+
+[Actions run #681](https://github.com/openpayglobal/zurios/actions/runs/44557432014) passed frozen-lockfile installation, MongoDB 7.0 replica-set startup, OpenAPI lint, route/schema drift, monorepo typecheck, all configured tests and build. The 16 API tests passed with zero skips; the new auth HTTP lifecycle test and the platform/admin integration suites ran against MongoDB. [Run #679](https://github.com/openpayglobal/zurios/actions/runs/44557264189) also passed the design-system branch with database-backed core/admin/platform integration tests and design-system SSR tests.
+
+This is CI evidence for the tested branches, not proof of production readiness. Vercel deployments are currently blocked by the account's free-tier daily deployment quota; the web preview for PR #8's earlier head did reach READY.
 
 ## 2. Delivery sequence and dependency gates
 
