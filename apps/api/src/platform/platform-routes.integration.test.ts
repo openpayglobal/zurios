@@ -103,7 +103,7 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   assert.equal(escalatedMembership.statusCode,403);
   assert.equal(escalatedMembership.json().error,"ROLE_ASSIGNMENT_PRIVILEGE_ESCALATION_DENIED");
 
-  assert.equal(await db.collection("audit_events").countDocuments({tenantId:"tenant-a",action:"authorization.denied",resourceType:"membership",outcome:"denied"}),1);
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId:"tenant-a",action:"authorization.denied",resourceType:"membership",outcome:"denied"}),2);
 
 
   const validPayload={userId:"target-user",organizationIds:["org-a"],locationIds:["loc-a"],roleIds:[]};
