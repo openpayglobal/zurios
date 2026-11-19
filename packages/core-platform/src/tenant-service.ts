@@ -8,8 +8,8 @@ export async function provisionTenant(db:Db,actorId:string,input:unknown,session
  const doc={tenantId,...data,status:"provisioning" as const,metadata:{},createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await c.tenants.insertOne(doc,session?{session}:{});return doc;
 }
-export async function setTenantStatus(db:Db,tenantId:string,status:"active"|"suspended"|"closed",actorId:string){
- const c=coreCollections(db),now=new Date(),r=await c.tenants.updateOne({tenantId},{$set:{status,updatedAt:now,updatedBy:actorId}});
+export async function setTenantStatus(db:Db,tenantId:string,status:"active"|"suspended"|"closed",actorId:string,session?:ClientSession){
+ const c=coreCollections(db),now=new Date(),r=await c.tenants.updateOne({tenantId},{$set:{status,updatedAt:now,updatedBy:actorId}},session?{session}:{});
  if(!r.matchedCount)throw new Error("TENANT_NOT_FOUND");
  if(status!=="active")await c.sessions.updateMany({tenantId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:actorId}},session?{session}:{});
 }
