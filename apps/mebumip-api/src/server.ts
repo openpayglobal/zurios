@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -9,7 +10,7 @@ const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) =>
   const supplied = request.headers["x-correlation-id"];
   return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
     ? supplied
-    : crypto.randomUUID();
+    : randomUUID();
 } });
 let mongo: MongoClient | undefined;
 let databaseReady = false;
