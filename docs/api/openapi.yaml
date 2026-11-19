@@ -462,6 +462,50 @@ paths:
       responses:
         "200": {description: Current operator identity and permissions}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/operators:
+    get:
+      tags: [MAC]
+      operationId: listMacOperators
+      summary: List global platform operators without credential fields
+      responses:
+        "200": {description: Sanitized platform operator inventory}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/sessions:
+    get:
+      tags: [MAC]
+      operationId: listMacOperatorSessions
+      summary: List active and recently expired platform operator sessions
+      responses:
+        "200": {description: Session metadata; refresh-token hashes are never returned}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/sessions/{sessionId}/revoke:
+    post:
+      tags: [MAC]
+      operationId: revokeMacOperatorSession
+      summary: Revoke another platform operator session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 10, maxLength: 300}
+      responses:
+        "204": {description: Session revoked}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active session not found}
+        "409": {description: Use logout to revoke the current session}
   /mac/overview:
     get:
       tags: [MAC]
