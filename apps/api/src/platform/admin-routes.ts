@@ -129,18 +129,22 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   const c=coreCollections(db);
   app.addHook("preHandler",authenticate(db,config));
   app.get("/platform/admin/overview",{preHandler:tenantGuard(db,config.jwtSecret,"platform.admin.overview.read")},async request=>{
-   const p=principal(request),tenantId=p.tenantId,now=new Date(),dayAgo=new Date(now.getTime()-24*60*60_000);
+   const p=principal(request),tenantId=p.tenantId,now=new Date(),dayAgo=new Date(now.getTime()-24*60*60_000),tenantWide=p.permissions.includes("platform.admin.overview.read.all");
+   const visibleOrganizations=orgIds(p),visibleLocations=locIds(p);
+   const membershipFilter:Filter<Document>={tenantId,status:"active",...(tenantWide?{}:{organizationIds:{$in:visibleOrganizations}})};
    const [tenant,organizations,locations,memberships,users,roles,pendingApprovals,activeSessions,recentAudit,pendingOutbox,deadLetters]=await Promise.all([
-    c.tenants.findOne({tenantId},{projection:{_id:0}}),c.organizations.countDocuments({tenantId,status:"active"}),
-    c.locations.countDocuments({tenantId,status:"active"}),c.memberships.countDocuments({tenantId,status:"active"}),
-    c.memberships.distinct("userId",{tenantId,status:"active"}),c.roles.countDocuments({tenantId,status:"active"}),
-    db.collection("approval_requests").countDocuments({tenantId,status:"pending",expiresAt:{$gt:now}}),
-    c.sessions.countDocuments({tenantId,revokedAt:{$exists:false},expiresAt:{$gt:now}}),
-    c.auditEvents.countDocuments({tenantId,occurredAt:{$gte:dayAgo}}),
-    db.collection("outbox_events").countDocuments({tenantId,status:{$in:["pending","processing"]}}),
-    db.collection("outbox_events").countDocuments({tenantId,status:"dead_letter"})
+    c.tenants.findOne({tenantId},{projection:{_id:0}}),
+    c.organizations.countDocuments({tenantId,status:"active",...(tenantWide?{}:{organizationId:{$in:visibleOrganizations}})}),
+    c.locations.countDocuments({tenantId,status:"active",...(tenantWide?{}:{locationId:{$in:visibleLocations}})}),
+    c.memberships.countDocuments(membershipFilter),c.memberships.distinct("userId",membershipFilter),
+    tenantWide?c.roles.countDocuments({tenantId,status:"active"}):Promise.resolve(null),
+    tenantWide?db.collection("approval_requests").countDocuments({tenantId,status:"pending",expiresAt:{$gt:now}}):Promise.resolve(null),
+    tenantWide?c.sessions.countDocuments({tenantId,revokedAt:{$exists:false},expiresAt:{$gt:now}}):Promise.resolve(null),
+    tenantWide?c.auditEvents.countDocuments({tenantId,occurredAt:{$gte:dayAgo}}):Promise.resolve(null),
+    tenantWide?db.collection("outbox_events").countDocuments({tenantId,status:{$in:["pending","processing"]}}):Promise.resolve(null),
+    tenantWide?db.collection("outbox_events").countDocuments({tenantId,status:"dead_letter"}):Promise.resolve(null)
    ]);
-   return {data:{tenant,counts:{organizations,locations,memberships,users:users.length,roles,activeSessions},governance:{pendingApprovals,recentAuditEvents:recentAudit},events:{pending:pendingOutbox,deadLettered:deadLetters},generatedAt:now}};
+   return {data:{tenant,scope:tenantWide?"tenant":"assigned-organizations",counts:{organizations,locations,memberships,users:users.length,roles,activeSessions},governance:tenantWide?{pendingApprovals,recentAuditEvents:recentAudit}:null,events:tenantWide?{pending:pendingOutbox,deadLettered:deadLetters}:null,generatedAt:now}};
   });
   app.get("/platform/admin/users",{preHandler:tenantGuard(db,config.jwtSecret,"platform.users.read")},async(request,reply)=>{
    try{
