@@ -60,7 +60,7 @@ function movementDocument(input:{tenantId:string;movementId:string;productId:str
  return {tenantId:input.tenantId,movementId:input.movementId,productId:input.productId,stockLocationId:input.stockLocationId,movementType:input.movementType,quantity:decimal(input.quantity),unitCode:input.unitCode,...(input.lotId?{lotId:input.lotId}:{}),source:input.source,idempotencyKey:input.idempotencyKey,occurredAt:input.occurredAt,actor:{type:"user",id:input.actorId},...(input.transferId?{transferId:input.transferId}:{}),...(input.reason?{reason:input.reason}:{}),schemaVersion:1,createdAt:new Date()};
 }
 export async function createInventoryProduct(db:Db,tenantId:string,actorId:string,input:unknown,session:ClientSession){
- const data=productSchema.parse(input),now=new Date(),productId=newId("prd"),doc:StockProduct={tenantId,productId,...data,skuNormalized:data.sku.trim().toUpperCase(),status:"active",createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
+ const data=productSchema.parse(input),{categoryId,...productFields}=data,now=new Date(),productId=newId("prd"),doc:StockProduct={tenantId,productId,...productFields,...(categoryId?{categoryId}:{}),skuNormalized:data.sku.trim().toUpperCase(),status:"active",createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await db.collection<StockProduct>("products").insertOne(doc,{session});return doc;
 }
 export async function createStockLocation(db:Db,tenantId:string,actorId:string,input:unknown,session:ClientSession){
@@ -89,7 +89,9 @@ export async function recordStockMovement(db:Db,tenantId:string,actorId:string,i
  const source=await locations.findOne({tenantId,stockLocationId:data.stockLocationId,status:"active"},{session});
  if(!source)throw new Error("STOCK_LOCATION_NOT_FOUND");
  if(data.movementType==="transfer"){
-  const destination=await locations.findOne({tenantId,stockLocationId:data.destinationStockLocationId,status:"active"},{session});
+  const destinationId=data.destinationStockLocationId;
+  if(!destinationId)throw new Error("DESTINATION_STOCK_LOCATION_REQUIRED");
+  const destination=await locations.findOne({tenantId,stockLocationId:destinationId,status:"active"},{session});
   if(!destination)throw new Error("DESTINATION_STOCK_LOCATION_NOT_FOUND");
  }
  const movements=db.collection("stock_movements"),now=data.occurredAt??new Date();
@@ -98,8 +100,8 @@ export async function recordStockMovement(db:Db,tenantId:string,actorId:string,i
  const transferId=data.movementType==="transfer"?newId("str"):undefined;
  const movementDocs=[];
  if(data.movementType==="transfer"){
-  await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.stockLocationId,lotId:data.lotId,quantity:data.quantity,direction:-1,allowNegative:product.allowNegativeStock,actorId,session});
-  await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.destinationStockLocationId!,lotId:data.lotId,quantity:data.quantity,direction:1,allowNegative:true,actorId,session});
+  await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.stockLocationId,...(data.lotId?{lotId:data.lotId}:{}),quantity:data.quantity,direction:-1,allowNegative:product.allowNegativeStock,actorId,session});
+  await applyDelta(db,{tenantId,productId:data.productId,stockLocationId:data.destinationStockLocationId!,...(data.lotId?{lotId:data.lotId}:{}),quantity:data.quantity,direction:1,allowNegative:true,actorId,session});
   movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.stockLocationId,movementType:"transfer_out",quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey+":out",occurredAt:now,actorId,transferId,...(data.reason?{reason:data.reason}:{})}));
   movementDocs.push(movementDocument({tenantId,movementId:newId("mov"),productId:data.productId,stockLocationId:data.destinationStockLocationId!,movementType:"transfer_in",quantity:data.quantity,unitCode:data.unitCode,...(data.lotId?{lotId:data.lotId}:{}),source:data.source,idempotencyKey:data.idempotencyKey+":in",occurredAt:now,actorId,transferId,...(data.reason?{reason:data.reason}:{})}));
   await db.collection("stock_transfer_orders").insertOne({tenantId,transferId,productId:data.productId,sourceStockLocationId:data.stockLocationId,destinationStockLocationId:data.destinationStockLocationId,quantity:decimal(data.quantity),unitCode:data.unitCode,lotId:data.lotId,source:data.source,status:"completed",createdAt:new Date(),createdBy:actorId},{session});
