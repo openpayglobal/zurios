@@ -13,7 +13,7 @@ Configure these values in the API project's encrypted Preview environment only:
 - `MAC_MFA_ENCRYPTION_KEY`: a separate base64-encoded 32-byte key, distinct from tenant MFA encryption. It encrypts TOTP secrets at rest.
 - `MAC_SESSION_TTL_SECONDS`: default 28,800 seconds (8 hours).
 
-The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host only, no trailing `/v1`). Add the exact web origin to API `CORS_ORIGINS`. Do not put any MAC secret in a Vite variable, browser configuration or client bundle.
+The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host only, no trailing `/v1`). Add the exact web origin to API `CORS_ORIGINS`. Invited operators can activate their account through the web route `/mac/invite`. Do not put any MAC secret in a Vite variable, browser configuration or client bundle.
 
 ## Bootstrap sequence
 
@@ -59,7 +59,7 @@ The web build needs `VITE_ZURI_API_URL` set to the API origin (scheme and host o
 
 ## Current limitations
 
-- The API supports the initial bootstrap owner, read-only operator invitations, operator inventory, session listing/revocation and operator suspension. Invitation profiles cannot grant management permissions. Permission-grant approvals, elevated roles, operator reactivation and recovery workflows are not yet implemented.
+- The API supports the initial bootstrap owner, read-only operator invitations, operator inventory, session listing/revocation and operator suspension. The web UI supports invitation creation and acceptance at `/mac/invite`. Invitation profiles cannot grant management permissions. Permission-grant approvals, elevated roles, operator reactivation and recovery workflows are not yet implemented.
 - MAC read APIs are implemented; runtime configuration writes, provider changes, deployments, rollbacks and other high-impact mutations remain disabled.
 - The MAC frontend reads authenticated overview, tenant and audit data. It keeps tokens in React memory only; reloading the tab requires a new sign-in.
 - No live deployment, production promotion, paid Vercel feature or new recurring cost is authorized by this runbook.
