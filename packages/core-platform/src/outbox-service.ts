@@ -2,9 +2,11 @@ import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 
-export type OutboxEventDocument={
+export type PlatformEventEnvelope={
  eventId:string;tenantId:string;eventType:string;schemaVersion:1;aggregateType:string;aggregateId?:string;
  payload:Record<string,unknown>;occurredAt:Date;correlationId?:string;
+};
+export type OutboxEventDocument=PlatformEventEnvelope&{
  status:"pending"|"processing"|"published"|"dead_letter";attempts:number;
  availableAt:Date;leaseOwner?:string;leaseUntil?:Date;publishedAt?:Date;lastError?:string;
  createdAt:Date;updatedAt:Date;
@@ -116,8 +118,13 @@ export async function consumeEventOnce(
 }
 
 export async function publishOutboxToMongoEventBus(db:Db,event:OutboxEventDocument):Promise<void>{
- await db.collection<OutboxEventDocument>("platform_events").updateOne(
-  {eventId:event.eventId},{$setOnInsert:event},{upsert:true}
+ const envelope:PlatformEventEnvelope={
+  eventId:event.eventId,tenantId:event.tenantId,eventType:event.eventType,schemaVersion:event.schemaVersion,
+  aggregateType:event.aggregateType,...(event.aggregateId?{aggregateId:event.aggregateId}:{}),
+  payload:event.payload,occurredAt:event.occurredAt,...(event.correlationId?{correlationId:event.correlationId}:{})
+ };
+ await db.collection<PlatformEventEnvelope>("platform_events").updateOne(
+  {eventId:envelope.eventId},{$setOnInsert:envelope},{upsert:true}
  );
 }
 export function createMongoEventBusPublisher(db:Db):OutboxPublisher{
