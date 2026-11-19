@@ -4,7 +4,7 @@ import { ObjectId, type Db, type Document } from "mongodb";
 import { z } from "zod";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
-import { createAuditEvent, hashToken, newOpaqueToken, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
 
 const bootstrapSchema = z.object({
   bootstrapToken: z.string().min(32),
@@ -42,10 +42,10 @@ export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise
   const tenantMemberships = memberships.flatMap((membership) => {
     const tenantId = typeof membership.tenantId === "string" ? membership.tenantId : "";
     const role = membership.role as TenantRole;
-    if (!tenantId || !["tenant_owner", "tenant_admin", "publisher", "advertiser", "support_agent", "viewer"].includes(role)) return [];
+    if (!tenantId || !TENANT_ROLES.includes(role)) return [];
     return [{ tenantId, role, status: "active" as const }];
   });
-  const platformRole = user.platformRole as PlatformRole | undefined;
+  const platformRole = PLATFORM_ROLES.includes(user.platformRole as PlatformRole) ? user.platformRole as PlatformRole : undefined;
   return {
     principal: {
       userId: String(user._id),
