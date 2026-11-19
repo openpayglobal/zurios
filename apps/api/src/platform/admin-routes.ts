@@ -7,7 +7,7 @@ import {
  provisionTenant,createUser,createMembership,setMembershipStatus,
  createApprovalRequest,approveApprovalRequest,rejectApprovalRequest,completeApprovalRequest,
  upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,
- type AuditEventDocument,type ApprovalRequestDocument
+ type AuditEventDocument,type ApprovalRequestDocument,BREAK_GLASS_ALLOWED_PERMISSIONS
 } from "@zuri/core-platform";
 import {encryptMfaSecret} from "./auth-crypto.js";
 import {issueMembershipInvitation} from "./auth-service.js";
@@ -82,7 +82,7 @@ function validateApprovalPayload(action:string,payload:unknown){
  if(action==="policy.apply")return z.object({key:z.string().min(2).max(100),...upsertPolicySchema.shape}).parse(payload);
  if(action==="feature_flag.set")return z.object({key:z.string().min(2).max(100),...featureFlagSchema.shape}).parse(payload);
  if(action==="break_glass.grant")return z.object({
-  userId:z.string().min(1),permissionKeys:z.array(z.string().min(1).refine(value=>value!=="*"&&!value.includes("*"))).min(1).max(20),
+  userId:z.string().min(1),permissionKeys:z.array(z.string().min(1).refine(value=>BREAK_GLASS_ALLOWED_PERMISSIONS.includes(value as typeof BREAK_GLASS_ALLOWED_PERMISSIONS[number]))).min(1).max(20),
   organizationIds:z.array(z.string().min(1)).default([]),locationIds:z.array(z.string().min(1)).default([]),
   durationMinutes:z.number().int().min(1).max(60)
  }).refine(value=>value.organizationIds.length>0||value.locationIds.length>0,{message:"Break-glass scope is required"}).parse(payload);
@@ -191,6 +191,9 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     if(body.action==="break_glass.grant"){
      const bg=payload as {userId:string;organizationIds:string[];locationIds:string[]};
      if(bg.organizationIds.some(id=>!orgIds(p).includes(id))||bg.locationIds.some(id=>!locIds(p).includes(id)))return reply.code(403).send({error:"BREAK_GLASS_SCOPE_DENIED"});
+     if(!await c.users.findOne({userId:bg.userId,status:"active"}))return reply.code(422).send({error:"BREAK_GLASS_USER_NOT_ACTIVE"});
+     if(bg.organizationIds.length&&await c.organizations.countDocuments({tenantId:p.tenantId,organizationId:{$in:bg.organizationIds},status:"active"})!==bg.organizationIds.length)return reply.code(422).send({error:"INVALID_BREAK_GLASS_ORGANIZATION_SCOPE"});
+     if(bg.locationIds.length&&await c.locations.countDocuments({tenantId:p.tenantId,locationId:{$in:bg.locationIds},status:"active"})!==bg.locationIds.length)return reply.code(422).send({error:"INVALID_BREAK_GLASS_LOCATION_SCOPE"});
     }
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.approvals.create",async session=>{
      const result=await createApprovalRequest(db,session,{tenantId:p.tenantId,scope:"tenant",action:body.action,targetType:body.targetType,targetId:body.targetId,payload,reason:body.reason,requestedBy:p.userId,correlationId:request.id,ttlSeconds:body.ttlSeconds});
