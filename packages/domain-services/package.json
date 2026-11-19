@@ -1,0 +1,21 @@
+{
+  "name": "@zuri/domain-services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/*.integration.test.ts"
+  },
+  "dependencies": {
+    "@zuri/core-platform": "workspace:*",
+    "@zuri/domain-contracts": "workspace:*",
+    "mongodb": "^6.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
