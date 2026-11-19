@@ -51,7 +51,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "crm.account.read","crm.account.create","crm.contact.read","crm.contact.create","crm.lead.read","crm.lead.create",
    "crm.opportunity.read","crm.opportunity.create","crm.opportunity.stage.update","crm.activity.read","crm.activity.create",
    "hr.employee.read","hr.employee.create","hr.leave.read","hr.leave.request","hr.leave.approve",
-   "payroll.run.read","payroll.run.create","payroll.run.approve"
+   "payroll.run.read","payroll.run.create","payroll.run.approve",
+   "payments.intent.read","payments.intent.create","payments.refund.request"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -332,7 +333,26 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const payrollList=await app.inject({method:"GET",url:"/v1/payroll/runs",headers:managerHeaders});
   assert.equal(payrollList.statusCode,200);
   assert.equal(payrollList.json().data[0].status,"approved");
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=31);
+  await db.collection("payment_provider_configs").insertOne({tenantId:"tenant-a",organizationId:"org-a",providerId:"test-provider",status:"active"});
+  await db.collection("erp_invoices").insertOne({tenantId:"tenant-a",organizationId:"org-a",invoiceId:"invoice-payment-api-001",invoiceNumber:"INV-PAY-001",
+   invoiceType:"sales",partyId:"customer-api",currency:"UGX",totalMinor:5000,paidMinor:0,status:"issued",issuedAt:now,dueAt:new Date(now.getTime()+30*86400000)});
+  const paymentIntent=await app.inject({
+   method:"POST",url:"/v1/payments/intents",headers:{...headers,"idempotency-key":"payment-intent-api-001"},
+   payload:{organizationId:"org-a",paymentId:"payment-intent-api-001",providerId:"test-provider",referenceType:"invoice",
+    referenceId:"invoice-payment-api-001",amountMinor:5000,currency:"UGX"}
+  });
+  assert.equal(paymentIntent.statusCode,201);
+  const paymentIntentList=await app.inject({method:"GET",url:"/v1/payments/intents",headers});
+  assert.equal(paymentIntentList.statusCode,200);
+  assert.equal(paymentIntentList.json().data.length,1);
+  await db.collection("payment_intents").insertOne({tenantId:"tenant-a",organizationId:"org-a",paymentId:"payment-captured-api-001",
+   providerId:"test-provider",referenceType:"invoice",referenceId:"invoice-payment-api-001",amountMinor:1000,currency:"UGX",status:"captured",version:1});
+  const refundRequest=await app.inject({
+   method:"POST",url:"/v1/payments/refund-requests",headers:{...headers,"idempotency-key":"payment-refund-api-001"},
+   payload:{organizationId:"org-a",refundId:"refund-payment-api-001",paymentId:"payment-captured-api-001",amountMinor:500,reason:"Customer returned an item"}
+  });
+  assert.equal(refundRequest.statusCode,202);
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=34);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
