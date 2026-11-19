@@ -50,3 +50,13 @@ export function decryptMfaSecret(value:string,keyBase64:string):string{
 export function generateRecoveryCodes(count=10):string[]{return Array.from({length:count},()=>randomBytes(8).toString("hex").toUpperCase());}
 export function hashRecoveryCode(code:string):string{return createHash("sha256").update(code.replace(/[-\s]/g,"").toUpperCase()).digest("hex");}
 export function hashOpaqueToken(token:string):string{return createHash("sha256").update(token).digest("hex");}
+
+function invitationEncryptionKey(masterKeyBase64:string):string{
+ return createHmac("sha256",encryptionKey(masterKeyBase64)).update("zuri-os:membership-invitation-delivery:v1").digest("base64");
+}
+export function encryptInvitationToken(token:string,masterKeyBase64:string):string{
+ return encryptMfaSecret(token,invitationEncryptionKey(masterKeyBase64));
+}
+export function decryptInvitationToken(envelope:string,masterKeyBase64:string):string{
+ return decryptMfaSecret(envelope,invitationEncryptionKey(masterKeyBase64));
+}
