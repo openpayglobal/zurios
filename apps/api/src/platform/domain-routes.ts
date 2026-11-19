@@ -22,13 +22,21 @@ async function resolveWarehouseScope(db:Db,tenantId:string,warehouseId:string):P
  const location=await db.collection<{tenantId:string;locationId:string;organizationId:string;status:string}>("locations")
   .findOne({tenantId,locationId:warehouse.locationId,status:"active"});
  if(!location||!location.organizationId)return null;
+ const organization=await db.collection("organizations").findOne({tenantId,organizationId:location.organizationId,status:"active"},{projection:{_id:1}});
+ if(!organization)return null;
  return {tenantId,organizationId:location.organizationId,locationId:location.locationId};
 }
 async function resolveLocationScope(db:Db,tenantId:string,locationId:string):Promise<DomainResourceScope|null>{
  const location=await db.collection<{tenantId:string;locationId:string;organizationId:string;status:string}>("locations")
   .findOne({tenantId,locationId,status:"active"});
  if(!location||!location.organizationId)return null;
+ const organization=await db.collection("organizations").findOne({tenantId,organizationId:location.organizationId,status:"active"},{projection:{_id:1}});
+ if(!organization)return null;
  return {tenantId,organizationId:location.organizationId,locationId:location.locationId};
+}
+async function resolveOrganizationScope(db:Db,tenantId:string,organizationId:string):Promise<DomainResourceScope|null>{
+ const organization=await db.collection("organizations").findOne({tenantId,organizationId,status:"active"},{projection:{_id:1}});
+ return organization?{tenantId,organizationId}:null;
 }
 async function deny(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,permission:string,scope?:DomainResourceScope){
  try{
@@ -334,7 +342,7 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
     const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
     if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
-    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
     const denied=await permit(db,request,reply,p,"erp.account.create",scope);if(denied)return denied;
     const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
     const body=AccountSchema.parse({...raw,organizationId});
@@ -429,7 +437,7 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const period=await db.collection<{tenantId:string;periodId:string;organizationId?:string}>("erp_fiscal_periods").findOne({tenantId:p.tenantId,periodId:fiscalPeriodId});
     if(!period)return reply.code(422).send({error:"FISCAL_PERIOD_NOT_FOUND"});
     if(!period.organizationId)return reply.code(403).send({error:"FISCAL_PERIOD_ORGANIZATION_SCOPE_MISSING"});
-    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:period.organizationId};
+    const scope=await resolveOrganizationScope(db,p.tenantId,period.organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
     const denied=await permit(db,request,reply,p,"erp.journal.post",scope);if(denied)return denied;
     const body=JournalEntrySchema.parse({...raw,tenantId:p.tenantId,idempotencyKey:key,organizationId:period.organizationId});
     const result=await postJournalEntry(db,body,p.userId);
