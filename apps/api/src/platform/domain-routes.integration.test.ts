@@ -74,7 +74,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    tenantId:"tenant-a",policyId:"inventory-allow-"+index,key:"inventory-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"inventory-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
-  await db.collection("policies").insertMany(["hr.leave.approve","payroll.run.read","payroll.run.approve"].map((action,index)=>({
+  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve"].map((action,index)=>({
    tenantId:"tenant-a",policyId:"manager-allow-"+index,key:"manager-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"hr-manager-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
