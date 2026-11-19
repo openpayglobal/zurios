@@ -25,7 +25,7 @@ function safeSecretEqual(candidate: string, expected: string): boolean {
   return timingSafeEqual(left, right);
 }
 
-async function resolvePrincipal(db: Db, request: FastifyRequest): Promise<{ principal: Principal; sessionId: ObjectId } | null> {
+export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise<{ principal: Principal; sessionId: ObjectId } | null> {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) return null;
   const token = authorization.slice(7);
