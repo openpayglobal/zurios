@@ -489,3 +489,27 @@ export const CommerceOrderRequestSchema=z.object({
  if(new Set(skus).size!==skus.length)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines"],message:"Commerce order lines must have unique SKUs"});
 });
 export type CommerceOrderRequest=z.infer<typeof CommerceOrderRequestSchema>;
+
+
+export const AssetSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),assetId:z.string().min(1),assetTag:z.string().min(1).max(64),
+ name:z.string().min(2).max(180),category:z.string().min(2).max(80),acquiredAt:z.string().datetime(),
+ acquisitionCostMinor:z.number().int().nonnegative(),residualValueMinor:z.number().int().nonnegative(),
+ usefulLifeMonths:z.number().int().positive().max(1200),currency:z.string().regex(/^[A-Z]{3}$/),
+ depreciationMethod:z.enum(["straight_line"]),status:z.enum(["active","disposed","written_off"]).default("active")
+}).refine(asset=>asset.residualValueMinor<=asset.acquisitionCostMinor,{message:"Residual value cannot exceed acquisition cost",path:["residualValueMinor"]});
+export type Asset=z.infer<typeof AssetSchema>;
+
+export const MaintenanceWorkOrderSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),workOrderId:z.string().min(1),assetId:z.string().min(1),
+ workType:z.enum(["preventive","corrective"]),priority:z.enum(["low","normal","high","critical"]),
+ description:z.string().min(5).max(2000),scheduledAt:z.string().datetime(),assignedToUserId:z.string().min(1).optional(),
+ estimatedCostMinor:z.number().int().nonnegative().default(0),status:z.literal("open").default("open")
+});
+export type MaintenanceWorkOrder=z.infer<typeof MaintenanceWorkOrderSchema>;
+
+export const MaintenanceCompletionSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),workOrderId:z.string().min(1),
+ actualCostMinor:z.number().int().nonnegative(),completionNotes:z.string().min(5).max(2000),expectedVersion:z.number().int().nonnegative()
+});
+export type MaintenanceCompletion=z.infer<typeof MaintenanceCompletionSchema>;
