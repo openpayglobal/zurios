@@ -167,7 +167,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/platform/admin/users/invitations",{preHandler:tenantGuard(db,config.jwtSecret,"platform.users.invite")},async(request,reply)=>{
    const p=principal(request);if(!config.mfaEncryptionKey)return reply.code(503).send({error:"INVITATION_ENCRYPTION_NOT_CONFIGURED"});
    try{
-    const body=z.object({email:z.string().email().max(254),displayName:z.string().min(2).max(120),phoneE164:z.string().regex(/^\+[1-9]\d{7,14}$/).optional(),organizationIds:z.array(z.string().min(1)).min(1),locationIds:z.array(z.string().min(1)).default([]),roleIds:z.array(z.string().min(1)).default([]),reason:reasonSchema}).parse(request.body);
+    const body=inviteUserSchema.parse(request.body);
     if(body.organizationIds.some(id=>!orgIds(p).includes(id))||body.locationIds.some(id=>!locIds(p).includes(id)))return reply.code(403).send({error:"INVITATION_SCOPE_DENIED"});
     if(body.roleIds.length&&!p.permissions.includes("platform.memberships.assign.roles"))return reply.code(403).send({error:"ROLE_ASSIGNMENT_NOT_PERMITTED"});
     const assignedRoles=body.roleIds.length?await c.roles.find({tenantId:p.tenantId,roleId:{$in:body.roleIds},status:"active"}).toArray():[];
@@ -197,7 +197,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/approvals",{preHandler:tenantGuard(db,config.jwtSecret,"platform.approvals.create")},async(request,reply)=>{
    const p=principal(request);try{
-    createApprovalRequestSchema.parse(request.body)
+    const body=createApprovalRequestSchema.parse(request.body);
     const payload=validateApprovalPayload(body.action,body.payload);
     const requestPermission=body.action.startsWith("membership.")?"platform.memberships.manage.request":body.action==="organization.deactivate"?"platform.organizations.manage.request":body.action==="location.deactivate"?"platform.locations.manage.request":body.action==="policy.apply"?"platform.policies.write.request":body.action==="feature_flag.set"?"platform.feature-flags.write.request":"platform.breakglass.request";
     if(!p.permissions.includes(requestPermission))return reply.code(403).send({error:"APPROVAL_REQUEST_NOT_PERMITTED"});
@@ -229,7 +229,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/platform/admin/approvals/:requestId/approve",async(request,reply)=>{
    const p=principal(request);try{
-    const params=z.object({requestId:z.string().min(1)}).parse(request.params),query=z.object({scope:approvalScopeSchema.default("tenant")}).parse(request.query),body=z.object({reason:z.string().min(10).max(1000)}).parse(request.body);
+    const params=z.object({requestId:z.string().min(1)}).parse(request.params),query=z.object({scope:approvalScopeSchema.default("tenant")}).parse(request.query),body=approvalDecisionSchema.parse(request.body);
     const scopeTenantId=query.scope==="platform"?"platform":p.tenantId;
     if(query.scope==="platform"&&!await checkPlatformPermission(db,config.jwtSecret,"platform.approvals.approve",request,reply,p))return;
     if(query.scope==="tenant"&&!await checkTenantPermission(db,config.jwtSecret,"platform.approvals.approve",request,reply,p))return;
