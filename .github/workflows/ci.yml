@@ -19,7 +19,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: pnpm install --no-frozen-lockfile
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
       - name: Start MongoDB replica set
         run: |
           docker run -d --name zuri-mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
@@ -29,7 +30,7 @@ jobs:
             fi
             sleep 1
           done
-          docker exec zuri-mongo mongosh --quiet --eval 'rs.initiate()'
+          docker exec zuri-mongo mongosh --quiet --eval 'rs.initiate({_id: "rs0", members: [{_id: 0, host: "127.0.0.1:27017"}]})'
           for i in $(seq 1 30); do
             if docker exec zuri-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
               exit 0

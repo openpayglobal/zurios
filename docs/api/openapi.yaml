@@ -3,8 +3,6 @@ info:
   title: Zuri OS Platform API
   version: 1.0.0
   summary: Shared multi-tenant platform control-plane API
-  license:
-    name: No license specified
   description: |
     Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
     Tenant context is derived from the authenticated principal; callers cannot
