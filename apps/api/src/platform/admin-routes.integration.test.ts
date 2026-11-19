@@ -132,7 +132,7 @@ test("administration workspace enforces invitation, two-person approval and brea
    headers:{authorization:"Bearer "+emergencyToken,"idempotency-key":"emergency-session-revoke-0001"}
   });
   assert.equal(revokeSession.statusCode,204);
-  const emergencyAudit=await db.collection("audit_events").findOne({tenantId:"tenant-a","actor.userId":"emergency-user",action:"platform.sessions.revoke"});
+  const emergencyAudit=await db.collection("audit_events").findOne({tenantId:"tenant-a","actor.userId":"emergency-user",action:"platform.session.revoked"});
   assert.ok(emergencyAudit);
   assert.deepEqual(emergencyAudit!.metadata.emergencyGrantIds,[grant!.grantId]);
 
