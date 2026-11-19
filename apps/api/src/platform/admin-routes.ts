@@ -6,7 +6,7 @@ import {
  coreCollections,evaluatePolicy,runIdempotentMutation,appendAuditEvent,appendOutboxEvent,
  provisionTenant,createOrganization,createRole,createUser,createMembership,setMembershipStatus,
  createApprovalRequest,approveApprovalRequest,rejectApprovalRequest,completeApprovalRequest,
- upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,
+ upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,setOrganizationStatus,setLocationStatus,
  type AuditEventDocument,type ApprovalRequestDocument,BREAK_GLASS_ALLOWED_PERMISSIONS
 } from "@zuri/core-platform";
 import {encryptInvitationToken} from "./auth-crypto.js";
@@ -85,9 +85,9 @@ async function emit(db:Db,session:ClientSession,tenantId:string,request:FastifyR
 const reasonSchema=z.string().min(20).max(2000);
 const auditExportFiltersSchema=z.object({action:z.string().optional(),actorUserId:z.string().optional(),resourceType:z.string().optional(),outcome:z.enum(["success","denied","failure"]).optional(),correlationId:z.string().optional(),from:z.string().datetime().optional(),to:z.string().datetime().optional(),limit:z.number().int().min(1).max(10000).default(10000)}).refine(value=>!value.from||!value.to||new Date(value.from)<=new Date(value.to),{message:"from must be earlier than to"});
 const approvalScopeSchema=z.enum(["tenant","platform"]);
-const approvalActionSchema=z.enum(["membership.suspend","membership.reactivate","membership.revoke","policy.apply","feature_flag.set","break_glass.grant","tenant.activate","tenant.suspend","tenant.close"]);
+const approvalActionSchema=z.enum(["membership.suspend","membership.reactivate","membership.revoke","organization.deactivate","location.deactivate","policy.apply","feature_flag.set","break_glass.grant","tenant.activate","tenant.suspend","tenant.close"]);
 function validateApprovalPayload(action:string,payload:unknown){
- if(action==="membership.suspend"||action==="membership.reactivate"||action==="membership.revoke")return z.object({}).strict().parse(payload??{});
+ if(action==="membership.suspend"||action==="membership.reactivate"||action==="membership.revoke"||action==="organization.deactivate"||action==="location.deactivate")return z.object({}).strict().parse(payload??{});
  if(action==="policy.apply")return z.object({key:z.string().min(2).max(100),...upsertPolicySchema.shape}).parse(payload);
  if(action==="feature_flag.set")return z.object({key:z.string().min(2).max(100),...featureFlagSchema.shape}).parse(payload);
  if(action==="break_glass.grant")return z.object({
@@ -102,7 +102,7 @@ async function executeApprovedAction(db:Db,session:ClientSession,request:Approva
  switch(request.action){
   case "membership.suspend":return setMembershipStatus(db,request.tenantId,request.targetId,"suspended",actorId,session);
   case "membership.reactivate":return setMembershipStatus(db,request.tenantId,request.targetId,"active",actorId,session);
-  case "membership.revoke":return setMembershipStatus(db,request.tenantId,request.targetId,"revoked",actorId,session);
+  case "membership.revoke":return setMembershipStatus(db,request.tenantId,request.targetId,"revoked",actorId,session);\n  case "organization.deactivate":return setOrganizationStatus(db,request.tenantId,request.targetId,"inactive",actorId,session);\n  case "location.deactivate":return setLocationStatus(db,request.tenantId,request.targetId,"inactive",actorId,session);
   case "policy.apply":{
    const d=request.payload as {key:string;effect:"allow"|"deny";priority:number;subject:Record<string,unknown>;resource:Record<string,unknown>;actions:string[];conditions:Record<string,unknown>};
    return upsertPolicy(db,request.tenantId,actorId,d,session);
@@ -199,15 +199,15 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);try{
     const body=z.object({action:approvalActionSchema,targetType:z.string().min(2).max(80),targetId:z.string().min(1).max(200),payload:z.record(z.unknown()).default({}),reason:reasonSchema,ttlSeconds:z.number().int().min(300).max(7*24*60*60).default(24*60*60)}).parse(request.body);
     const payload=validateApprovalPayload(body.action,body.payload);
-    const requestPermission=body.action.startsWith("membership.")?"platform.memberships.manage.request":body.action==="policy.apply"?"platform.policies.write.request":body.action==="feature_flag.set"?"platform.feature-flags.write.request":"platform.breakglass.request";
+    const requestPermission=body.action.startsWith("membership.")?"platform.memberships.manage.request":body.action==="organization.deactivate"?"platform.organizations.manage.request":body.action==="location.deactivate"?"platform.locations.manage.request":body.action==="policy.apply"?"platform.policies.write.request":body.action==="feature_flag.set"?"platform.feature-flags.write.request":"platform.breakglass.request";
     if(!p.permissions.includes(requestPermission))return reply.code(403).send({error:"APPROVAL_REQUEST_NOT_PERMITTED"});
-    if(body.action.startsWith("membership.")&&body.targetType!=="membership")return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
+    if(body.action.startsWith("membership.")&&body.targetType!=="membership")return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});\n    if(body.action==="organization.deactivate"&&body.targetType!=="organization")return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});\n    if(body.action==="location.deactivate"&&body.targetType!=="location")return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
     if(body.action==="policy.apply"&&(body.targetType!=="policy"||body.targetId!==(payload as {key:string}).key))return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
     if(body.action==="feature_flag.set"&&(body.targetType!=="feature_flag"||body.targetId!==(payload as {key:string}).key))return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
     if(body.action==="break_glass.grant"&&(body.targetType!=="user"||body.targetId!==(payload as {userId:string}).userId))return reply.code(400).send({error:"INVALID_APPROVAL_TARGET"});
 
     if(body.action.startsWith("tenant."))return reply.code(403).send({error:"PLATFORM_SCOPE_REQUIRED"});
-    if(body.action.startsWith("membership.")&&!await c.memberships.findOne({tenantId:p.tenantId,membershipId:body.targetId}))return reply.code(404).send({error:"MEMBERSHIP_NOT_FOUND"});
+    if(body.action.startsWith("membership.")&&!await c.memberships.findOne({tenantId:p.tenantId,membershipId:body.targetId}))return reply.code(404).send({error:"MEMBERSHIP_NOT_FOUND"});\n    if(body.action==="organization.deactivate"&&(!orgIds(p).includes(body.targetId)||!await c.organizations.findOne({tenantId:p.tenantId,organizationId:body.targetId,status:"active"})))return reply.code(404).send({error:"ORGANIZATION_NOT_FOUND_IN_SCOPE"});\n    if(body.action==="location.deactivate"&&(!locIds(p).includes(body.targetId)||!await c.locations.findOne({tenantId:p.tenantId,locationId:body.targetId,status:"active"})))return reply.code(404).send({error:"LOCATION_NOT_FOUND_IN_SCOPE"});
     if(body.action==="break_glass.grant"){
      const bg=payload as {userId:string;organizationIds:string[];locationIds:string[]};
      if(bg.organizationIds.some(id=>!orgIds(p).includes(id))||bg.locationIds.some(id=>!locIds(p).includes(id)))return reply.code(403).send({error:"BREAK_GLASS_SCOPE_DENIED"});
