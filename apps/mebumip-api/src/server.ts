@@ -5,6 +5,7 @@ import helmet from "@fastify/helmet";
 import { MongoClient } from "mongodb";
 import { config, corsOrigins } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
+import { registerAdminRoutes } from "./admin.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 
 const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) => {
@@ -60,6 +61,7 @@ if (config.MONGODB_URI) {
     await db.command({ ping: 1 });
     await ensureMeBuMIPIndexes(db);
     registerAuthRoutes(app, db);
+    registerAdminRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
   } catch (error) {
