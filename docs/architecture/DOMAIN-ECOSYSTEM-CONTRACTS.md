@@ -1,6 +1,6 @@
 # ERP, POS and Inventory domain boundaries
 
-The @zuri/domain-contracts package is the shared schema boundary for phases 6B, 6C and 6D. It intentionally contains no persistence, HTTP routes or cross-domain writes yet. Those implementations remain gated by 6A.6 security and operational acceptance.
+The @zuri/domain-contracts package is the shared schema boundary for phases 6B, 6C and 6D. The companion @zuri/domain-services package now contains initial transaction-backed service methods. HTTP routes, UI, full provider integration and production acceptance remain gated by 6A.6 security and operational acceptance.
 
 ## Shared command and event invariants
 
