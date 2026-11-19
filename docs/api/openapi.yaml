@@ -595,6 +595,28 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {description: Active session not found}
         "409": {description: Use logout to revoke the current session}
+  /mac/configurations:
+    get:
+      tags: [MAC]
+      operationId: listMacConfigurationMetadata
+      summary: Read configuration metadata without returning secret values
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 50}
+      responses:
+        "200": {description: Configuration metadata; valuesReturned and secretValuesExposed are false}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/providers:
+    get:
+      tags: [MAC]
+      operationId: listMacProviderRegistry
+      summary: Read provider registry and capability metadata
+      responses:
+        "200": {description: Provider metadata; credentialsReturned is false}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /mac/overview:
     get:
       tags: [MAC]
