@@ -30,7 +30,7 @@ test("CRM services enforce organization-owned relationships, consent evidence an
    firstName:"Amina",lastName:"N.",email:"amina@example.test",marketingConsent:"granted",
    consentCapturedAt:"2026-11-19T08:00:00.000Z",consentSource:"website signup",status:"active"
   },actorId,"crm-contact-create-001");
-  assert.equal(contact.body.contactId,"contact-001");
+  assert.equal((contact.body as {contactId:string}).contactId,"contact-001");
   await assert.rejects(()=>createCrmContact(db,{
    tenantId,organizationId:"org-a",contactId:"contact-invalid",firstName:"No",lastName:"Consent",
    marketingConsent:"granted",status:"active"
@@ -40,20 +40,20 @@ test("CRM services enforce organization-owned relationships, consent evidence an
    tenantId,organizationId:"org-a",leadId:"lead-001",firstName:"Brian",lastName:"K.",
    email:"brian@example.test",source:"referral",status:"new",marketingConsent:"unknown"
   },actorId,"crm-lead-create-001");
-  assert.equal(lead.body.leadId,"lead-001");
+  assert.equal((lead.body as {leadId:string}).leadId,"lead-001");
 
   const opportunity=await createCrmOpportunity(db,{
    tenantId,organizationId:"org-a",opportunityId:"opportunity-001",accountId:"account-001",contactId:"contact-001",
    name:"Annual supply agreement",stage:"prospecting",amountMinor:2500000,currency:"UGX",
    expectedCloseAt:"2026-12-31T00:00:00.000Z",ownerUserId:actorId,version:0
   },actorId,"crm-opportunity-create-001");
-  assert.equal(opportunity.body.version,0);
+  assert.equal((opportunity.body as {version:number}).version,0);
 
   const activity=await recordCrmActivity(db,{
    tenantId,organizationId:"org-a",activityId:"activity-001",relatedType:"opportunity",relatedId:"opportunity-001",
    activityType:"meeting",subject:"Discovery meeting",occurredAt:"2026-11-19T09:00:00.000Z",status:"completed"
   },actorId,"crm-activity-create-001");
-  assert.equal(activity.body.activityId,"activity-001");
+  assert.equal((activity.body as {activityId:string}).activityId,"activity-001");
 
   const stage=await updateCrmOpportunityStage(db,{
    tenantId,organizationId:"org-a",opportunityId:"opportunity-001",stage:"qualification",expectedVersion:0
