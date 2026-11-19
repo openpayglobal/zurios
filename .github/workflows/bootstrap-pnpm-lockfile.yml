@@ -10,21 +10,32 @@ permissions:
 
 jobs:
   generate-lockfile:
-    if: ${{ !hashFiles('pnpm-lock.yaml') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
+      - name: Check whether the workspace lockfile already exists
+        id: lockfile
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
       - uses: pnpm/action-setup@v4
+        if: steps.lockfile.outputs.present == 'false'
         with:
           version: 9.15.4
       - uses: actions/setup-node@v4
+        if: steps.lockfile.outputs.present == 'false'
         with:
           node-version: 22
       - name: Generate deterministic workspace lockfile without executing package scripts
+        if: steps.lockfile.outputs.present == 'false'
         run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
       - name: Commit lockfile to the triggering branch
+        if: steps.lockfile.outputs.present == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
