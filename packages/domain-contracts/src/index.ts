@@ -559,3 +559,30 @@ export const PurchaseOrderReceiptSchema=z.object({
  if(new Set(skus).size!==skus.length)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines"],message:"Receipt lines must have unique SKUs"});
 });
 export type PurchaseOrderReceipt=z.infer<typeof PurchaseOrderReceiptSchema>;
+
+
+export const WorkflowDefinitionSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),workflowId:z.string().min(1),
+ name:z.string().min(2).max(160),description:z.string().max(2000).optional(),
+ triggerType:z.enum(["manual","event","schedule"]),
+ steps:z.array(z.object({
+  stepId:z.string().min(1),stepType:z.literal("approval"),
+  assigneeUserIds:z.array(z.string().min(1)).min(1).optional(),
+  requiredApprovals:z.number().int().positive().default(1)
+ })).min(1),
+ version:z.number().int().positive().default(1),status:z.enum(["draft","active","inactive"]).default("draft")
+});
+export type WorkflowDefinition=z.infer<typeof WorkflowDefinitionSchema>;
+
+export const WorkflowRunStartSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),runId:z.string().min(1),workflowId:z.string().min(1),
+ context:z.record(z.unknown()).default({})
+});
+export type WorkflowRunStart=z.infer<typeof WorkflowRunStartSchema>;
+
+export const WorkflowTaskDecisionSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),taskId:z.string().min(1),
+ decision:z.enum(["approved","rejected"]),reason:z.string().min(10).max(2000),
+ expectedVersion:z.number().int().nonnegative()
+});
+export type WorkflowTaskDecision=z.infer<typeof WorkflowTaskDecisionSchema>;
