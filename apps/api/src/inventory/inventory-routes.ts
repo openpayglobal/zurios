@@ -4,10 +4,10 @@ import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {ZodError,z} from "zod";
 import {appendAuditEvent,appendOutboxEvent,runIdempotentMutation,getStockBalance,evaluatePolicy} from "@zuri/core-platform";
 import {createInventoryProduct,createStockLocation,createStockLot,recordStockMovement} from "@zuri/core-platform";
-import {authenticate} from "./auth-middleware.js";
-import {authorize} from "./authorization.js";
-import type {AuthConfig} from "./auth-service.js";
-import type {PlatformPrincipal} from "./types.js";
+import {authenticate} from "../platform/auth-middleware.js";
+import {authorize} from "../platform/authorization.js";
+import type {AuthConfig} from "../platform/auth-service.js";
+import type {PlatformPrincipal} from "../platform/types.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const principal=(request:FastifyRequest)=>request.principal as Principal;
