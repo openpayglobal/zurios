@@ -409,6 +409,23 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /platform/admin/users/invitations/{membershipId}/resend:
+    post:
+      tags: [Administration]
+      operationId: resendTenantMembershipInvitation
+      summary: Reissue a tenant membership invitation and invalidate the previous token
+      parameters:
+        - {name: membershipId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LifecycleRequest"}
+      responses:
+        "202": {description: New invitation delivery queued}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Invited membership not found}
   /platform/admin/approvals:
     get:
       tags: [Administration]
