@@ -28,6 +28,12 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   assert.equal(confirm.statusCode,201);
   const session=confirm.json() as {accessToken:string;refreshToken:string;sessionId:string};
   assert.ok(session.accessToken);assert.ok(session.refreshToken);
+  const replayedBootstrapCode=await app.inject({method:"POST",url:"/v1/mac/auth/login",payload:{email:"owner@example.test",password:"A-strong-test-password-2026",code:"999999"}});
+  assert.equal(replayedBootstrapCode.statusCode,401);
+  const nextStepCode=totpCode(secret,Math.floor(Date.now()/30_000)+1);
+  const login=await app.inject({method:"POST",url:"/v1/mac/auth/login",payload:{email:"owner@example.test",password:"A-strong-test-password-2026",code:nextStepCode}});
+  assert.equal(login.statusCode,200);
+  assert.equal(login.json().operator.email,"owner@example.test");
   const secondBootstrap=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"attacker@example.test",displayName:"Attacker",password:"Another-strong-password-2026"}});
   assert.equal(secondBootstrap.statusCode,409);
   const overview=await app.inject({method:"GET",url:"/v1/mac/overview",headers:{authorization:`Bearer ${session.accessToken}`}});
