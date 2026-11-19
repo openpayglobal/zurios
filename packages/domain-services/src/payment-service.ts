@@ -27,7 +27,7 @@ export async function recordVerifiedPaymentProviderEvent(
 ){
  const event=PaymentProviderEventSchema.parse(input);
  if(!(await verifySignature(event)))throw new Error("PAYMENT_PROVIDER_SIGNATURE_INVALID");
- const result=await runIdempotentMutation(db,{tenantId:event.tenantId,actorId,operation:"payments.provider.event",key:event.providerEventId,request:event},async session=>{
+ const result=await runIdempotentMutation(db,{tenantId:event.tenantId,actorId,operation:"payments.provider.event",key:event.providerId+"-"+event.providerEventId,request:event},async session=>{
   const intent=await db.collection<any>("payment_intents").findOne({tenantId:event.tenantId,organizationId:event.organizationId,paymentId:event.paymentId,providerId:event.providerId},{session});
   if(!intent)throw new Error("PAYMENT_INTENT_NOT_FOUND");
   if(intent.amountMinor!==event.amountMinor||intent.currency!==event.currency)throw new Error("PAYMENT_EVENT_AMOUNT_MISMATCH");
