@@ -57,6 +57,8 @@ tags:
     description: Asset register, straight-line depreciation inputs and maintenance work orders
   - name: Project Management
     description: Organization-scoped projects, tasks and approved timesheets
+  - name: Workflow Automation
+    description: Organization-scoped approval workflow definitions, runs and multi-approver tasks
 paths:
   /platform/tenant:
     get:
@@ -1575,6 +1577,89 @@ paths:
         "200": {description: Time entry rejected}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /workflows:
+    get:
+      tags: [Workflow Automation]
+      operationId: listWorkflowDefinitions
+      summary: List workflow definitions in authorized organizations
+      responses:
+        "200": {description: Scoped workflow definitions}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Workflow Automation]
+      operationId: createWorkflowDefinition
+      summary: Create an approval workflow definition
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowDefinition"}
+      responses:
+        "201": {description: Workflow definition created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /workflow-runs:
+    get:
+      tags: [Workflow Automation]
+      operationId: listWorkflowRuns
+      summary: List workflow runs in authorized organizations
+      responses:
+        "200": {description: Scoped workflow runs}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /workflows/{workflowId}/runs:
+    post:
+      tags: [Workflow Automation]
+      operationId: startWorkflowRun
+      summary: Start a run of an active workflow definition
+      parameters:
+        - {name: workflowId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowRunStart"}
+      responses:
+        "201": {description: Workflow run started}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active workflow not found}
+  /workflow-tasks/{taskId}/approve:
+    post:
+      tags: [Workflow Automation]
+      operationId: approveWorkflowTask
+      summary: Approve an assigned workflow task, including multi-approver steps
+      parameters:
+        - {name: taskId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowTaskDecision"}
+      responses:
+        "200": {description: Workflow task approval recorded}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /workflow-tasks/{taskId}/reject:
+    post:
+      tags: [Workflow Automation]
+      operationId: rejectWorkflowTask
+      summary: Reject an assigned workflow task with a recorded reason
+      parameters:
+        - {name: taskId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowTaskDecision"}
+      responses:
+        "200": {description: Workflow task rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -2163,6 +2248,44 @@ components:
       properties:
         organizationId: {type: string}
         reason: {type: string, minLength: 10, maxLength: 1000}
+        expectedVersion: {type: integer, minimum: 0}
+    WorkflowDefinition:
+      type: object
+      required: [organizationId, workflowId, name, triggerType, steps]
+      properties:
+        organizationId: {type: string}
+        workflowId: {type: string}
+        name: {type: string, minLength: 2, maxLength: 160}
+        description: {type: string, maxLength: 2000}
+        triggerType: {type: string, enum: [manual, event, schedule]}
+        version: {type: integer, minimum: 1, default: 1}
+        status: {type: string, enum: [draft, active, inactive], default: draft}
+        steps:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [stepId, stepType]
+            properties:
+              stepId: {type: string}
+              stepType: {type: string, enum: [approval]}
+              assigneeUserIds:
+                type: array
+                items: {type: string}
+              requiredApprovals: {type: integer, minimum: 1, default: 1}
+    WorkflowRunStart:
+      type: object
+      required: [organizationId, runId]
+      properties:
+        organizationId: {type: string}
+        runId: {type: string}
+        context: {type: object, additionalProperties: true}
+    WorkflowTaskDecision:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 10, maxLength: 2000}
         expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
