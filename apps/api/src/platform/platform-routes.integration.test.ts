@@ -35,7 +35,7 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   ]);
   await db.collection("roles").insertOne({
    tenantId:"tenant-a",roleId:"role-admin",key:"test.admin",
-   permissionKeys:["platform.tenant.read","platform.organizations.read","platform.organizations.create","platform.locations.read","platform.locations.create","platform.memberships.read","platform.memberships.create","platform.roles.read","platform.roles.create","platform.policies.read","platform.policies.write","platform.feature-flags.read","platform.feature-flags.write","platform.sessions.read","platform.sessions.revoke","platform.sessions.revoke.all","platform.audit.read"],status:"active"
+   permissionKeys:["platform.tenant.read","platform.organizations.read","platform.organizations.create","platform.locations.read","platform.locations.create","platform.memberships.read","platform.memberships.create","platform.memberships.assign.roles","platform.roles.read","platform.roles.create","platform.policies.read","platform.policies.write","platform.policies.write.allow","platform.policies.write.deny","platform.policies.write.global","platform.feature-flags.read","platform.feature-flags.write","platform.sessions.read","platform.sessions.revoke","platform.sessions.revoke.all","platform.audit.read"],status:"active"
   });
   await db.collection("memberships").insertOne({
    tenantId:"tenant-a",membershipId:"membership-a",userId:"operator-a",
@@ -63,6 +63,15 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   assert.deepEqual(body.data.map(item=>item.organizationId).sort(),["org-a","org-b"]);
   assert.ok(body.data.every(item=>item.tenantId==="tenant-a"));
 
+  await db.collection("policies").insertOne({
+   tenantId:"tenant-a",policyId:"policy-deny-org-read",key:"deny-org-read",effect:"deny",priority:100,
+   subject:{userId:"operator-a"},resource:{resourceType:"platform_api"},actions:["platform.organizations.read"],conditions:{},status:"active"
+  });
+  const abacDenied=await app.inject({method:"GET",url:"/v1/platform/organizations",headers:{authorization:`Bearer ${token}`}});
+  assert.equal(abacDenied.statusCode,403);
+  assert.equal(abacDenied.json().error,"ABAC_POLICY_DENIED");
+
+
   const legacy=await app.inject({method:"GET",url:"/platform/organizations",headers:{authorization:`Bearer ${token}`}});
   assert.equal(legacy.statusCode,200);
   assert.equal(legacy.headers.deprecation,"true");
@@ -84,6 +93,15 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   });
   assert.equal(deniedMembership.statusCode,403);
   assert.equal(deniedMembership.json().error,"MEMBERSHIP_SCOPE_DENIED");
+
+  const escalatedMembership=await app.inject({
+   method:"POST",url:"/v1/platform/memberships",
+   headers:{authorization:`Bearer ${token}`,"idempotency-key":"membership-escalation-0001"},
+   payload:{userId:"target-user",organizationIds:["org-a"],locationIds:["loc-a"],roleIds:["role-super"]}
+  });
+  assert.equal(escalatedMembership.statusCode,403);
+  assert.equal(escalatedMembership.json().error,"ROLE_ASSIGNMENT_PRIVILEGE_ESCALATION_DENIED");
+
   assert.equal(await db.collection("audit_events").countDocuments({tenantId:"tenant-a",action:"authorization.denied",resourceType:"membership",outcome:"denied"}),1);
 
 
