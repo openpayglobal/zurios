@@ -16,13 +16,13 @@ await app.register(cors,{origin:corsOrigins,credentials:true});
 app.get("/health/live",async()=>({status:"ok",service:"zuri-api"}));
 app.get("/health/ready",async(_req,reply)=>{try{const db=await connectMongo();await db.command({ping:1});return {status:"ready",database:"connected"};}catch{return reply.code(503).send({status:"not_ready"});}});
 app.setErrorHandler((error,_request,reply)=>{app.log.error(error);return reply.code(500).send({error:"INTERNAL_SERVER_ERROR",message:"An unexpected error occurred"});});
-const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.JWT_SECRET,accessTokenTtlSeconds:config.ACCESS_TOKEN_TTL_SECONDS,sessionTtlSeconds:config.SESSION_TTL_SECONDS,mfaEncryptionKey:config.MAC_MFA_ENCRYPTION_KEY??""};
+const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.JWT_SECRET,accessTokenTtlSeconds:config.ACCESS_TOKEN_TTL_SECONDS,sessionTtlSeconds:config.SESSION_TTL_SECONDS,mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??""};
 try{
  const db=await connectMongo();
  await app.register(authRoutes(db,authConfig));
  await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(platformRoutes(db,authConfig));
- await app.register(macOperatorRoutes(db,{issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,...(config.MAC_JWT_SECRET?{jwtSecret:config.MAC_JWT_SECRET}:{}),...(config.MAC_BOOTSTRAP_TOKEN?{bootstrapToken:config.MAC_BOOTSTRAP_TOKEN}:{}),mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??"",sessionTtlSeconds:config.MAC_SESSION_TTL_SECONDS}),{prefix:"/v1"});
+ await app.register(macOperatorRoutes(db,{issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,...(config.MAC_JWT_SECRET?{jwtSecret:config.MAC_JWT_SECRET}:{}),...(config.MAC_BOOTSTRAP_TOKEN?{bootstrapToken:config.MAC_BOOTSTRAP_TOKEN}:{}),mfaEncryptionKey:config.MAC_MFA_ENCRYPTION_KEY??"",sessionTtlSeconds:config.MAC_SESSION_TTL_SECONDS}),{prefix:"/v1"});
  await app.listen({host:config.API_HOST,port:config.API_PORT});
  outboxWorkerPromise=runOutboxWorker(db,createMongoEventBusPublisher(db),outboxAbortController.signal).catch(error=>{app.log.error({err:error},"Platform outbox worker stopped unexpectedly");});
 }catch(error){app.log.error(error);process.exitCode=1;}
