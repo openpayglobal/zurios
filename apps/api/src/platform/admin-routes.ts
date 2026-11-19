@@ -56,6 +56,11 @@ function platformGuard(db:Db,secret:string,permission:string){
    await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform"});
    return reply.code(403).send({error:"PLATFORM_PERMISSION_REQUIRED"});
   }
+  const decision=await evaluatePolicy(db,"platform",{subject:{userId:p.userId},resource:{resourceType:"platform_admin",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
+  if(decision.reason==="EXPLICIT_DENY"){
+   await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code:"ABAC_POLICY_DENIED"});
+   return reply.code(403).send({error:"ABAC_POLICY_DENIED"});
+  }
  };
 }
 async function mutate(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,secret:string,scopeTenantId:string,operation:string,work:(session:ClientSession)=>Promise<MutationResult>){
