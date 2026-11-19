@@ -1,4 +1,5 @@
 import {Activity,ArrowUpRight,Blocks,Building2,ChevronDown,CircleHelp,Command,Grid2X2,Layers3,LockKeyhole,Search,Settings2,ShieldCheck,Users,Warehouse} from "lucide-react";
+import MacConsole from "./MacConsole";
 
 const modules=[
  {icon:Building2,name:"Tenant & workspace",detail:"Tenant lifecycle and workspace setup",status:"Core service",tone:"text-cyan-300"},
@@ -10,6 +11,7 @@ const modules=[
 ];
 const metrics=[{label:"Platform services",value:"10",hint:"Foundation scope"},{label:"Business ecosystems",value:"0",hint:"Activation follows core"},{label:"Governance model",value:"RBAC + ABAC",hint:"Default-deny access"}];
 export default function App(){
+ if (window.location.pathname === "/mac" || window.location.pathname.startsWith("/mac/")) return <MacConsole/>;
  return <div className="min-h-screen bg-[#0b1220] text-slate-100">
   <aside className="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-white/[0.07] bg-[#0e1828] xl:flex">
    <div className="flex h-[76px] items-center gap-3 border-b border-white/[0.07] px-6"><div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-2 text-cyan-200"><Command size={21}/></div><div><p className="font-semibold tracking-[0.16em]">ZURI OS</p><p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Operating platform</p></div></div>
