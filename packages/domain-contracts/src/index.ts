@@ -28,6 +28,7 @@ export const DomainEventEnvelopeSchema=z.object({
 export type DomainEventEnvelope=z.infer<typeof DomainEventEnvelopeSchema>;
 
 export const AccountSchema=z.object({
+ organizationId:z.string().min(1).optional(),
  accountCode:z.string().min(1).max(32),
  name:z.string().min(2).max(160),
  accountType:z.enum(["asset","liability","equity","income","expense"]),
@@ -50,7 +51,7 @@ export const JournalLineSchema=z.object({
 export type JournalLine=z.infer<typeof JournalLineSchema>;
 
 export const JournalEntrySchema=z.object({
- tenantId:z.string().min(1),
+ tenantId:z.string().min(1),organizationId:z.string().min(1).optional(),
  idempotencyKey:z.string().min(8).max(200),
  entryNumber:z.string().min(1).max(64),
  fiscalPeriodId:z.string().min(1),
@@ -79,7 +80,7 @@ export const PurchaseOrderLineSchema=z.object({
  taxRateBps:z.number().int().min(0).max(10000)
 });
 export const PurchaseOrderSchema=z.object({
- tenantId:z.string().min(1),
+ tenantId:z.string().min(1),organizationId:z.string().min(1).optional(),
  idempotencyKey:z.string().min(8).max(200),
  orderNumber:z.string().min(1).max(64),
  supplierId:z.string().min(1),
@@ -210,7 +211,7 @@ export const POS_EVENT_TYPES=["pos.sale.completed","pos.sale.voided","pos.refund
 export const INVENTORY_EVENT_TYPES=["inventory.stock.received","inventory.stock.issued","inventory.stock.transferred","inventory.stock.adjusted","inventory.stock.reserved","inventory.stock.consumed"] as const;
 
 export const FiscalPeriodSchema=z.object({
- tenantId:z.string().min(1),periodId:z.string().min(1),periodCode:z.string().min(1).max(32),
+ tenantId:z.string().min(1),organizationId:z.string().min(1).optional(),periodId:z.string().min(1),periodCode:z.string().min(1).max(32),
  startsAt:z.string().datetime(),endsAt:z.string().datetime(),status:z.enum(["open","closed"])
 }).refine(period=>period.endsAt>=period.startsAt,{message:"Fiscal period end must not precede its start",path:["endsAt"]});
 export type FiscalPeriod=z.infer<typeof FiscalPeriodSchema>;
@@ -221,7 +222,7 @@ export const InvoiceLineSchema=z.object({
  taxRateBps:z.number().int().min(0).max(10000)
 });
 export const InvoiceSchema=z.object({
- tenantId:z.string().min(1),idempotencyKey:z.string().min(8).max(200),
+ tenantId:z.string().min(1),organizationId:z.string().min(1).optional(),idempotencyKey:z.string().min(8).max(200),
  invoiceId:z.string().min(1),invoiceNumber:z.string().min(1).max(64),
  invoiceType:z.enum(["sales","purchase"]),partyId:z.string().min(1),
  currency:z.string().regex(/^[A-Z]{3}$/),issuedAt:z.string().datetime(),dueAt:z.string().datetime(),
