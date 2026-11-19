@@ -15,6 +15,7 @@ The repository is in active foundation implementation. The current `main` baseli
 - Versioned platform API routes, Zod request schemas, OpenAPI 3.1 contract and route/schema drift validation.
 - Idempotent mutation handling, transactional audit/outbox writes, a MongoDB-backed event stream and consumer receipt primitives.
 - Governance/admin API and workspace capabilities for approvals, tenant lifecycle, invitations, policy simulation, audit, configuration and break-glass controls.
+- Initial `@zuri/design-system` workspace package with semantic tokens and shared React primitives, now consumed by the web admin shell; full component/accessibility acceptance remains pending.
 
 **Latest CI repair:** [PR #8](https://github.com/openpayglobal/zurios/pull/8) fixes the OpenAPI schema-property parser and invalid escaped newlines in the location service. GitHub Actions [run #615](https://github.com/openpayglobal/zurios/actions/runs/44552128620) passed replica-set startup, OpenAPI lint, route/schema drift checks, typecheck, tests and build. The PR remains open; this is not a claim that the changes are merged or deployed.
 
