@@ -171,6 +171,7 @@ export const StockMovementSchema=z.object({
  referenceType:z.string().min(1),
  referenceId:z.string().min(1),
  reason:z.string().min(3).max(500).optional(),
+ adjustmentDirection:z.enum(["increase","decrease"]).optional(),
  occurredAt:z.string().datetime()
 }).superRefine((movement,ctx)=>{
  if(movement.movementType==="transfer"){
