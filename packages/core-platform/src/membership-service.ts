@@ -26,3 +26,11 @@ export async function revokeMembership(db:Db,tenantId:string,membershipId:string
  if(!r.matchedCount)throw new Error("MEMBERSHIP_NOT_FOUND");
  await c.sessions.updateMany({tenantId,membershipId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:actorId}},session?{session}:{});
 }
+
+export async function setMembershipStatus(db:Db,tenantId:string,membershipId:string,status:"active"|"suspended"|"revoked",actorId:string,session?:ClientSession){
+ const now=new Date(),c=coreCollections(db);
+ const result=await c.memberships.updateOne({tenantId,membershipId,status:{$ne:"revoked"}},{$set:{status,updatedAt:now,updatedBy:actorId}},session?{session}:{});
+ if(!result.matchedCount)throw new Error("MEMBERSHIP_NOT_FOUND");
+ if(status!=="active")await c.sessions.updateMany({tenantId,membershipId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:actorId}},session?{session}:{});
+ return c.memberships.findOne({tenantId,membershipId},session?{session}:{});
+}
