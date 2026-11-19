@@ -17,7 +17,7 @@ const schema=z.object({
 export async function appendOutboxEvent(db:Db,session:ClientSession,input:unknown){
  const d=schema.parse(input),now=new Date();
  const doc:OutboxEventDocument={
-  eventId:randomUUID(),...d,schemaVersion:1,occurredAt:now,status:"pending",attempts:0,
+  eventId:randomUUID(),tenantId:d.tenantId,eventType:d.eventType,schemaVersion:1,aggregateType:d.aggregateType,...(d.aggregateId?{aggregateId:d.aggregateId}:{}),payload:d.payload,...(d.correlationId?{correlationId:d.correlationId}:{}),occurredAt:now,status:"pending",attempts:0,
   availableAt:now,createdAt:now,updatedAt:now
  };
  await db.collection<OutboxEventDocument>("outbox_events").insertOne(doc,{session});
