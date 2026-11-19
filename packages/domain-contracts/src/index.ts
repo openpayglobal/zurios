@@ -469,3 +469,23 @@ export const PaymentRefundRequestSchema=z.object({
  amountMinor:z.number().int().positive(),reason:z.string().min(3).max(1000),status:z.literal("pending").default("pending")
 });
 export type PaymentRefundRequest=z.infer<typeof PaymentRefundRequestSchema>;
+
+
+export const CommerceProductSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),productId:z.string().min(1),
+ sku:z.string().min(1).max(100),name:z.string().min(2).max(180),description:z.string().max(2000).optional(),
+ currency:z.string().regex(/^[A-Z]{3}$/),unitPriceMinor:z.number().int().nonnegative(),taxRateBps:z.number().int().min(0).max(10000),
+ status:z.enum(["active","inactive"]).default("active")
+});
+export type CommerceProduct=z.infer<typeof CommerceProductSchema>;
+
+export const CommerceOrderRequestSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),orderId:z.string().min(1),customerId:z.string().min(1),
+ warehouseId:z.string().min(1),reservationId:z.string().min(1),
+ lines:z.array(z.object({sku:z.string().min(1).max(100),quantityMilli:z.number().int().positive()})).min(1),
+ status:z.literal("placed").default("placed")
+}).superRefine((order,ctx)=>{
+ const skus=order.lines.map(line=>line.sku);
+ if(new Set(skus).size!==skus.length)ctx.addIssue({code:z.ZodIssueCode.custom,path:["lines"],message:"Commerce order lines must have unique SKUs"});
+});
+export type CommerceOrderRequest=z.infer<typeof CommerceOrderRequestSchema>;
