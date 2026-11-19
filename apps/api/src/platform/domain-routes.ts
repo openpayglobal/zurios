@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry,receivePurchaseOrder} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema,PurchaseOrderReceiptSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -121,6 +121,8 @@ function sendError(error:unknown,reply:FastifyReply){
  if(code==="PAYROLL_EMPLOYEE_SCOPE_OR_STATUS_INVALID")return reply.code(422).send({error:code});
  if(code==="PAYROLL_RUN_NOT_FOUND")return reply.code(404).send({error:code});
  if(["PAYMENT_EXCEEDS_INVOICE_BALANCE","REFUNDS_EXCEED_CAPTURED_PAYMENT","PAYMENT_STATE_TRANSITION_INVALID","PAYMENT_EVENT_AMOUNT_MISMATCH"].includes(code))return reply.code(409).send({error:code});
+ if(["PURCHASE_ORDER_RECEIPT_EXCEEDS_ORDERED","PURCHASE_ORDER_RECEIPT_SKU_NOT_ORDERED","PURCHASE_ORDER_RECEIPT_CONCURRENT_MODIFICATION"].includes(code))return reply.code(409).send({error:code});
+ if(["APPROVED_PURCHASE_ORDER_NOT_FOUND","PURCHASE_ORDER_WAREHOUSE_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  if(["PAYMENT_PROVIDER_NOT_CONFIGURED","PAYMENT_REFERENCE_TYPE_NOT_SUPPORTED"].includes(code))return reply.code(422).send({error:code});
  if(["COMMERCE_ACTIVE_STOCK_RESERVATION_REQUIRED","COMMERCE_PRODUCT_NOT_AVAILABLE","COMMERCE_ORDER_CURRENCY_MISMATCH"].includes(code))return reply.code(422).send({error:code});
  if(["MAINTENANCE_WORK_ORDER_VERSION_CONFLICT","MAINTENANCE_WORK_ORDER_NOT_ACTIVE"].includes(code))return reply.code(409).send({error:code});
@@ -428,6 +430,26 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    }catch(error){return sendError(error,reply);}
   });
 
+  app.post("/erp/purchase-orders/:purchaseOrderId/receipts",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {purchaseOrderId}=z.object({purchaseOrderId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const order=await db.collection<{tenantId:string;organizationId:string;orderNumber:string;warehouseId:string;status:string}>("erp_purchase_orders")
+     .findOne({tenantId:p.tenantId,organizationId,orderNumber:purchaseOrderId,status:{$in:["approved","partially_received"]}});
+    if(!order)return reply.code(404).send({error:"APPROVED_PURCHASE_ORDER_NOT_FOUND"});
+    const scope=await resolveWarehouseScope(db,p.tenantId,order.warehouseId);
+    if(!scope||scope.organizationId!==organizationId)return reply.code(404).send({error:"PURCHASE_ORDER_WAREHOUSE_NOT_FOUND"});
+    const denied=await permit(db,request,reply,p,"erp.purchase_order.receive",scope);if(denied)return denied;
+    const stockDenied=await permit(db,request,reply,p,"inventory.stock.write",scope);if(stockDenied)return stockDenied;
+    const body=PurchaseOrderReceiptSchema.parse({...raw,tenantId:p.tenantId,organizationId,purchaseOrderId});
+    const result=await receivePurchaseOrder(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
   app.post("/erp/invoices/:invoiceId/payments",async(request,reply)=>{
    const p=getPrincipal(request);
    try{
