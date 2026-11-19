@@ -24,6 +24,8 @@ tags:
   - name: Feature flags
   - name: Sessions
   - name: Audit
+  - name: MAC Authentication
+  - name: MAC
 paths:
   /platform/tenant:
     get:
@@ -368,6 +370,121 @@ paths:
                     type: array
                     items: {$ref: "#/components/schemas/AuditEvent"}
         "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/auth/bootstrap:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: bootstrapPlatformOperator
+      summary: Create the one-time initial platform operator
+      description: Requires the out-of-band bootstrap token. Available only while no platform operator exists. Returns the TOTP secret once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacBootstrapInput"}
+      responses:
+        "201": {description: Initial operator created; TOTP enrollment secret returned once}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "409": {description: Bootstrap has already been completed}
+        "503": {description: MAC authentication secrets are not configured}
+  /mac/auth/bootstrap/confirm:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: confirmPlatformOperatorBootstrap
+      summary: Confirm initial operator MFA and activate the platform
+      responses:
+        "201": {description: Operator activated and initial session issued}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "409": {description: Bootstrap already completed}
+  /mac/auth/login:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: loginPlatformOperator
+      summary: Authenticate a platform operator with password and TOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacLoginInput"}
+      responses:
+        "200": {description: Independent MAC access and refresh tokens}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "429": {description: Rate limit exceeded}
+        "503": {description: MAC authentication secrets are not configured}
+  /mac/auth/refresh:
+    post:
+      security: []
+      tags: [MAC Authentication]
+      operationId: refreshPlatformOperatorSession
+      summary: Rotate a platform operator refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacRefreshInput"}
+      responses:
+        "200": {description: Rotated refresh token and new access token}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/auth/logout:
+    post:
+      tags: [MAC Authentication]
+      operationId: logoutPlatformOperator
+      summary: Revoke the current platform operator session
+      responses:
+        "204": {description: Session revoked}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/auth/me:
+    get:
+      tags: [MAC Authentication]
+      operationId: getCurrentPlatformOperator
+      summary: Get the current global platform operator
+      responses:
+        "200": {description: Current operator identity and permissions}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /mac/overview:
+    get:
+      tags: [MAC]
+      operationId: getMacOverview
+      summary: Read platform control-plane overview metrics
+      responses:
+        "200": {description: Aggregated platform counts and explicit integration status}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/tenants:
+    get:
+      tags: [MAC]
+      operationId: listMacTenants
+      summary: List tenants using bounded cursor pagination
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - in: query
+          name: after
+          schema: {type: string}
+      responses:
+        "200": {description: Paginated tenant records}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /mac/audit:
+    get:
+      tags: [MAC]
+      operationId: listMacAuditEvents
+      summary: Read global administrative audit events
+      parameters:
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - in: query
+          name: before
+          schema: {type: string, format: date-time}
+      responses:
+        "200": {description: Administrative audit events}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
 components:
