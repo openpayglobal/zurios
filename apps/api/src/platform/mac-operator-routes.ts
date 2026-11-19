@@ -22,7 +22,7 @@ const loginSchema=confirmSchema.extend({password:z.string().min(1).max(128)});
 const refreshSchema=z.object({sessionId:z.string().uuid(),refreshToken:z.string().min(40).max(200)});
 const invitationCreateSchema=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),tenantIds:z.array(z.string().min(1).max(128)).max(50).default([])});
 const invitationAcceptSchema=z.object({inviteToken:z.string().min(40).max(100),password:z.string().min(12).max(128)});
-const invitationConfirmSchema=z.object({inviteToken:z.string().min(40).max(100),code:z.string().regex(/^\\d{6}$/)});
+const invitationConfirmSchema=z.object({inviteToken:z.string().min(40).max(100),code:z.string().regex(/^\d{6}$/)});
 const READ_ONLY_OPERATOR_PERMISSIONS=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.read","mac.sessions.read"];
 const key=(config:MacOperatorConfig)=>new TextEncoder().encode(config.jwtSecret??"");
 const normalized=(email:string)=>email.trim().toLowerCase();
@@ -98,7 +98,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
     await enforceMacRateLimit(db,request,"bootstrap");
     if(await collection.estimatedDocumentCount()>0)return reply.code(409).send({error:"BOOTSTRAP_CLOSED"});
     const email=normalized(body.email),operatorId=randomUUID(),secret=generateTotpSecret(),now=new Date();
-    const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.manage","mac.security.read"];
+    const permissions=["mac.overview.read","mac.tenants.read","mac.audit.read","mac.operators.read","mac.sessions.read","mac.operators.manage","mac.security.read"];
     await collection.insertOne({operatorId,emailNormalized:email,displayName:body.displayName,passwordHash:await hashPassword(body.password),permissions,tenantIds:[],status:"pending_mfa",bootstrapOwner:true,mfaEnabled:false,pendingMfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),createdAt:now,updatedAt:now});
     await writeAdminAudit(db,{actorId:operatorId,action:"mac.auth.bootstrap.started",resourceType:"platform_operator",resourceId:operatorId,outcome:"success",request});
     const label=encodeURIComponent(email),issuer=encodeURIComponent("Zuri OS MAC");
@@ -216,12 +216,12 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    return reply.code(result.modifiedCount?204:404).send();
   });
   app.get("/mac/auth/me",{preHandler:authenticated},async request=>({operator:publicOperator(await db.collection("platform_operators").findOne({operatorId:request.macOperator!.operatorId}))}));
-  app.get("/mac/operators",{preHandler:[authenticated,permission("mac.operators.manage")]},async request=>{
+  app.get("/mac/operators",{preHandler:[authenticated,permission("mac.operators.read")]},async request=>{
    await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.operators.read",resourceType:"platform_operator_inventory",outcome:"success",request});
    const items=await db.collection("platform_operators").find({},{projection:{_id:0,operatorId:1,emailNormalized:1,displayName:1,permissions:1,tenantIds:1,status:1,mfaEnabled:1,createdAt:1,updatedAt:1}}).sort({emailNormalized:1}).limit(100).toArray();
    return {data:items.map(publicOperator)};
   });
-  app.get("/mac/sessions",{preHandler:[authenticated,permission("mac.operators.manage")]},async request=>{
+  app.get("/mac/sessions",{preHandler:[authenticated,permission("mac.sessions.read")]},async request=>{
    await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.sessions.read",resourceType:"platform_operator_session_inventory",outcome:"success",request});
    const items=await db.collection("platform_operator_sessions").find({expiresAt:{$gt:new Date()}},{projection:{_id:0,sessionId:1,operatorId:1,createdAt:1,lastUsedAt:1,expiresAt:1,revokedAt:1,revokedReason:1}}).sort({createdAt:-1}).limit(100).toArray();
    return {data:items};
