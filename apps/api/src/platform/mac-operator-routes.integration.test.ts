@@ -37,6 +37,15 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   const login=await authApp.inject({method:"POST",url:"/v1/mac/auth/login",payload:{email:"owner@example.test",password:"A-strong-test-password-2026",code:nextStepCode}});
   assert.equal(login.statusCode,200);
   assert.equal(login.json().operator.email,"owner@example.test");
+  const loginSession=login.json() as {accessToken:string;sessionId:string};
+  const operators=await authApp.inject({method:"GET",url:"/v1/mac/operators",headers:{authorization:`Bearer ${session.accessToken}`}});
+  assert.equal(operators.statusCode,200);assert.equal(operators.json().data.length,1);
+  const sessions=await authApp.inject({method:"GET",url:"/v1/mac/sessions",headers:{authorization:`Bearer ${session.accessToken}`}});
+  assert.equal(sessions.statusCode,200);assert.equal(sessions.json().data.length,2);
+  const revoke=await authApp.inject({method:"POST",url:`/v1/mac/sessions/${loginSession.sessionId}/revoke`,headers:{authorization:`Bearer ${session.accessToken}`},payload:{reason:"Test operator session revocation"}});
+  assert.equal(revoke.statusCode,204);
+  const revokedLogin=await authApp.inject({method:"GET",url:"/v1/mac/overview",headers:{authorization:`Bearer ${loginSession.accessToken}`}});
+  assert.equal(revokedLogin.statusCode,401);
   const secondBootstrap=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"attacker@example.test",displayName:"Attacker",password:"Another-strong-password-2026"}});
   assert.equal(secondBootstrap.statusCode,409);
   const overview=await authApp.inject({method:"GET",url:"/v1/mac/overview",headers:{authorization:`Bearer ${session.accessToken}`}});
