@@ -22,7 +22,7 @@ export const auditExportFiltersSchema=z.object({
 }).refine(value=>!value.from||!value.to||new Date(value.from)<=new Date(value.to),{message:"from must be earlier than to"});
 export const createAuditExportSchema=z.object({filters:auditExportFiltersSchema.default({}),reason:reasonSchema});
 export const breakGlassRevokeSchema=z.object({reason:reasonSchema});
-export const configurationUpdateSchema=z.object({value:z.unknown(),reason:reasonSchema});
+export const configurationUpdateSchema=z.object({value:z.any().refine(value=>value!==undefined),reason:reasonSchema});
 export const provisionTenantSchema=z.object({
  slug:z.string().min(2).max(64).regex(/^[a-z0-9-]+$/),legalName:z.string().min(2).max(200),
  displayName:z.string().min(2).max(100),defaultLocale:z.string().default("en"),
