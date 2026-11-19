@@ -95,7 +95,7 @@ function Placeholder({section}:{section:Exclude<Section,"Overview"|"Environment 
 
 type MacSession={accessToken:string;refreshToken:string;sessionId:string;operator:{email:string;displayName:string;permissions:string[]}};
 type MacOverviewData={tenants:number;activePlatformOperators:number;activeOperatorSessions:number;providerConnections:string;deploymentTelemetry:string;generatedAt:string};
-function apiRoot(value:string){return value.trim().replace(/\\/+$/,"").replace(/\\/v1$/,"");}
+function apiRoot(value:string){return value.trim().replace(/\/+$/,"").replace(/\/v1$/,"");}
 async function macRequest<T>(base:string,token:string,path:string):Promise<T>{
  const response=await fetch(apiRoot(base)+"/v1"+path,{headers:{authorization:"Bearer "+token,accept:"application/json"}});
  if(!response.ok)throw new Error(response.status===401?"Your MAC session has expired. Sign in again.":"MAC API request failed ("+response.status+").");
