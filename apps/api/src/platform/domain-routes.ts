@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -433,6 +433,107 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const denied=await permit(db,request,reply,p,"erp.journal.post",scope);if(denied)return denied;
     const body=JournalEntrySchema.parse({...raw,tenantId:p.tenantId,idempotencyKey:key,organizationId:period.organizationId});
     const result=await postJournalEntry(db,body,p.userId);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  const crmLists=[
+   {path:"/crm/accounts",collection:"crm_accounts",permission:"crm.account.read",sort:{name:1}},
+   {path:"/crm/contacts",collection:"crm_contacts",permission:"crm.contact.read",sort:{lastName:1,firstName:1}},
+   {path:"/crm/leads",collection:"crm_leads",permission:"crm.lead.read",sort:{createdAt:-1}},
+   {path:"/crm/opportunities",collection:"crm_opportunities",permission:"crm.opportunity.read",sort:{expectedCloseAt:1}},
+   {path:"/crm/activities",collection:"crm_activities",permission:"crm.activity.read",sort:{occurredAt:-1}}
+  ] as const;
+  for(const item of crmLists){
+   app.get(item.path,async(request)=>{
+    const p=getPrincipal(request);
+    const allowed=await authorizedOrganizationIds(db,request,p,item.permission,p.organizationIds??[]);
+    if(!allowed.length)return {data:[]};
+    return {data:await db.collection(item.collection).find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort(item.sort).limit(500).toArray()};
+   });
+  }
+
+  app.post("/crm/accounts",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"crm.account.create",scope);if(denied)return denied;
+    const body=CrmAccountSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createCrmAccount(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/crm/contacts",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"crm.contact.create",scope);if(denied)return denied;
+    const body=CrmContactSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createCrmContact(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/crm/leads",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"crm.lead.create",scope);if(denied)return denied;
+    const body=CrmLeadSchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createCrmLead(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/crm/opportunities",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"crm.opportunity.create",scope);if(denied)return denied;
+    const body=CrmOpportunitySchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await createCrmOpportunity(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/crm/activities",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"crm.activity.create",scope);if(denied)return denied;
+    const body=CrmActivitySchema.parse({...raw,tenantId:p.tenantId,organizationId});
+    const result=await recordCrmActivity(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.patch("/crm/opportunities/:opportunityId/stage",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {opportunityId}=z.object({opportunityId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope:DomainResourceScope={tenantId:p.tenantId,organizationId};
+    const denied=await permit(db,request,reply,p,"crm.opportunity.stage.update",scope);if(denied)return denied;
+    const body=CrmOpportunityStageUpdateSchema.parse({...raw,tenantId:p.tenantId,organizationId,opportunityId});
+    const result=await updateCrmOpportunityStage(db,body,p.userId,key);
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
