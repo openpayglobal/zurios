@@ -6,8 +6,8 @@
 
 ## Programme summary
 
-- Product definition: **In progress** — name, owner, standalone model, all five objectives and MAC/MAD requirement confirmed.
-- Repository foundation: **In progress** — isolated product documentation workspace established on a feature branch.
+- Product definition: **Complete** — name, owner, standalone model, all five objectives and MAC/MAD requirement recorded.
+- Repository foundation: **In progress** — product documentation and isolated React/Vite MAC/MAD web shell committed on a feature branch.
 - Live Meta configuration: **Deferred by owner** — Business Portfolio and developer app will be created later.
 - Production readiness: **Not started**.
 
@@ -26,7 +26,7 @@
 | Phase | Name | Status | Exit gate |
 |---:|---|---|---|
 | 0 | External prerequisites & product governance | In progress (Meta setup deferred) | Meta account/app checklist ready; owner later completes external setup |
-| 1 | Standalone platform foundation | In progress | Deployable workspace, tenant isolation, MAC/MAD, RBAC, audit and tests |
+| 1 | Standalone platform foundation | In progress | Product docs and frontend shell committed; next: install/build verification, API service, tenant auth, RBAC, audit and tests |
 | 2 | Facebook & Instagram | Not started | Tested supported asset and publishing/messaging capabilities |
 | 3 | Advertising | Not started | Tested campaign lifecycle and spend controls |
 | 4 | WhatsApp | Not started | Tested WABA onboarding, messaging and webhooks |
@@ -38,8 +38,8 @@
 
 | Component | Planned phase | Status | Acceptance requirement |
 |---|---:|---|---|
-| MAC — Master Admin Console | 1 | Not started | Platform-only controls, role gates, step-up for high-risk actions, audit trail |
-| MAD — Master Admin Dashboard | 1 | Not started | Read-only operational overview, tenant-safe aggregates, health and alerts |
+| MAC — Master Admin Console | 1 | In progress (UI shell) | Navigation and module placeholders created; backend authorization, controls and audit trail remain to be implemented |
+| MAD — Master Admin Dashboard | 1 | In progress (UI shell) | Operational overview, five objectives and phase roadmap rendered with clearly labelled placeholder values; live telemetry remains unconnected |
 | MAC/MAD shared authorization | 1 | Not started | No UI-only security; API authorization tests pass |
 
 ## Change control
