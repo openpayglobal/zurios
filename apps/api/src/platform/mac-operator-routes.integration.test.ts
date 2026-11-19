@@ -67,6 +67,12 @@ test("MAC bootstrap, MFA activation, login, read APIs, refresh rotation and logo
   assert.equal(revokedLogin.statusCode,401);
   const secondBootstrap=await app.inject({method:"POST",url:"/v1/mac/auth/bootstrap",headers:{"x-mac-bootstrap-token":config.bootstrapToken},payload:{email:"attacker@example.test",displayName:"Attacker",password:"Another-strong-password-2026"}});
   assert.equal(secondBootstrap.statusCode,409);
+  await db.collection("platform_configurations").insertOne({configId:"cfg-test",scope:"platform",key:"TEST_SECRET",version:1,classification:"secret",status:"configured",valueEncrypted:"must-never-be-returned"});
+  await db.collection("provider_registry").insertOne({providerId:"provider-test",name:"Test Provider",category:"hosting",capabilities:["preview"],status:"registered",connectionState:"unknown",apiTokenEncrypted:"must-never-be-returned"});
+  const configMetadata=await authApp.inject({method:"GET",url:"/v1/mac/configurations",headers:{authorization:`Bearer ${session.accessToken}`}});
+  assert.equal(configMetadata.statusCode,200);assert.equal(configMetadata.json().secretValuesExposed,false);assert.equal(configMetadata.json().data[0].valueEncrypted,undefined);
+  const providers=await authApp.inject({method:"GET",url:"/v1/mac/providers",headers:{authorization:`Bearer ${session.accessToken}`}});
+  assert.equal(providers.statusCode,200);assert.equal(providers.json().credentialsReturned,false);assert.equal(providers.json().data[0].apiTokenEncrypted,undefined);
   const overview=await authApp.inject({method:"GET",url:"/v1/mac/overview",headers:{authorization:`Bearer ${session.accessToken}`}});
   assert.equal(overview.statusCode,200);assert.equal(overview.json().data.tenants,2);
   const tenantList=await authApp.inject({method:"GET",url:"/v1/mac/tenants?limit=1",headers:{authorization:`Bearer ${session.accessToken}`}});
