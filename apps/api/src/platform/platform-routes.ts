@@ -46,7 +46,7 @@ function permit(db:Db,ipHashSecret:string,permission:string){return async(reques
   resource:{tenantId:p.tenantId,resourceType:"platform_api",path:request.routeOptions.url??"",method:request.method},
   action:permission,environment:{}
  });
- if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,ipHashSecret,"ABAC_POLICY_DENIED");
+ if(!decision.allowed)return denied(db,request,reply,p,ipHashSecret,decision.reason==="EXPLICIT_DENY"?"ABAC_POLICY_DENIED":"ABAC_POLICY_NO_MATCHING_ALLOW");
 };}
 async function audit(db:Db,p:Principal,request:FastifyRequest,ipHashSecret:string,action:string,type:string,id:string|undefined,session:ClientSession){
  await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}},session);
