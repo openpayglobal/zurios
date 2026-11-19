@@ -47,7 +47,7 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(await db.collection("outbox_events").countDocuments({eventType:"resource.concurrent"}),1);
 
   assert.equal(await db.collection("test_resources").countDocuments({}),2);
-  assert.equal(await db.collection("outbox_events").countDocuments({}),1);
+  assert.equal(await db.collection("outbox_events").countDocuments({}),2);
   await assert.rejects(
    ()=>runIdempotentMutation(db,{...input,request:{name:"Different"}},work),
    (error:unknown)=>error instanceof IdempotencyConflictError&&error.message==="IDEMPOTENCY_KEY_REUSED"

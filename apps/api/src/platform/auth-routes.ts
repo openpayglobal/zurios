@@ -12,7 +12,7 @@ function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
  const code=error instanceof Error?error.message:"";
  if(code==="AUTH_RATE_LIMITED")return 429;
- if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_/.test(code))return 401;
+ if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|REUSE|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_/.test(code))return 401;
  return 500;
 }
 function failure(error:unknown,reply:any){const status=statusFor(error);return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===401?"AUTHENTICATION_FAILED":"INTERNAL_SERVER_ERROR"});}
