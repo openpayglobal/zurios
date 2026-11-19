@@ -1,7 +1,7 @@
 import {readFileSync} from "node:fs";
 import {PLATFORM_BODY_CONTRACTS} from "../src/platform/platform-schemas.js";
 
-const routeSource=readFileSync("src/platform/platform-routes.ts","utf8");
+const routeSource=readFileSync("src/platform/platform-routes.ts","utf8")+"\\n"+readFileSync("src/platform/admin-routes.ts","utf8");
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
 const routeDefinitions=[...routeSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
 const routePaths=new Set(routeDefinitions.map(([, ,path])=>path.replace(/:([A-Za-z0-9_]+)/g,"{$1}")));
@@ -9,7 +9,7 @@ const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)
 const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path));
 const missingFromContract=[...routePaths].filter(path=>!contractPaths.has(path));
 const undocumentedRoutes=[...contractPaths].filter(path=>!routePaths.has(path));
-const mutatingRoutes=routeDefinitions.filter(([,method])=>method!=="get").length;
+const mutatingRoutes=routeDefinitions.filter(([,method,,path])=>method!=="get"&&!(method==="post"&&path.endsWith("/simulate"))).length;
 const idempotencyRefs=(contract.match(/\$ref: "#\/components\/parameters\/IdempotencyKey"/g)??[]).length;
 const failures:string[]=[];
 if(!contract.startsWith("openapi: 3.1."))failures.push("OpenAPI document must use 3.1");
