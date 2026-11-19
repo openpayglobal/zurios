@@ -62,6 +62,6 @@ test("inventory API enforces tenant and organization scope, idempotency, ABAC an
   const abacDenied=await app.inject({method:"GET",url:"/v1/inventory/products",headers});
   assert.equal(abacDenied.statusCode,403);assert.equal(abacDenied.json().error,"ABAC_POLICY_DENIED");
   assert.equal(await db.collection("stock_movements").countDocuments({tenantId}),4);
-  assert.equal(await db.collection("outbox_events").countDocuments({tenantId}),5);
+  assert.equal(await db.collection("outbox_events").countDocuments({tenantId}),6);
  }finally{await app.close();await db.dropDatabase();await client.close();}
 });
