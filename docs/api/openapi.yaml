@@ -979,6 +979,24 @@ paths:
         "201": {description: Purchase order created}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /erp/purchase-orders/{purchaseOrderId}/receipts:
+    post:
+      tags: [ERP & Accounting]
+      operationId: receiveErpPurchaseOrder
+      summary: Receive approved purchase order quantities and post stock ledger receipts atomically
+      parameters:
+        - {name: purchaseOrderId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpPurchaseOrderReceipt"}
+      responses:
+        "201": {description: Goods receipt recorded and inventory ledger updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Approved purchase order or warehouse not found}
+        "409": {$ref: "#/components/responses/Conflict"}
   /erp/invoices:
     get:
       tags: [ERP & Accounting]
@@ -1781,6 +1799,22 @@ components:
               taxRateBps: {type: integer, minimum: 0, maximum: 10000}
         totalMinor: {type: integer, minimum: 1}
         status: {type: string, enum: [draft, submitted, approved, partially_received, received, cancelled]}
+    ErpPurchaseOrderReceipt:
+      type: object
+      required: [organizationId, receiptId, receivedAt, lines]
+      properties:
+        organizationId: {type: string}
+        receiptId: {type: string}
+        receivedAt: {type: string, format: date-time}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, quantityMilli]
+            properties:
+              sku: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
     ErpInvoice:
       type: object
       required: [organizationId, invoiceId, invoiceNumber, invoiceType, partyId, currency, issuedAt, dueAt, lines, subtotalMinor, taxMinor, totalMinor, status]
