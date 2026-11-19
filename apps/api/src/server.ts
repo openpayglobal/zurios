@@ -20,6 +20,7 @@ app.setErrorHandler((error,_request,reply)=>{app.log.error(error);return reply.c
 const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.JWT_SECRET,accessTokenTtlSeconds:config.ACCESS_TOKEN_TTL_SECONDS,sessionTtlSeconds:config.SESSION_TTL_SECONDS,mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??""};
 try{
  const db=await connectMongo();
+ await app.register(authRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(authRoutes(db,authConfig));
  await app.register(platformRoutes(db,authConfig),{prefix:"/v1"});
  await app.register(platformRoutes(db,authConfig));
