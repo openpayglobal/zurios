@@ -71,7 +71,7 @@ Implemented in this phase:
 Required preview configuration before the endpoints can operate:
 - `MAC_JWT_SECRET`: independent random signing secret, at least 32 characters.
 - `MAC_BOOTSTRAP_TOKEN`: high-entropy one-time bootstrap secret; remove after the initial operator is activated.
-- `MFA_ENCRYPTION_KEY`: existing 32-byte base64 key used only for TOTP secret encryption.
+- `MAC_MFA_ENCRYPTION_KEY`: separate 32-byte base64 key used only for TOTP secret encryption.
 
 Not implemented by this phase:
 - Additional operator invitations and lifecycle management, role-grant approvals, operator suspension/recovery, full audit export/retention controls, runtime configuration APIs, provider/deployment adapters and production activation.
