@@ -1,0 +1,1016 @@
+openapi: 3.1.0
+info:
+  title: Zuri OS Platform API
+  version: 1.0.0
+  summary: Shared multi-tenant platform control-plane API
+  license:
+    name: No license specified
+  description: |
+    Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
+    Tenant context is derived from the authenticated principal; callers cannot
+    select a tenant by supplying a tenant identifier. All platform modules
+    consume these shared identity, organization, authorization, configuration,
+    session and audit authorities.
+servers:
+  - url: /v1
+    description: Version 1 API base path
+security:
+  - bearerAuth: []
+tags:
+  - name: Tenant
+    description: Authenticated tenant context and lifecycle metadata
+  - name: Organizations
+    description: Tenant organization hierarchy
+  - name: Locations
+    description: Tenant operational locations and scopes
+  - name: Memberships
+    description: User-to-tenant and organization memberships
+  - name: Roles
+    description: Tenant role definitions and permission sets
+  - name: Policies
+    description: Attribute-based authorization policies
+  - name: Feature flags
+    description: Tenant feature configuration
+  - name: Sessions
+    description: Authenticated session lifecycle
+  - name: Audit
+    description: Immutable tenant audit event access
+  - name: Administration
+    description: Governance, administration, approvals and operational controls
+  - name: Identity
+    description: Global identity and tenant membership lifecycle
+paths:
+  /platform/tenant:
+    get:
+      tags: [Tenant]
+      operationId: getCurrentTenant
+      summary: Get the authenticated tenant
+      responses:
+        "200":
+          description: Tenant record
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    anyOf:
+                      - $ref: "#/components/schemas/Tenant"
+                      - type: "null"
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/organizations:
+    get:
+      tags: [Organizations]
+      operationId: listOrganizations
+      summary: List organizations within the authenticated membership scope
+      responses:
+        "200":
+          description: Scoped organization list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationList"
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      tags: [Organizations]
+      operationId: createOrganization
+      summary: Create an organization within the authenticated scope
+      description: Root organization creation requires platform.organizations.create.root.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateOrganization"}
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: "#/components/schemas/Organization"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/InvalidReference"}
+  /platform/locations:
+    get:
+      tags: [Locations]
+      operationId: listLocations
+      summary: List locations within the authenticated location scope
+      responses:
+        "200":
+          description: Scoped location list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/Location"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      tags: [Locations]
+      operationId: createLocation
+      summary: Create a location in an assigned organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateLocation"}
+      responses:
+        "201":
+          description: Location created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {$ref: "#/components/schemas/Location"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {$ref: "#/components/responses/InvalidReference"}
+  /platform/memberships:
+    get:
+      tags: [Memberships]
+      operationId: listMemberships
+      summary: List memberships intersecting the caller's organization scope
+      responses:
+        "200":
+          description: Scoped membership list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/Membership"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      tags: [Memberships]
+      operationId: createMembership
+      summary: Create a membership with validated organization and location scope
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateMembership"}
+      responses:
+        "201":
+          description: Membership created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/InvalidReference"}
+  /platform/roles:
+    get:
+      tags: [Roles]
+      operationId: listRoles
+      summary: List active tenant roles
+      responses:
+        "200":
+          description: Active roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/Role"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      tags: [Roles]
+      operationId: createRole
+      summary: Create a tenant role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateRole"}
+      responses:
+        "201":
+          description: Role created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: {type: object}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /platform/policies:
+    get:
+      tags: [Policies]
+      operationId: listPolicies
+      summary: List tenant policies
+      responses:
+        "200":
+          description: Tenant policies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/Policy"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/policies/{key}:
+    put:
+      tags: [Policies]
+      operationId: upsertPolicy
+      summary: Create or replace a tenant policy
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: key
+          in: path
+          required: true
+          schema: {type: string, minLength: 2, maxLength: 100}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PolicyInput"}
+      responses:
+        "200":
+          description: Policy saved
+          content:
+            application/json:
+              schema: {type: object, properties: {data: {type: object}}}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/feature-flags:
+    get:
+      tags: [Feature flags]
+      operationId: listFeatureFlags
+      summary: List tenant feature flags
+      responses:
+        "200":
+          description: Tenant feature flags
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/FeatureFlag"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/feature-flags/{key}:
+    put:
+      tags: [Feature flags]
+      operationId: setFeatureFlag
+      summary: Set a tenant feature flag
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: key
+          in: path
+          required: true
+          schema: {type: string, minLength: 2, maxLength: 100}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/FeatureFlagInput"}
+      responses:
+        "200":
+          description: Feature flag saved
+          content:
+            application/json:
+              schema: {type: object, properties: {data: {type: object}}}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      summary: List permitted sessions without refresh-token material
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema: {type: string}
+        - name: activeOnly
+          in: query
+          required: false
+          schema: {type: boolean, default: true}
+      responses:
+        "200":
+          description: Session list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/Session"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/sessions/{sessionId}/revoke:
+    post:
+      tags: [Sessions]
+      operationId: revokeSession
+      summary: Revoke a permitted active session
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - name: sessionId
+          in: path
+          required: true
+          schema: {type: string, minLength: 1}
+      responses:
+        "204": {description: Session revoked}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Session not found in caller's permitted scope}
+  /platform/audit-events:
+    get:
+      tags: [Audit]
+      operationId: listAuditEvents
+      summary: List tenant audit events
+      parameters:
+        - name: action
+          in: query
+          required: false
+          schema: {type: string}
+        - name: limit
+          in: query
+          required: false
+          schema: {type: integer, minimum: 1, maximum: 200, default: 50}
+      responses:
+        "200":
+          description: Audit events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: {$ref: "#/components/schemas/AuditEvent"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/memberships/{membershipId}/accept:
+    servers:
+      - url: /
+        description: Authentication endpoints are mounted outside the versioned platform prefix
+    post:
+      tags: [Identity]
+      operationId: acceptTenantMembershipInvitation
+      summary: Accept a one-time tenant membership invitation
+      description: The invitation token is high entropy, one-time, stored only as a hash and expires. A password is required when activating a newly invited global user.
+      security: []
+      parameters:
+        - {name: membershipId, in: path, required: true, schema: {type: string, minLength: 1}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AcceptMembershipInvitation"}
+      responses:
+        "204": {description: Membership activated}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "422": {description: "Invitation is invalid, expired or user is not eligible"}
+  /platform/admin/overview:
+    get:
+      tags: [Administration]
+      operationId: getAdministrationOverview
+      summary: Get tenant-scoped administration overview metrics
+      responses:
+        "200": {description: Administration overview}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/users:
+    get:
+      tags: [Administration]
+      operationId: listTenantUsers
+      summary: List users attached to the authenticated tenant within the caller's scope
+      parameters:
+        - {name: q, in: query, required: false, schema: {type: string, maxLength: 80}}
+        - {name: status, in: query, required: false, schema: {type: string, enum: [invited, active, suspended, locked]}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200": {description: Tenant-scoped user directory}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/users/invitations:
+    post:
+      tags: [Administration]
+      operationId: inviteTenantMember
+      summary: Create an invited user membership and queue encrypted invitation delivery
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/InviteUser"}
+      responses:
+        "202": {description: Invitation queued; no raw invitation token is returned}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /platform/admin/users/invitations/{membershipId}/resend:
+    post:
+      tags: [Administration]
+      operationId: resendTenantMembershipInvitation
+      summary: Reissue a tenant membership invitation and invalidate the previous token
+      parameters:
+        - {name: membershipId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LifecycleRequest"}
+      responses:
+        "202": {description: New invitation delivery queued}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Invited membership not found}
+  /platform/admin/approvals:
+    get:
+      tags: [Administration]
+      operationId: listApprovalRequests
+      summary: List tenant or platform approval requests
+      parameters:
+        - {name: scope, in: query, required: false, schema: {type: string, enum: [tenant, platform], default: tenant}}
+        - {name: status, in: query, required: false, schema: {type: string, enum: [pending, approved, rejected, executed, expired]}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200": {description: Approval requests}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Administration]
+      operationId: createApprovalRequest
+      summary: Request a governed tenant administration action
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateApprovalRequest"}
+      responses:
+        "201": {description: Approval request created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/approvals/{requestId}/approve:
+    post:
+      tags: [Administration]
+      operationId: approveAndExecuteRequest
+      summary: Independently approve and transactionally execute a pending action
+      parameters:
+        - {name: requestId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {name: scope, in: query, required: false, schema: {type: string, enum: [tenant, platform], default: tenant}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApprovalDecision"}
+      responses:
+        "200": {description: Action approved and executed atomically}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/InvalidReference"}
+  /platform/admin/approvals/{requestId}/reject:
+    post:
+      tags: [Administration]
+      operationId: rejectApprovalRequest
+      summary: Reject a pending action request
+      parameters:
+        - {name: requestId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {name: scope, in: query, required: false, schema: {type: string, enum: [tenant, platform], default: tenant}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ApprovalDecision"}
+      responses:
+        "200": {description: Approval request rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /platform/admin/policies/simulate:
+    post:
+      tags: [Administration]
+      operationId: simulateAccessPolicy
+      summary: Evaluate a policy context without applying a policy change
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PolicySimulation"}
+      responses:
+        "200": {description: Policy decision and matched policy details}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/audit-events:
+    get:
+      tags: [Administration]
+      operationId: searchAuditEvents
+      summary: Search tenant audit events using bounded filters
+      parameters:
+        - {name: action, in: query, required: false, schema: {type: string}}
+        - {name: actorUserId, in: query, required: false, schema: {type: string}}
+        - {name: resourceType, in: query, required: false, schema: {type: string}}
+        - {name: outcome, in: query, required: false, schema: {type: string, enum: [success, denied, failure]}}
+        - {name: correlationId, in: query, required: false, schema: {type: string}}
+        - {name: from, in: query, required: false, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: false, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 50}}
+      responses:
+        "200": {description: Filtered audit events}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/audit-exports:
+    get:
+      tags: [Administration]
+      operationId: listAuditExportJobs
+      summary: List bounded audit export jobs
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+      responses:
+        "200": {description: Audit export jobs}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Administration]
+      operationId: requestAuditExport
+      summary: Queue a bounded tenant audit export
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateAuditExport"}
+      responses:
+        "202": {description: Audit export job queued}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/break-glass:
+    get:
+      tags: [Administration]
+      operationId: listBreakGlassGrants
+      summary: List tenant emergency access grants
+      responses:
+        "200": {description: Break-glass grants}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/break-glass/{grantId}/revoke:
+    post:
+      tags: [Administration]
+      operationId: revokeBreakGlassGrant
+      summary: Revoke an active emergency access grant
+      parameters:
+        - {name: grantId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BreakGlassRevoke"}
+      responses:
+        "200": {description: Grant revoked}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /platform/admin/configuration:
+    get:
+      tags: [Administration]
+      operationId: getTenantConfiguration
+      summary: Get safe tenant configuration overrides
+      responses:
+        "200": {description: Tenant configuration}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/configuration/{key}:
+    put:
+      tags: [Administration]
+      operationId: updateTenantConfiguration
+      summary: Update an allowlisted tenant configuration value
+      parameters:
+        - {name: key, in: path, required: true, schema: {type: string, enum: [defaultLocale, defaultCurrency, timezone, displayName]}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ConfigurationUpdate"}
+      responses:
+        "200": {description: Configuration updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/tenants:
+    get:
+      tags: [Administration]
+      operationId: listPlatformTenants
+      summary: List tenants for platform operators
+      parameters:
+        - {name: status, in: query, required: false, schema: {type: string, enum: [provisioning, active, suspended, closed]}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        "200": {description: Platform tenant directory}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Administration]
+      operationId: provisionPlatformTenant
+      summary: Provision a tenant, root organization, owner role and owner invitation
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProvisionTenant"}
+      responses:
+        "201": {description: Tenant provisioned; owner invitation queued}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/organizations/{organizationId}/lifecycle-requests:
+    post:
+      tags: [Administration]
+      operationId: requestOrganizationDeactivation
+      summary: Request two-person approval to deactivate an organization
+      parameters:
+        - {name: organizationId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LifecycleRequest"}
+      responses:
+        "201": {description: Lifecycle approval request created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/locations/{locationId}/lifecycle-requests:
+    post:
+      tags: [Administration]
+      operationId: requestLocationDeactivation
+      summary: Request two-person approval to deactivate a location
+      parameters:
+        - {name: locationId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/LifecycleRequest"}
+      responses:
+        "201": {description: Lifecycle approval request created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/tenants/{tenantId}/lifecycle-requests:
+    post:
+      tags: [Administration]
+      operationId: requestTenantLifecycleChange
+      summary: Request platform-operator approval to activate, suspend or close a tenant
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, minLength: 1}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TenantLifecycleRequest"}
+      responses:
+        "201": {description: Platform lifecycle approval request created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated unique key for safe retries. The same key and request replay the original response for 24 hours; reusing it with a different request returns 409.
+      schema: {type: string, minLength: 8, maxLength: 128}
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    InvalidRequest:
+      description: Request validation failed
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthenticated:
+      description: Missing or invalid authentication
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Forbidden:
+      description: Permission or scope denied
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Conflict:
+      description: Conflicting or duplicate state
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    InvalidReference:
+      description: Referenced resource is invalid or outside required scope
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: {type: string}
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              path: {type: array, items: {}}
+              message: {type: string}
+    Tenant:
+      type: object
+      properties:
+        tenantId: {type: string}
+        slug: {type: string}
+        legalName: {type: string}
+        displayName: {type: string}
+        status: {type: string}
+        defaultLocale: {type: string}
+        defaultCurrency: {type: string}
+        timezone: {type: string}
+    Organization:
+      type: object
+      properties:
+        tenantId: {type: string}
+        organizationId: {type: string}
+        parentOrganizationId: {type: string}
+        code: {type: string}
+        name: {type: string}
+        type: {type: string, enum: [group, company, business_unit, department, branch]}
+        status: {type: string}
+        path: {type: array, items: {type: string}}
+    OrganizationList:
+      type: object
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/Organization"}
+    CreateOrganization:
+      type: object
+      required: [code, name, type]
+      properties:
+        code: {type: string, minLength: 1, maxLength: 40}
+        name: {type: string, minLength: 2, maxLength: 150}
+        type: {type: string, enum: [group, company, business_unit, department, branch]}
+        parentOrganizationId: {type: string}
+    Location:
+      type: object
+      properties:
+        tenantId: {type: string}
+        locationId: {type: string}
+        organizationId: {type: string}
+        parentLocationId: {type: string}
+        code: {type: string}
+        name: {type: string}
+        type: {type: string, enum: [site, store, warehouse, office, other]}
+        status: {type: string}
+        timezone: {type: string}
+    CreateLocation:
+      type: object
+      required: [organizationId, code, name, type]
+      properties:
+        organizationId: {type: string, minLength: 1}
+        code: {type: string, minLength: 1, maxLength: 40}
+        name: {type: string, minLength: 2, maxLength: 150}
+        type: {type: string, enum: [site, store, warehouse, office, other]}
+        parentLocationId: {type: string}
+        timezone: {type: string}
+        address: {type: object, additionalProperties: {type: string}}
+    Membership:
+      type: object
+      properties:
+        tenantId: {type: string}
+        membershipId: {type: string}
+        userId: {type: string}
+        organizationIds: {type: array, items: {type: string}}
+        locationIds: {type: array, items: {type: string}}
+        roleIds: {type: array, items: {type: string}}
+        status: {type: string}
+    CreateMembership:
+      type: object
+      required: [userId, organizationIds]
+      properties:
+        userId: {type: string, minLength: 1}
+        organizationIds: {type: array, minItems: 1, items: {type: string, minLength: 1}}
+        locationIds: {type: array, items: {type: string, minLength: 1}, default: []}
+        roleIds: {type: array, items: {type: string, minLength: 1}, default: []}
+    Role:
+      type: object
+      properties:
+        tenantId: {type: string}
+        roleId: {type: string}
+        key: {type: string}
+        name: {type: string}
+        permissionKeys: {type: array, items: {type: string}}
+        isSystem: {type: boolean}
+        status: {type: string}
+    CreateRole:
+      type: object
+      required: [key, name, permissionKeys]
+      properties:
+        key: {type: string, minLength: 2, maxLength: 100}
+        name: {type: string, minLength: 2, maxLength: 100}
+        description: {type: string, maxLength: 500}
+        permissionKeys: {type: array, maxItems: 500, items: {type: string, minLength: 1}}
+        isSystem: {type: boolean, default: false}
+    Policy:
+      type: object
+      properties:
+        tenantId: {type: string}
+        policyId: {type: string}
+        key: {type: string}
+        effect: {type: string, enum: [allow, deny]}
+        priority: {type: integer}
+        actions: {type: array, items: {type: string}}
+        status: {type: string}
+    PolicyInput:
+      type: object
+      required: [effect, priority, actions]
+      properties:
+        effect: {type: string, enum: [allow, deny]}
+        priority: {type: integer, minimum: 0, maximum: 10000}
+        subject: {type: object, default: {}, additionalProperties: true}
+        resource: {type: object, default: {}, additionalProperties: true}
+        actions: {type: array, minItems: 1, items: {type: string, minLength: 1}}
+        conditions: {type: object, default: {}, additionalProperties: true}
+    FeatureFlag:
+      type: object
+      properties:
+        tenantId: {type: string}
+        key: {type: string}
+        enabled: {type: boolean}
+        environments: {type: array, items: {type: string}}
+        rules: {type: array, items: {type: object, additionalProperties: true}}
+    FeatureFlagInput:
+      type: object
+      required: [enabled]
+      properties:
+        enabled: {type: boolean}
+        description: {type: string, maxLength: 500}
+        environments: {type: array, items: {type: string, minLength: 1}, default: [development]}
+        rules: {type: array, items: {type: object, additionalProperties: true}, default: []}
+    Session:
+      type: object
+      properties:
+        tenantId: {type: string}
+        sessionId: {type: string}
+        userId: {type: string}
+        membershipId: {type: string}
+        expiresAt: {type: string, format: date-time}
+        lastUsedAt: {type: string, format: date-time}
+        revokedAt: {type: string, format: date-time}
+    AuditEvent:
+      type: object
+      properties:
+        eventId: {type: string}
+        tenantId: {type: string}
+        occurredAt: {type: string, format: date-time}
+        actor:
+          type: object
+          properties:
+            userId: {type: string}
+            service: {type: string}
+            ipHash: {type: string}
+            userAgent: {type: string}
+        action: {type: string}
+        resourceType: {type: string}
+        resourceId: {type: string}
+        outcome: {type: string, enum: [success, denied, failure]}
+        correlationId: {type: string}
+        metadata: {type: object, additionalProperties: true}
+
+    InviteUser:
+      type: object
+      required: [email, displayName, organizationIds, reason]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        displayName: {type: string, minLength: 2, maxLength: 120}
+        phoneE164: {type: string}
+        organizationIds: {type: array, minItems: 1, items: {type: string}}
+        locationIds: {type: array, items: {type: string}, default: []}
+        roleIds: {type: array, items: {type: string}, default: []}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+    CreateApprovalRequest:
+      type: object
+      required: [action, targetType, targetId, reason]
+      properties:
+        action: {type: string, enum: [membership.suspend, membership.reactivate, membership.revoke, organization.deactivate, location.deactivate, policy.apply, feature_flag.set, break_glass.grant, tenant.activate, tenant.suspend, tenant.close]}
+        targetType: {type: string, minLength: 2, maxLength: 80}
+        targetId: {type: string, minLength: 1, maxLength: 200}
+        payload: {type: object, additionalProperties: true, default: {}}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+        ttlSeconds: {type: integer, minimum: 300, maximum: 604800, default: 86400}
+    ApprovalDecision:
+      type: object
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 10, maxLength: 1000}
+    PolicySimulation:
+      type: object
+      required: [action]
+      properties:
+        subject: {type: object, additionalProperties: true, default: {}}
+        resource: {type: object, additionalProperties: true, default: {}}
+        action: {type: string, minLength: 1}
+        environment: {type: object, additionalProperties: true, default: {}}
+    CreateAuditExport:
+      type: object
+      required: [reason]
+      properties:
+        filters:
+          type: object
+          properties:
+            action: {type: string}
+            actorUserId: {type: string}
+            resourceType: {type: string}
+            outcome: {type: string, enum: [success, denied, failure]}
+            correlationId: {type: string}
+            from: {type: string, format: date-time}
+            to: {type: string, format: date-time}
+            limit: {type: integer, minimum: 1, maximum: 10000, default: 10000}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+    BreakGlassRevoke:
+      type: object
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 20, maxLength: 2000}
+    ConfigurationUpdate:
+      type: object
+      required: [value, reason]
+      properties:
+        value: {}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+    ProvisionTenant:
+      type: object
+      required: [slug, legalName, displayName, owner, reason]
+      properties:
+        slug: {type: string, minLength: 2, maxLength: 64, pattern: "^[a-z0-9-]+$"}
+        legalName: {type: string, minLength: 2, maxLength: 200}
+        displayName: {type: string, minLength: 2, maxLength: 100}
+        defaultLocale: {type: string, default: en}
+        defaultCurrency: {type: string, minLength: 3, maxLength: 3, default: UGX}
+        timezone: {type: string, default: Africa/Kampala}
+        owner:
+          type: object
+          required: [email, displayName]
+          properties:
+            email: {type: string, format: email, maxLength: 254}
+            displayName: {type: string, minLength: 2, maxLength: 120}
+            phoneE164: {type: string}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+    LifecycleRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 20, maxLength: 2000}
+    TenantLifecycleRequest:
+      type: object
+      required: [action, reason]
+      properties:
+        action: {type: string, enum: [tenant.activate, tenant.suspend, tenant.close]}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+
+    AcceptMembershipInvitation:
+      type: object
+      required: [token]
+      properties:
+        token: {type: string, minLength: 20}
+        password: {type: string, minLength: 12, maxLength: 128}

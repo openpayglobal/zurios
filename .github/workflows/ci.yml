@@ -1,0 +1,48 @@
+name: CI
+on:
+  push:
+    branches: [main, develop, "feature/**"]
+  pull_request:
+    branches: [main, develop]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      MONGODB_TEST_URI: mongodb://localhost:27017/?replicaSet=rs0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --no-frozen-lockfile
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name zuri-mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            if docker exec zuri-mongo mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' 2>/dev/null | grep -q 1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec zuri-mongo mongosh --quiet --eval 'rs.initiate()'
+          for i in $(seq 1 30); do
+            if docker exec zuri-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "MongoDB replica set did not become primary"
+          docker logs zuri-mongo
+          exit 1
+      - name: Validate OpenAPI 3.1 contract
+        run: pnpm --package=@redocly/cli dlx redocly lint docs/api/openapi.yaml
+      - name: Check OpenAPI route drift
+        run: pnpm --filter @zuri/api openapi:check
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
