@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -78,7 +78,7 @@ function sendError(error:unknown,reply:FastifyReply){
  if(error instanceof ZodError)return reply.code(400).send({error:"INVALID_REQUEST",issues:error.issues.map(issue=>({path:issue.path,message:issue.message}))});
  if(error&&typeof error==="object"&&"code" in error&&(error as {code?:number}).code===11000)return reply.code(409).send({error:"RESOURCE_CONFLICT"});
  const code=error instanceof Error?error.message:"";
- if(["INSUFFICIENT_STOCK_ON_HAND","INSUFFICIENT_RESERVED_STOCK","RESERVATION_EXCEEDS_ON_HAND","ACTIVE_RESERVATION_NOT_FOUND","RESERVATION_EXPIRED","SOURCE_WAREHOUSE_NOT_ACTIVE","DESTINATION_WAREHOUSE_NOT_ACTIVE","STOCK_CONCURRENT_MODIFICATION"].includes(code))return reply.code(409).send({error:code});
+ if(["INSUFFICIENT_STOCK_ON_HAND","INSUFFICIENT_RESERVED_STOCK","RESERVATION_EXCEEDS_ON_HAND","ACTIVE_RESERVATION_NOT_FOUND","RESERVATION_EXPIRED","SOURCE_WAREHOUSE_NOT_ACTIVE","DESTINATION_WAREHOUSE_NOT_ACTIVE","STOCK_CONCURRENT_MODIFICATION","POS_TERMINAL_SHIFT_ALREADY_OPEN","OPEN_CASHIER_SHIFT_NOT_FOUND","OPEN_CASHIER_SHIFT_REQUIRED","REFUNDS_EXCEED_SALE_TOTAL"].includes(code))return reply.code(409).send({error:code});
  if(code==="RESERVATION_EXPIRY_MUST_BE_FUTURE"||code==="NEW_RESERVATION_MUST_BE_RESERVED")return reply.code(422).send({error:code});
  reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
@@ -186,5 +186,116 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   };
   app.post("/inventory/reservations/:reservationId/commit",async(request,reply)=>settle(request,reply,"commit"));
   app.post("/inventory/reservations/:reservationId/release",async(request,reply)=>settle(request,reply,"release"));
+
+  app.post("/pos/terminals",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=PosTerminalSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId});
+    const scope=await resolveLocationScope(db,p.tenantId,body.locationId);
+    if(!scope)return reply.code(422).send({error:"ACTIVE_LOCATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"pos.terminal.create",scope);if(denied)return denied;
+    const result=await registerPosTerminal(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.post("/pos/shifts/open",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=CashierShiftSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId});
+    const terminal=await db.collection<{tenantId:string;terminalId:string;locationId:string;status:string}>("pos_terminals")
+     .findOne({tenantId:p.tenantId,terminalId:body.terminalId,status:"active"});
+    if(!terminal)return reply.code(422).send({error:"POS_TERMINAL_NOT_ACTIVE"});
+    const scope=await resolveLocationScope(db,p.tenantId,terminal.locationId);
+    if(!scope)return reply.code(422).send({error:"ACTIVE_LOCATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"pos.shift.open",scope);if(denied)return denied;
+    const result=await openCashierShift(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  const shiftCloseBody=z.object({expectedCashMinor:z.number().int().nonnegative(),countedCashMinor:z.number().int().nonnegative()});
+  app.post("/pos/shifts/:shiftId/close",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {shiftId}=z.object({shiftId:z.string().min(1)}).parse(request.params);
+    const body=shiftCloseBody.parse(request.body);
+    const shift=await db.collection<{tenantId:string;shiftId:string;terminalId:string}>("pos_cashier_shifts").findOne({tenantId:p.tenantId,shiftId});
+    if(!shift)return reply.code(404).send({error:"CASHIER_SHIFT_NOT_FOUND"});
+    const terminal=await db.collection<{tenantId:string;terminalId:string;locationId:string}>("pos_terminals").findOne({tenantId:p.tenantId,terminalId:shift.terminalId});
+    if(!terminal)return reply.code(404).send({error:"POS_TERMINAL_NOT_FOUND"});
+    const scope=await resolveLocationScope(db,p.tenantId,terminal.locationId);
+    if(!scope)return reply.code(404).send({error:"POS_TERMINAL_NOT_FOUND"});
+    const denied=await permit(db,request,reply,p,"pos.shift.close",scope);if(denied)return denied;
+    const result=await closeCashierShift(db,p.tenantId,shiftId,p.userId,key,body.expectedCashMinor,body.countedCashMinor);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.post("/pos/sales/complete",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=PosSaleSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId,idempotencyKey:key});
+    const terminal=await db.collection<{tenantId:string;terminalId:string;locationId:string;status:string}>("pos_terminals")
+     .findOne({tenantId:p.tenantId,terminalId:body.terminalId,status:"active"});
+    if(!terminal)return reply.code(422).send({error:"POS_TERMINAL_NOT_ACTIVE"});
+    const scope=await resolveLocationScope(db,p.tenantId,terminal.locationId);
+    if(!scope)return reply.code(422).send({error:"ACTIVE_LOCATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"pos.sale.complete",scope);if(denied)return denied;
+    if(body.reservationId){
+     const reservation=await db.collection<{tenantId:string;reservationId:string;warehouseId:string}>("inventory_reservations")
+      .findOne({tenantId:p.tenantId,reservationId:body.reservationId,status:"reserved"});
+     if(!reservation)return reply.code(422).send({error:"ACTIVE_RESERVATION_NOT_FOUND"});
+     const warehouseScope=await resolveWarehouseScope(db,p.tenantId,reservation.warehouseId);
+     if(!warehouseScope)return reply.code(422).send({error:"ACTIVE_WAREHOUSE_REQUIRED"});
+     const stockDenied=await permit(db,request,reply,p,"inventory.stock.consume",warehouseScope);if(stockDenied)return stockDenied;
+    }
+    const result=await completePosSale(db,body,p.userId);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  app.post("/pos/refunds",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=PosRefundSchema.parse({...((request.body&&typeof request.body==="object")?request.body:{}),tenantId:p.tenantId,idempotencyKey:key});
+    const sale=await db.collection<{tenantId:string;saleId:string;terminalId:string}>("pos_sales")
+     .findOne({tenantId:p.tenantId,saleId:body.saleId});
+    if(!sale)return reply.code(404).send({error:"POS_SALE_NOT_FOUND"});
+    const terminal=await db.collection<{tenantId:string;terminalId:string;locationId:string}>("pos_terminals")
+     .findOne({tenantId:p.tenantId,terminalId:sale.terminalId});
+    if(!terminal)return reply.code(404).send({error:"POS_TERMINAL_NOT_FOUND"});
+    const scope=await resolveLocationScope(db,p.tenantId,terminal.locationId);
+    if(!scope)return reply.code(404).send({error:"POS_TERMINAL_NOT_FOUND"});
+    const denied=await permit(db,request,reply,p,"pos.refund.complete",scope);if(denied)return denied;
+    const result=await refundPosSale(db,body,p.userId);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+
+  const offlineCommandSchema=z.object({
+   terminalId:z.string().min(1),commandId:z.string().min(8),sequence:z.number().int().positive(),
+   commandType:z.string().min(1).max(80),payload:z.record(z.unknown()),issuedAt:z.string().datetime()
+  });
+  app.post("/pos/offline-commands",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const body=offlineCommandSchema.parse(request.body);
+    const terminal=await db.collection<{tenantId:string;terminalId:string;locationId:string}>("pos_terminals")
+     .findOne({tenantId:p.tenantId,terminalId:body.terminalId});
+    if(!terminal)return reply.code(404).send({error:"POS_TERMINAL_NOT_FOUND"});
+    const scope=await resolveLocationScope(db,p.tenantId,terminal.locationId);
+    if(!scope)return reply.code(404).send({error:"POS_TERMINAL_NOT_FOUND"});
+    const denied=await permit(db,request,reply,p,"pos.offline.sync",scope);if(denied)return denied;
+    const result=await acceptOfflinePosCommand(db,{...body,tenantId:p.tenantId},p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
  };
 }
