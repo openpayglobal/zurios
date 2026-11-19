@@ -47,6 +47,8 @@ tags:
     description: Organization-scoped customer accounts, contacts, leads, opportunities and activities
   - name: Human Resources
     description: Organization-scoped employee directory and segregated leave approvals
+  - name: Payroll
+    description: Externally calculated payroll drafts and maker-checker approval; no statutory engine or disbursement
 paths:
   /platform/tenant:
     get:
@@ -1234,6 +1236,47 @@ paths:
         "200": {description: Leave request rejected}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /payroll/runs:
+    get:
+      tags: [Payroll]
+      operationId: listPayrollRuns
+      summary: List payroll runs in authorized organizations
+      responses:
+        "200": {description: Scoped payroll runs}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Payroll]
+      operationId: createPayrollRun
+      summary: Create a reconciled payroll draft from externally calculated amounts
+      description: This endpoint does not calculate statutory deductions or disburse funds. Jurisdiction rules and amounts must be supplied by a reviewed payroll calculation process.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PayrollRun"}
+      responses:
+        "201": {description: Payroll draft created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /payroll/runs/{payrollRunId}/approve:
+    post:
+      tags: [Payroll]
+      operationId: approvePayrollRun
+      summary: Approve a payroll draft with maker/checker separation
+      parameters:
+        - {name: payrollRunId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PayrollApproval"}
+      responses:
+        "200": {description: Payroll run approved}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -1627,6 +1670,45 @@ components:
       properties:
         organizationId: {type: string}
         reason: {type: string, minLength: 10, maxLength: 1000}
+        expectedVersion: {type: integer, minimum: 0}
+    PayrollRun:
+      type: object
+      required: [organizationId, payrollRunId, periodStart, periodEnd, jurisdiction, currency, calculationProvider, rulesetVersion, calculatedAt, lines, totalGrossMinor, totalStatutoryDeductionsMinor, totalVoluntaryDeductionsMinor, totalEmployerContributionsMinor, totalNetMinor]
+      properties:
+        organizationId: {type: string}
+        payrollRunId: {type: string}
+        periodStart: {type: string, format: date-time}
+        periodEnd: {type: string, format: date-time}
+        jurisdiction: {type: string, pattern: "^[A-Z]{2}$"}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        calculationProvider: {type: string}
+        rulesetVersion: {type: string}
+        calculatedAt: {type: string, format: date-time}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [employeeId, grossMinor, statutoryDeductionMinor, voluntaryDeductionMinor, employerContributionMinor, netMinor]
+            properties:
+              employeeId: {type: string}
+              grossMinor: {type: integer, minimum: 0}
+              statutoryDeductionMinor: {type: integer, minimum: 0}
+              voluntaryDeductionMinor: {type: integer, minimum: 0}
+              employerContributionMinor: {type: integer, minimum: 0}
+              netMinor: {type: integer, minimum: 0}
+        totalGrossMinor: {type: integer, minimum: 0}
+        totalStatutoryDeductionsMinor: {type: integer, minimum: 0}
+        totalVoluntaryDeductionsMinor: {type: integer, minimum: 0}
+        totalEmployerContributionsMinor: {type: integer, minimum: 0}
+        totalNetMinor: {type: integer, minimum: 0}
+        status: {type: string, enum: [draft]}
+    PayrollApproval:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 20, maxLength: 2000}
         expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
