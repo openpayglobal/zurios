@@ -41,8 +41,9 @@ for(const bodyContract of PLATFORM_BODY_CONTRACTS){
  const properties=[...propertiesSection.matchAll(/^        ([A-Za-z0-9_]+):/gm)].map(([,name])=>name);
  const requiredMatch=schemaBlock.match(/^      required:\s*\[([^\]]*)\]/m);
  const required=(requiredMatch?.[1]??"").split(",").map(value=>value.trim()).filter(Boolean);
- const zodFields=Object.keys(bodyContract.schema.shape);
- const zodRequired=zodFields.filter(name=>!bodyContract.schema.shape[name].isOptional());
+ const zodShape=bodyContract.schema.shape as Record<string,{isOptional:()=>boolean}>;
+ const zodFields=Object.keys(zodShape);
+ const zodRequired=zodFields.filter(name=>!zodShape[name].isOptional());
  if(!same(zodFields,properties))failures.push(`Property drift in ${bodyContract.schemaName}: Zod=[${zodFields.join(",")}], OpenAPI=[${properties.join(",")}]`);
  if(!same(zodRequired,required))failures.push(`Required-field drift in ${bodyContract.schemaName}: Zod=[${zodRequired.join(",")}], OpenAPI=[${required.join(",")}]`);
 }
