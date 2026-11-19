@@ -4,10 +4,10 @@ import {newId} from "./ids.js";
 import {coreCollections} from "./repositories.js";
 const schema=z.object({userId:z.string().min(1),organizationIds:z.array(z.string().min(1)).default([]),locationIds:z.array(z.string().min(1)).default([]),roleIds:z.array(z.string().min(1)).default([])});
 function assertUnique(values:string[],code:string){if(new Set(values).size!==values.length)throw new Error(code);}
-export async function createMembership(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession,options?:{allowInvitedUser?:boolean;forceInvited?:boolean}){
+export async function createMembership(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession,options?:{allowInvitedUser?:boolean;forceInvited?:boolean;allowProvisioningTenant?:boolean}){
  const d=schema.parse(input),c=coreCollections(db);
  assertUnique(d.organizationIds,"DUPLICATE_ORGANIZATION_SCOPE");assertUnique(d.locationIds,"DUPLICATE_LOCATION_SCOPE");assertUnique(d.roleIds,"DUPLICATE_ROLE_ASSIGNMENT");
- if(!await c.tenants.findOne({tenantId,status:"active"},session?{session}:{}))throw new Error("TENANT_NOT_ACTIVE");
+ if(!await c.tenants.findOne({tenantId,status:options?.allowProvisioningTenant?{$in:["active","provisioning"]}:"active"},session?{session}:{}))throw new Error("TENANT_NOT_ACTIVE");
  const user=await c.users.findOne({userId:d.userId,status:options?.allowInvitedUser?{$in:["active","invited"]}:"active"},session?{session}:{});
  if(!user)throw new Error("ACTIVE_USER_REQUIRED");
  if(d.organizationIds.length&&await c.organizations.countDocuments({tenantId,organizationId:{$in:d.organizationIds},status:"active"},session?{session}:{})!==d.organizationIds.length)throw new Error("INVALID_ORGANIZATION_SCOPE");
