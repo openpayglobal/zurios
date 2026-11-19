@@ -3,7 +3,7 @@ import {z} from "zod";
 import {newId} from "./ids.js";
 export type PlatformOperatorGrantDocument={
  grantId:string;userId:string;permissionKeys:string[];status:"active"|"revoked";
- reason:string;createdBy:string;createdAt:Date;updatedAt:Date;validFrom:Date;validUntil?:Date;
+ reason:string;createdBy:string;updatedBy?:string;createdAt:Date;updatedAt:Date;validFrom:Date;validUntil?:Date;
 };
 const schema=z.object({userId:z.string().min(1),permissionKeys:z.array(z.string().min(1).refine(v=>v!=="*"&&!v.includes("*"))).min(1).max(100),reason:z.string().min(20).max(2000),validForDays:z.number().int().min(1).max(90).optional()});
 /** Platform operator grants are bootstrap-controlled and never self-service through tenant APIs. */
