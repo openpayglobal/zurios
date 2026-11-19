@@ -7,7 +7,7 @@ export type ApprovalRequestDocument={
  requestId:string;tenantId:string;scope:"tenant"|"platform";action:ApprovalAction;
  targetType:string;targetId:string;payload:Record<string,unknown>;reason:string;
  requestedBy:string;status:"pending"|"approved"|"rejected"|"executed"|"expired";
- approvedBy?:string;approvalReason?:string;rejectedBy?:string;rejectionReason?:string;
+ approvedBy?:string;approvalReason?:string;rejectedBy?:string;rejectionReason?:string;executedBy?:string;
  correlationId?:string;expiresAt:Date;createdAt:Date;updatedAt:Date;executedAt?:Date;
 };
 const schema=z.object({
@@ -52,7 +52,7 @@ export async function rejectApprovalRequest(db:Db,session:ClientSession,input:{
 export async function completeApprovalRequest(db:Db,session:ClientSession,tenantId:string,requestId:string,actorId:string){
  const now=new Date(),result=await db.collection<ApprovalRequestDocument>("approval_requests").updateOne(
   {tenantId,requestId,status:"approved",approvedBy:{$exists:true}},
-  {$set:{status:"executed",executedAt:now,updatedAt:now},$currentDate:{updatedAt:true}}
+  {$set:{status:"executed",executedAt:now,executedBy:actorId,updatedAt:now}}
  ,{session});
  if(!result.modifiedCount)throw new Error("APPROVAL_EXECUTION_STATE_CONFLICT");
  return db.collection<ApprovalRequestDocument>("approval_requests").findOne({tenantId,requestId},{session});
