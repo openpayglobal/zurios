@@ -155,13 +155,15 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    return reply.code(result.modifiedCount?204:404).send();
   });
   app.get("/mac/auth/me",{preHandler:authenticated},async request=>({operator:publicOperator(await db.collection("platform_operators").findOne({operatorId:request.macOperator!.operatorId}))}));
-  app.get("/mac/overview",{preHandler:[authenticated,permission("mac.overview.read")]},async()=>{
+  app.get("/mac/overview",{preHandler:[authenticated,permission("mac.overview.read")]},async request=>{
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.overview.read",resourceType:"platform_overview",outcome:"success",request});
    const [tenants,operators,sessions]=await Promise.all([
     db.collection("tenants").estimatedDocumentCount(),db.collection("platform_operators").countDocuments({status:"active"}),db.collection("platform_operator_sessions").countDocuments({revokedAt:{$exists:false},expiresAt:{$gt:new Date()}})
    ]);
    return {data:{tenants,activePlatformOperators:operators,activeOperatorSessions:sessions,providerConnections:"not_configured",deploymentTelemetry:"not_connected",generatedAt:new Date().toISOString()}};
   });
   app.get("/mac/tenants",{preHandler:[authenticated,permission("mac.tenants.read")]},async request=>{
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.tenants.read",resourceType:"tenant_inventory",outcome:"success",request});
    const query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25),after:z.string().optional()}).parse(request.query);
    const filter=query.after?{tenantId:{$gt:query.after}}:{};
    const rows=await db.collection("tenants").find(filter,{projection:{_id:0,tenantId:1,slug:1,name:1,status:1,createdAt:1,updatedAt:1}}).sort({tenantId:1}).limit(query.limit+1).toArray();
@@ -169,6 +171,7 @@ export function macOperatorRoutes(db:Db,config:MacOperatorConfig):FastifyPluginA
    return {data:items,page:{hasMore,nextCursor:hasMore?items[items.length-1]?.tenantId:null}};
   });
   app.get("/mac/audit",{preHandler:[authenticated,permission("mac.audit.read")]},async request=>{
+   await writeAdminAudit(db,{actorId:request.macOperator!.operatorId,action:"mac.audit.read",resourceType:"admin_audit_events",outcome:"success",request});
    const query=z.object({limit:z.coerce.number().int().min(1).max(100).default(25),before:z.coerce.date().optional()}).parse(request.query);
    const filter=query.before?{occurredAt:{$lt:query.before}}:{};
    const items=await db.collection("admin_audit_events").find(filter,{projection:{_id:0}}).sort({occurredAt:-1}).limit(query.limit).toArray();
