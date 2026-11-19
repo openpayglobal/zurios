@@ -35,11 +35,11 @@ async function denied(db:Db,request:FastifyRequest,reply:FastifyReply,p:Principa
 }
 async function auditFailure(db:Db,request:FastifyRequest,p:Principal,ipHashSecret:string,operation:string,error:unknown){
  const errorCode=error instanceof Error&&/^[A-Z0-9_]{3,100}$/.test(error.message)?error.message:"MUTATION_FAILED";
- await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:createHash("sha256").update(request.ip).digest("hex"),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:`${operation}.failed`,resourceType:"platform_api",resourceId:request.routeOptions.url,outcome:"failure",correlationId:request.id,metadata:{operation,errorCode}});
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action:`${operation}.failed`,resourceType:"platform_api",resourceId:request.routeOptions.url,outcome:"failure",correlationId:request.id,metadata:{operation,errorCode}});
 }
 function permit(db:Db,ipHashSecret:string,permission:string){return async(request:FastifyRequest,reply:FastifyReply)=>{const p=principal(request);if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return denied(db,request,reply,p,ipHashSecret,"FORBIDDEN");};}
 async function audit(db:Db,p:Principal,request:FastifyRequest,ipHashSecret:string,action:string,type:string,id:string|undefined,session:ClientSession){
- await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:createHash("sha256").update(request.ip).digest("hex"),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}},session);
+ await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId,ipHash:hashIp(request,ipHashSecret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType:type,...(id?{resourceId:id}:{}),outcome:"success",correlationId:request.id,metadata:{}},session);
 }
 async function mutate(
  db:Db,request:FastifyRequest,reply:FastifyReply,p:Principal,ipHashSecret:string,operation:string,
