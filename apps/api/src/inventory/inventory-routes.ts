@@ -2,7 +2,7 @@ import type {ClientSession,Db} from "mongodb";
 import {createHmac} from "node:crypto";
 import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {ZodError,z} from "zod";
-import {appendAuditEvent,appendOutboxEvent,runIdempotentMutation,getStockBalance} from "@zuri/core-platform";
+import {appendAuditEvent,appendOutboxEvent,runIdempotentMutation,getStockBalance,evaluatePolicy} from "@zuri/core-platform";
 import {createInventoryProduct,createStockLocation,createStockLot,recordStockMovement} from "@zuri/core-platform";
 import {authenticate} from "./auth-middleware.js";
 import {authorize} from "./authorization.js";
@@ -20,6 +20,12 @@ function permit(db:Db,config:AuthConfig,permission:string){
  return async(request:FastifyRequest,reply:FastifyReply)=>{
   const p=principal(request);
   if(!authorize(p,{permission,resourceTenantId:p.tenantId}))return denied(db,request,reply,p,config.jwtSecret,"FORBIDDEN");
+  const decision=await evaluatePolicy(db,p.tenantId,{
+   subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},
+   resource:{tenantId:p.tenantId,resourceType:"inventory_api",path:request.routeOptions.url??"",method:request.method},
+   action:permission,environment:{}
+  });
+  if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,config.jwtSecret,"ABAC_POLICY_DENIED");
 
  };
 }
