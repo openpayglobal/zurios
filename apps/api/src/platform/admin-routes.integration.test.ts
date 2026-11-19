@@ -12,7 +12,7 @@ import type {AuthConfig} from "./auth-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 const permissionKeys=[
- "platform.admin.overview.read","platform.admin.overview.read.all","platform.organizations.manage","platform.organizations.manage.request","platform.locations.manage","platform.locations.manage.request",
+ "platform.admin.overview.read","platform.admin.overview.read.all","platform.organizations.manage","platform.organizations.manage.all","platform.organizations.manage.request","platform.locations.manage","platform.locations.manage.all","platform.locations.manage.request",
  "platform.users.read","platform.users.read.all","platform.users.invite",
  "platform.memberships.read","platform.memberships.create","platform.memberships.assign.roles",
  "platform.memberships.manage.request","platform.memberships.manage",
@@ -46,7 +46,7 @@ test("administration workspace enforces invitation, two-person approval and brea
    {userId:"emergency-user",emailNormalized:"emergency@example.test",displayName:"Emergency User",status:"active",emailVerifiedAt:now}
   ]);
   await db.collection("organizations").insertOne({tenantId:"tenant-a",organizationId:"org-a",code:"ORG-A",name:"Org A",path:[],status:"active"});
-  await db.collection("locations").insertOne({tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",code:"LOC-A",name:"Location A",status:"active"});
+  await db.collection("locations").insertMany([{tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",code:"LOC-A",name:"Location A",status:"active"},{tenantId:"tenant-a",locationId:"loc-unused",organizationId:"org-a",code:"LOC-U",name:"Unused Location",status:"active"}]);
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"role-admin",key:"tenant-admin",name:"Tenant Admin",permissionKeys,status:"active"});
   await db.collection("memberships").insertMany([
    {tenantId:"tenant-a",membershipId:"membership-a",userId:"operator-a",organizationIds:["org-a"],locationIds:["loc-a"],roleIds:["role-admin"],status:"active"},
@@ -110,6 +110,22 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(approved.statusCode,200);
   assert.equal(approved.json().data.status,"executed");
   assert.equal((await db.collection("memberships").findOne({membershipId:invited.membershipId}))?.status,"suspended");
+
+  const locationLifecycle=await app.inject({
+   method:"POST",url:"/platform/admin/locations/loc-unused/lifecycle-requests",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"location-deactivate-request-0001"},
+   payload:{reason:"Close the unused location after confirming there are no active memberships."}
+  });
+  assert.equal(locationLifecycle.statusCode,201);
+  const locationApprovalId=locationLifecycle.json().data.requestId;
+  const locationDeactivation=await app.inject({
+   method:"POST",url:"/platform/admin/approvals/"+locationApprovalId+"/approve",
+   headers:{authorization:"Bearer "+operatorB,"idempotency-key":"location-deactivate-approve-0001"},
+   payload:{reason:"Independent review confirms this unused location can be deactivated."}
+  });
+  assert.equal(locationDeactivation.statusCode,200);
+  assert.equal((await db.collection("locations").findOne({locationId:"loc-unused"}))?.status,"inactive");
+
 
   const emergencyRequest=await app.inject({
    method:"POST",url:"/platform/admin/approvals",
