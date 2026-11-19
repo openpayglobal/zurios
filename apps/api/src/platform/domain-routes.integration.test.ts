@@ -54,7 +54,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "payroll.run.read","payroll.run.create","payroll.run.approve",
    "payments.intent.read","payments.intent.create","payments.refund.request",
    "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create",
-   "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete"
+   "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete",
+   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -77,7 +78,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    tenantId:"tenant-a",policyId:"inventory-allow-"+index,key:"inventory-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"inventory-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
-  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve"].map((action,index)=>({
+  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve","projects.project.read","projects.time_entry.read","projects.time_entry.approve"].map((action,index)=>({
    tenantId:"tenant-a",policyId:"manager-allow-"+index,key:"manager-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"hr-manager-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
@@ -391,7 +392,37 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const assetList=await app.inject({method:"GET",url:"/v1/assets",headers});
   assert.equal(assetList.statusCode,200);
   assert.equal(assetList.json().data.length,1);
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=40);
+  const project=await app.inject({
+   method:"POST",url:"/v1/projects",headers:{...headers,"idempotency-key":"project-api-001"},
+   payload:{organizationId:"org-a",projectId:"project-api-001",projectCode:"PRJ-API-001",name:"Customer implementation",
+    managerUserId:"hr-manager-user",startsAt:now.toISOString(),dueAt:new Date(now.getTime()+30*86400000).toISOString(),budgetMinor:500000,currency:"UGX",status:"active"}
+  });
+  assert.equal(project.statusCode,201);
+  const task=await app.inject({
+   method:"POST",url:"/v1/projects/project-api-001/tasks",headers:{...headers,"idempotency-key":"project-task-api-001"},
+   payload:{organizationId:"org-a",taskId:"project-task-api-001",name:"Deployment workshop",priority:"high",estimatedMinutes:240}
+  });
+  assert.equal(task.statusCode,201);
+  const timeEntry=await app.inject({
+   method:"POST",url:"/v1/projects/project-api-001/time-entries",headers:{...headers,"idempotency-key":"project-time-api-001"},
+   payload:{organizationId:"org-a",timeEntryId:"project-time-api-001",taskId:"project-task-api-001",employeeId:"hr-employee-api-001",
+    workDate:now.toISOString(),minutes:120,billable:true,description:"Delivered deployment workshop"}
+  });
+  assert.equal(timeEntry.statusCode,201);
+  const selfTimeApproval=await app.inject({
+   method:"POST",url:"/v1/projects/time-entries/project-time-api-001/approve",headers:{...headers,"idempotency-key":"project-time-self-approve"},
+   payload:{organizationId:"org-a",reason:"Maker cannot approve own time entry",expectedVersion:0}
+  });
+  assert.equal(selfTimeApproval.statusCode,409);
+  const approvedTime=await app.inject({
+   method:"POST",url:"/v1/projects/time-entries/project-time-api-001/approve",headers:{...managerHeaders,"idempotency-key":"project-time-approve-api-001"},
+   payload:{organizationId:"org-a",reason:"Independent project manager review completed",expectedVersion:0}
+  });
+  assert.equal(approvedTime.statusCode,200);
+  const projectEntries=await app.inject({method:"GET",url:"/v1/projects/project-api-001/time-entries",headers:managerHeaders});
+  assert.equal(projectEntries.statusCode,200);
+  assert.equal(projectEntries.json().data[0].status,"approved");
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=44);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
