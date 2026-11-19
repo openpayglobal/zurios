@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -120,6 +120,9 @@ function sendError(error:unknown,reply:FastifyReply){
  if(["PAYROLL_VERSION_CONFLICT","PAYROLL_RUN_NOT_DRAFT","PAYROLL_SELF_APPROVAL_DENIED"].includes(code))return reply.code(409).send({error:code});
  if(code==="PAYROLL_EMPLOYEE_SCOPE_OR_STATUS_INVALID")return reply.code(422).send({error:code});
  if(code==="PAYROLL_RUN_NOT_FOUND")return reply.code(404).send({error:code});
+ if(["PAYMENT_EXCEEDS_INVOICE_BALANCE","REFUNDS_EXCEED_CAPTURED_PAYMENT","PAYMENT_STATE_TRANSITION_INVALID","PAYMENT_EVENT_AMOUNT_MISMATCH"].includes(code))return reply.code(409).send({error:code});
+ if(["PAYMENT_PROVIDER_NOT_CONFIGURED","PAYMENT_REFERENCE_TYPE_NOT_SUPPORTED"].includes(code))return reply.code(422).send({error:code});
+ if(["INVOICE_NOT_PAYABLE","CAPTURED_PAYMENT_NOT_FOUND","PAYMENT_INTENT_NOT_FOUND"].includes(code))return reply.code(404).send({error:code});
  reply.code(500).send({error:"INTERNAL_SERVER_ERROR"});
 }
 function idempotencyKey(request:FastifyRequest):string|undefined{
@@ -643,6 +646,40 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const denied=await permit(db,request,reply,p,"payroll.run.approve",scope);if(denied)return denied;
     const body=PayrollApprovalSchema.parse({...raw,tenantId:p.tenantId,organizationId,payrollRunId});
     const result=await approvePayrollRun(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.get("/payments/intents",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"payments.intent.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("payment_intents").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({createdAt:-1}).limit(500).toArray()};
+  });
+  app.post("/payments/intents",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"payments.intent.create",scope);if(denied)return denied;
+    const body=PaymentIntentSchema.parse({...raw,tenantId:p.tenantId,organizationId,status:"pending"});
+    const result=await createPaymentIntent(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/payments/refund-requests",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"payments.refund.request",scope);if(denied)return denied;
+    const body=PaymentRefundRequestSchema.parse({...raw,tenantId:p.tenantId,organizationId,status:"pending"});
+    const result=await requestPaymentRefund(db,body,p.userId,key);
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
