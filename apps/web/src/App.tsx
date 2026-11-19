@@ -195,6 +195,27 @@ export default function App(){
   try{await api("/v1/platform/admin/configuration/"+key,{method:"PUT",headers:{"idempotency-key":idempotency()},body:JSON.stringify({value,reason:form.get("reason")})});setNotice("Tenant configuration updated.");void loadView("configuration");}
   catch(e){setError(e instanceof Error?e.message:"Configuration update failed.");}
  };
+ const resendInvitation=async(membershipId:string)=>{
+  const reason=window.prompt("Reason for reissuing this invitation (20+ characters):");
+  if(!reason||reason.length<20)return;
+  try{await api("/v1/platform/admin/users/invitations/"+membershipId+"/resend",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason})});setNotice("A new invitation was queued; the previous token is invalid.");void loadView("identity");}
+  catch(e){setError(e instanceof Error?e.message:"Invitation resend failed.");}
+ };
+ const requestMembershipChange=async(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget);
+  try{await api("/v1/platform/admin/approvals",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({action:"membership.suspend",targetType:"membership",targetId:form.get("membershipId"),payload:{},reason:form.get("reason")})});setNotice("Membership suspension request submitted for independent approval.");event.currentTarget.reset();void loadView("governance");}
+  catch(e){setError(e instanceof Error?e.message:"Approval request failed.");}
+ };
+ const requestStructureChange=async(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget),kind=String(form.get("kind")),targetId=String(form.get("targetId"));
+  try{await api("/v1/platform/admin/"+kind+"/"+targetId+"/lifecycle-requests",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason:form.get("reason")})});setNotice("Structure lifecycle request submitted for independent approval.");event.currentTarget.reset();void loadView("governance");}
+  catch(e){setError(e instanceof Error?e.message:"Lifecycle request failed.");}
+ };
+ const requestTenantLifecycle=async(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget),tenantId=String(form.get("tenantId"));
+  try{await api("/v1/platform/admin/tenants/"+tenantId+"/lifecycle-requests",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({action:form.get("action"),reason:form.get("reason")})});setNotice("Platform tenant lifecycle request submitted for independent approval.");event.currentTarget.reset();void loadView("governance");}
+  catch(e){setError(e instanceof Error?e.message:"Tenant lifecycle request failed.");}
+ };
  const createTenant=async(event:React.FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
   try{await api("/v1/platform/admin/tenants",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({slug:form.get("slug"),legalName:form.get("legalName"),displayName:form.get("displayName"),defaultLocale:"en",defaultCurrency:"UGX",timezone:"Africa/Kampala",owner:{email:form.get("ownerEmail"),displayName:form.get("ownerName")},reason:form.get("reason")})});setNotice("Tenant provisioned. Initial owner invitation is queued.");event.currentTarget.reset();void loadView("tenants");}
