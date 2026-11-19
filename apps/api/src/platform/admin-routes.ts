@@ -4,16 +4,17 @@ import type {FastifyPluginAsync,FastifyReply,FastifyRequest} from "fastify";
 import {ZodError,z} from "zod";
 import {
  coreCollections,authorize,evaluatePolicy,runIdempotentMutation,appendAuditEvent,appendOutboxEvent,
- provisionTenant,createUser,createMembership,issueMembershipInvitation,setMembershipStatus,
+ provisionTenant,createUser,createMembership,setMembershipStatus,
  createApprovalRequest,approveApprovalRequest,rejectApprovalRequest,completeApprovalRequest,
  upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,
  type AuditEventDocument,type ApprovalRequestDocument
 } from "@zuri/core-platform";
 import {encryptMfaSecret} from "./auth-crypto.js";
+import {issueMembershipInvitation} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
-import {createMembershipSchema,upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
+import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 type MutationResult={statusCode:number;body:unknown};
