@@ -28,7 +28,7 @@ test("SelectField renders a labelled native select",()=>{
 });
 
 test("Badge renders the requested status variant",()=>{
- const html=renderToStaticMarkup(createElement(Badge,{variant:"success"},"Active"));
+ const html=renderToStaticMarkup(createElement(Badge,{variant:"success",children:"Active"}));
  assert.match(html,/zui-badge--success/);
  assert.match(html,/Active/);
 });
@@ -40,7 +40,7 @@ test("Card preserves semantic section content",()=>{
 });
 
 test("Alert announces critical feedback",()=>{
- const html=renderToStaticMarkup(createElement(Alert,{variant:"danger"},"Action blocked"));
+ const html=renderToStaticMarkup(createElement(Alert,{variant:"danger",children:"Action blocked"}));
  assert.match(html,/role="alert"/);
  assert.match(html,/Action blocked/);
 });
