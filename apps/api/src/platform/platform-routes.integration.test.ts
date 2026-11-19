@@ -75,6 +75,17 @@ test("versioned platform API enforces tenant, scope, idempotency and outbox inva
   });
   assert.equal(invalidMembership.statusCode,422);
   assert.equal(invalidMembership.json().error,"INVALID_LOCATION_ORGANIZATION_SCOPE");
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId:"tenant-a",action:"platform.memberships.create.failed",outcome:"failure"}),1);
+
+  const deniedMembership=await app.inject({
+   method:"POST",url:"/v1/platform/memberships",
+   headers:{authorization:`Bearer ${token}`,"idempotency-key":"membership-denied-0001"},
+   payload:{userId:"target-user",organizationIds:["org-secret"],locationIds:[],roleIds:[]}
+  });
+  assert.equal(deniedMembership.statusCode,403);
+  assert.equal(deniedMembership.json().error,"MEMBERSHIP_SCOPE_DENIED");
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId:"tenant-a",action:"authorization.denied",resourceType:"membership",outcome:"denied"}),1);
+
 
   const validPayload={userId:"target-user",organizationIds:["org-a"],locationIds:["loc-a"],roleIds:[]};
   const create=()=>app.inject({
