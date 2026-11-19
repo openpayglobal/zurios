@@ -113,16 +113,18 @@ export function inventoryRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const source=await db.collection("stock_locations").findOne({tenantId:p.tenantId,stockLocationId:scope.data.stockLocationId,status:"active"});
    if(!source)return reply.code(404).send({error:"STOCK_LOCATION_NOT_FOUND"});
    if(!authorize(p,{permission:"inventory.movements.create",resourceTenantId:p.tenantId,organizationId:source.organizationId}))return denied(db,request,reply,p,config.jwtSecret,"STOCK_LOCATION_SCOPE_DENIED");
+   let destinationOrganizationId:string|undefined;
    if(scope.data.destinationStockLocationId){
     const destination=await db.collection("stock_locations").findOne({tenantId:p.tenantId,stockLocationId:scope.data.destinationStockLocationId,status:"active"});
     if(!destination)return reply.code(404).send({error:"DESTINATION_STOCK_LOCATION_NOT_FOUND"});
+    destinationOrganizationId=destination.organizationId;
     if(!authorize(p,{permission:"inventory.movements.create",resourceTenantId:p.tenantId,organizationId:destination.organizationId}))return denied(db,request,reply,p,config.jwtSecret,"DESTINATION_LOCATION_SCOPE_DENIED");
    }
    if(scope.data.movementType==="transfer"){
     const permission="inventory.transfers.create";
     if(!authorize(p,{permission,resourceTenantId:p.tenantId,organizationId:source.organizationId})||
-      !scope.data.destinationStockLocationId||
-      !authorize(p,{permission,resourceTenantId:p.tenantId,organizationId:(await db.collection("stock_locations").findOne({tenantId:p.tenantId,stockLocationId:scope.data.destinationStockLocationId,status:"active"}))!.organizationId}))
+      !destinationOrganizationId||
+      !authorize(p,{permission,resourceTenantId:p.tenantId,organizationId:destinationOrganizationId}))
       return denied(db,request,reply,p,config.jwtSecret,"FORBIDDEN");
     const decision=await evaluatePolicy(db,p.tenantId,{subject:{userId:p.userId,roleKeys:p.roleKeys,...p.attributes},resource:{tenantId:p.tenantId,resourceType:"inventory_transfer",path:request.routeOptions.url??"",method:request.method},action:permission,environment:{}});
     if(decision.reason==="EXPLICIT_DENY")return denied(db,request,reply,p,config.jwtSecret,"ABAC_POLICY_DENIED");
