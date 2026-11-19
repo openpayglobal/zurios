@@ -186,6 +186,23 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     });
    }catch(error){return fail(error,reply);}
   });
+  app.post("/platform/admin/users/invitations/:membershipId/resend",{preHandler:tenantGuard(db,config.jwtSecret,"platform.users.invite")},async(request,reply)=>{
+   const p=principal(request);if(!config.mfaEncryptionKey)return reply.code(503).send({error:"INVITATION_ENCRYPTION_NOT_CONFIGURED"});
+   try{
+    const params=z.object({membershipId:z.string().min(1)}).parse(request.params),body=lifecycleRequestSchema.parse(request.body);
+    const membership=await c.memberships.findOne({tenantId:p.tenantId,membershipId:params.membershipId,status:"invited"});
+    if(!membership)return reply.code(404).send({error:"INVITED_MEMBERSHIP_NOT_FOUND"});
+    const user=await c.users.findOne({userId:membership.userId,status:{$in:["active","invited"]}});
+    if(!user)return reply.code(422).send({error:"INVITED_USER_NOT_ELIGIBLE"});
+    return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.users.invitation.resend",async session=>{
+     const token=await issueMembershipInvitation(db,params.membershipId,7*24*60*60,session);
+     const encryptedToken=encryptInvitationToken(token,config.mfaEncryptionKey);
+     await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"identity.membership.invitation.resent","membership",params.membershipId,"success",{reason:body.reason},session);
+     await emit(db,session,p.tenantId,request,"identity.membership.invitation.requested","membership",params.membershipId,{membershipId:params.membershipId,userId:user.userId,recipientEmail:user.emailNormalized,displayName:user.displayName,encryptedInvitationToken:encryptedToken,deliveryChannel:"email"});
+     return {statusCode:202,body:{data:{membershipId:params.membershipId,status:"invited",deliveryStatus:"queued"}}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
   app.get("/platform/admin/approvals",async(request,reply)=>{
    const p=principal(request);try{
     const query=z.object({scope:approvalScopeSchema.default("tenant"),status:z.enum(["pending","approved","rejected","executed","expired"]).optional(),limit:z.coerce.number().int().min(1).max(200).default(50)}).parse(request.query);
