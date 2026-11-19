@@ -1,10 +1,10 @@
 import {randomBytes,randomUUID,createHash} from "node:crypto";
-import type {Db} from "mongodb";
+import type {ClientSession,Db} from "mongodb";
 import {SignJWT,jwtVerify} from "jose";
 import {coreCollections} from "@zuri/core-platform";
 import {createSession,rotateRefreshToken,revokeSession} from "@zuri/core-platform";
 import {permissionsForMembership} from "@zuri/core-platform";
-import {appendAuditEvent} from "@zuri/core-platform";
+import {appendAuditEvent,appendOutboxEvent} from "@zuri/core-platform";
 import {decryptMfaSecret,encryptMfaSecret,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
 export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string};
 const key=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
@@ -144,3 +144,39 @@ export async function refreshLogin(db:Db,config:AuthConfig,tenantId:string,sessi
  return {accessToken,refreshToken:rotated.refreshToken,sessionId,tokenType:"Bearer" as const};
 }
 export async function logout(db:Db,tenantId:string,sessionId:string,userId:string){await revokeSession(db,tenantId,sessionId,userId);}
+
+export async function issueMembershipInvitation(db:Db,membershipId:string,ttlSeconds=7*24*60*60,session?:ClientSession){
+ if(!Number.isSafeInteger(ttlSeconds)||ttlSeconds<300||ttlSeconds>30*24*60*60)throw new Error("INVALID_INVITATION_TTL");
+ const token=randomBytes(32).toString("base64url"),now=new Date();
+ const result=await db.collection("memberships").updateOne({membershipId,status:"invited"},{$set:{invitationTokenHash:hashOpaqueToken(token),invitationExpiresAt:new Date(now.getTime()+ttlSeconds*1000),updatedAt:now}},session?{session}:{});
+ if(!result.matchedCount)throw new Error("MEMBERSHIP_NOT_INVITED");
+ return token;
+}
+export async function acceptMembershipInvitation(db:Db,membershipId:string,token:string,password?:string){
+ const now=new Date(),hash=hashOpaqueToken(token),membership=await db.collection("memberships").findOne({membershipId,status:"invited",invitationTokenHash:hash,invitationExpiresAt:{$gt:now}});
+ if(!membership)throw new Error("MEMBERSHIP_INVITATION_INVALID_OR_EXPIRED");
+ const user=await coreCollections(db).users.findOne({userId:membership.userId});
+ if(!user||!(user.status==="active"||user.status==="invited"))throw new Error("USER_NOT_ELIGIBLE_FOR_INVITATION");
+ const passwordHash=user.status==="invited"?(password?await hashPassword(password):undefined):undefined;
+ if(user.status==="invited"&&!passwordHash)throw new Error("PASSWORD_SETUP_REQUIRED");
+ const session=db.client.startSession();
+ try{
+  let accepted:{userId:string;tenantId:string;membershipId:string}|undefined;
+  await session.withTransaction(async()=>{
+   const current=await db.collection("memberships").findOne({membershipId,status:"invited",invitationTokenHash:hash,invitationExpiresAt:{$gt:new Date()}},{session});
+   if(!current)throw new Error("MEMBERSHIP_INVITATION_INVALID_OR_EXPIRED");
+   const currentUser=await coreCollections(db).users.findOne({userId:current.userId},{session});
+   if(!currentUser||!(currentUser.status==="active"||currentUser.status==="invited"))throw new Error("USER_NOT_ELIGIBLE_FOR_INVITATION");
+   if(currentUser.status==="invited"&&!passwordHash)throw new Error("PASSWORD_SETUP_REQUIRED");
+   const userUpdate=await coreCollections(db).users.updateOne({userId:current.userId,status:currentUser.status},{$set:{status:"active",emailVerifiedAt:currentUser.emailVerifiedAt??new Date(),...(passwordHash?{passwordHash}:{}),updatedAt:new Date()}},{session});
+   if(!userUpdate.modifiedCount)throw new Error("USER_STATE_CONFLICT");
+   const membershipUpdate=await db.collection("memberships").updateOne({tenantId:current.tenantId,membershipId,status:"invited",invitationTokenHash:hash},{$set:{status:"active",updatedAt:new Date()},$unset:{invitationTokenHash:"",invitationExpiresAt:""}},{session});
+   if(!membershipUpdate.modifiedCount)throw new Error("MEMBERSHIP_STATE_CONFLICT");
+   await appendAuditEvent(db,{tenantId:current.tenantId,actor:{userId:current.userId},action:"identity.membership.invitation.accepted",resourceType:"membership",resourceId:membershipId,outcome:"success",metadata:{}},session);
+   await appendOutboxEvent(db,session,{tenantId:current.tenantId,eventType:"identity.membership.activated",aggregateType:"membership",aggregateId:membershipId,payload:{membershipId,userId:current.userId}});
+   accepted={userId:current.userId,tenantId:current.tenantId,membershipId};
+  },{readConcern:{level:"snapshot"},writeConcern:{w:"majority"},readPreference:"primary"});
+  if(!accepted)throw new Error("MEMBERSHIP_ACCEPTANCE_FAILED");
+  return accepted;
+ }finally{await session.endSession();}
+}
