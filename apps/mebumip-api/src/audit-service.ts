@@ -1,5 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import type { Db, Document } from "mongodb";
+import type { ClientSession, Db, Document } from "mongodb";
 import { config } from "./config.js";
 import { createAuditEvent, type AuditEventInput } from "./security.js";
 
@@ -75,43 +75,29 @@ function equalHex(left: unknown, right: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/** Append an event inside a caller-owned MongoDB transaction. */
+export async function appendAuditEventInTransaction(db: Db, input: AuditEventInput, session: ClientSession): Promise<void> {
+  const counters = db.collection<{ _id: string; sequence: number; updatedAt: Date }>("auditCounters");
+  await counters.updateOne({ _id: "global" }, { $inc: { sequence: 1 }, $set: { updatedAt: new Date() } }, { upsert: true, session });
+  const counter = await counters.findOne({ _id: "global" }, { session });
+  const sequence = Number(counter?.sequence);
+  if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_INVALID");
+  const events = db.collection<SequencedAuditEvent>("auditEvents");
+  const previous = sequence > 1 ? await events.findOne({ sequence: sequence - 1 }, { session }) : null;
+  if (sequence > 1 && !previous) throw new Error("AUDIT_CHAIN_PREDECESSOR_MISSING");
+  const previousHash = previous?.eventHash ?? GENESIS_HASH;
+  const base = createAuditEvent(input);
+  const payload = canonicalPayload({ ...input, sequence, previousHash, occurredAt: base.occurredAt });
+  const eventHash = digest(payload);
+  const signed = sign(eventHash);
+  await events.insertOne({ ...base, sequence, previousHash, eventHash, signature: signed.signature, signatureKeyId: signed.signatureKeyId } as SequencedAuditEvent, { session });
+}
+
 /** Append an event and advance the global sequence in one MongoDB transaction. */
 export async function appendAuditEvent(db: Db, input: AuditEventInput): Promise<void> {
   const session = db.client.startSession();
   try {
-    await session.withTransaction(async () => {
-      const counters = db.collection<{ _id: string; sequence: number; updatedAt: Date }>("auditCounters");
-      await counters.updateOne(
-        { _id: "global" },
-        { $inc: { sequence: 1 }, $set: { updatedAt: new Date() } },
-        { upsert: true, session },
-      );
-      const counter = await counters.findOne({ _id: "global" }, { session });
-      const sequence = Number(counter?.sequence);
-      if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_INVALID");
-
-      const events = db.collection<SequencedAuditEvent>("auditEvents");
-      const previous = sequence > 1 ? await events.findOne({ sequence: sequence - 1 }, { session }) : null;
-      if (sequence > 1 && !previous) throw new Error("AUDIT_CHAIN_PREDECESSOR_MISSING");
-      const previousHash = previous?.eventHash ?? GENESIS_HASH;
-      const base = createAuditEvent(input);
-      const payload = canonicalPayload({
-        ...input,
-        sequence,
-        previousHash,
-        occurredAt: base.occurredAt,
-      });
-      const eventHash = digest(payload);
-      const signed = sign(eventHash);
-      await events.insertOne({
-        ...base,
-        sequence,
-        previousHash,
-        eventHash,
-        signature: signed.signature,
-        signatureKeyId: signed.signatureKeyId,
-      } as SequencedAuditEvent, { session });
-    });
+    await session.withTransaction(async () => appendAuditEventInTransaction(db, input, session));
   } finally {
     await session.endSession();
   }
