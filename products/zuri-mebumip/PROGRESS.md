@@ -156,3 +156,20 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Latest CI verification checkpoint (2026-11-20):** GitHub Actions run `44688509838` on commit `f118e9e` completed successfully: API typecheck, API tests, API build, web typecheck and web build all passed. API tests reported 15 passed, 0 failed, 0 skipped, including the MongoDB 7 integration suite. The test suite now also covers MAC tenant member listing, email invitation and revocation, membership role update, protected tenant/platform owner accounts, platform administrator invitation/registration/acceptance/revocation, and audit sequence-gap detection. A subsequent run is validating the final audit export cursor/pagination changes and latest docs/UI commits.
+
+
+## Updated Phase 1 closure assessment — 2026-11-20
+
+| Closure gate | Assessment | Remaining action |
+|---|---|---|
+| Trusted email delivery | Adapter and flows implemented; not live | Owner must verify a sending domain and configure `RESEND_API_KEY` plus `MAIL_FROM` in deployment secrets. Production startup intentionally fails closed without them. |
+| MFA recovery and factor reset | Implemented and integration-tested | Operational recovery/runbook and key backup review. |
+| Audit immutability and archive | Tamper-evident sequence/signature and signed exports implemented | Configure independent immutable/WORM archive storage, restricted database roles, backup retention and full-history archive verification. |
+| Database-backed integration tests | Passed | Keep the MongoDB 7 CI service and extend coverage as endpoints evolve. |
+| API/web typecheck, tests and builds | Passed on latest code commit `98561ed` | Re-run after further code changes; Vercel deployment checks remain rate-limited and are not used as CI evidence. |
+| MAC administrator lifecycle and control screens | Implemented and integration-tested across administrator and tenant member/invitation workflows | Production UX/accessibility review; deployment-specific configuration and any additional settings mutation policy. |
+| Production session/security architecture | HttpOnly cookies, CSRF, SameSite, secure production cookies, trusted proxy allowlist and session inventory implemented | Verify HTTPS, exact production CORS origins, trusted proxy CIDRs, cross-site cookie topology, secrets rotation and end-to-end browser security in the chosen deployment. |
+
+**Verified CI run:** GitHub Actions run `44688590085` completed successfully on commit `98561ed5e23d5864243f1302f74f978063408673`. All five gates passed: API typecheck, API tests, API build, web typecheck and web build. Test summary: **15 passed, 0 failed, 0 skipped**. The MongoDB-backed integration test passed, including platform-admin onboarding, MAC tenant controls, session/CSRF behavior, password recovery, tenant isolation, audit sequence-gap detection and stable export pagination.
+
+**Phase 1 remains In progress, not closed.** The external email credentials/sender domain and independent immutable archive are owner/deployment dependencies; production security review remains necessary. No production deployment or Meta integration is claimed.
