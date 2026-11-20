@@ -1,7 +1,8 @@
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
-import {coreCollections} from "./repositories.js";\nimport type {MembershipDocument} from "./types.js";
+import {coreCollections} from "./repositories.js";
+import type {MembershipDocument} from "./types.js";
 const schema=z.object({userId:z.string().min(1),organizationIds:z.array(z.string().min(1)).default([]),locationIds:z.array(z.string().min(1)).default([]),roleIds:z.array(z.string().min(1)).default([])});
 function assertUnique(values:string[],code:string){if(new Set(values).size!==values.length)throw new Error(code);}
 export async function createMembership(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession,options?:{allowInvitedUser?:boolean;forceInvited?:boolean;allowProvisioningTenant?:boolean}){
