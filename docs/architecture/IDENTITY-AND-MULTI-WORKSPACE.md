@@ -82,3 +82,17 @@ The multi-tenant identity and session design is informed by the following curren
 - [NIST SP 800-63B-4](https://csrc.nist.gov/pubs/sp/800/63/B/4/final), published July 2025: current digital identity guidance for authentication, authenticator management and session lifecycle. Apply the assurance level appropriate to the service risk; do not claim NIST conformance without a formal control assessment.
 
 Implementation follow-up: keep tenant scope in every tenant-owned query and cache key, enforce resource ownership on every access path, and re-establish authorization for delayed/background work. Add cross-tenant denial tests as each product module is activated.
+
+
+## Implementation checkpoint — 2026-11-20
+
+The shared Zuri OS API and web application now implement the identity-first workspace flow described here:
+- Password authentication does not require a tenant slug in the public browser flow.
+- Required MFA is completed before the workspace list is disclosed.
+- A short-lived, opaque, hashed and single-use workspace-selection capability binds the authenticated global user to an active membership.
+- Workspace switching issues the new tenant-bound session first and conditionally revokes the previous session; failed authorization does not revoke the current session.
+- Workspace choices are derived from active memberships and active tenants; role keys and organization/location scopes are loaded from the selected membership rather than copied between workspaces.
+- Platform operator grants are independent of tenant memberships. A platform-only operator receives a distinct platform administration context, and the API rechecks the grant on every request and refresh.
+- Users without an active tenant membership or platform grant receive a non-provisioning access-request path.
+
+The platform context uses a synthetic `platform` session scope; it is not a tenant and must never be accepted by tenant-scoped data APIs. Tenant routes continue to require a real tenant and active membership. New session contexts are not a substitute for per-route permission checks.
