@@ -123,10 +123,10 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED" });
     }
 
-    const passwordHash = await hashPassword(parsed.data.password);
     let userId: ObjectId | undefined;
     let tenantId: ObjectId | undefined;
     try {
+      const passwordHash = await hashPassword(parsed.data.password);
       const userResult = await db.collection("users").insertOne({
         normalizedEmail: email,
         displayName: parsed.data.displayName,
