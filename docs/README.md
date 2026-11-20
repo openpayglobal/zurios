@@ -26,7 +26,7 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 | Operations | operations/ | Deployment, observability, backup, disaster recovery, support and runbooks |
 | Decisions | decisions/ | Cross-cutting approved decisions; architecture ADRs may live under architecture/decisions/ |
 | MeBuMIP product | [products/zuri-mebumip/](../products/zuri-mebumip/README.md) | Detailed product-specific documentation |
-| CI workflows | [../.github/workflows/](../.github/workflows/) | Automated engineering verification |
+| CI workflows | [MeBuMIP Phase 1 CI workflow](../.github/workflows/mebumip-phase1.yml) | Automated engineering verification |
 
 ## Security engineering standards
 
