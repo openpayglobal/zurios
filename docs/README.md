@@ -57,6 +57,26 @@ This directory is the authoritative entry point for ecosystem-wide specification
 
 Product document mirrors are kept in sync with the product workspace using `pnpm docs:sync`; CI verifies them with `pnpm docs:check`. Update the canonical file under `products/` first, then synchronize the copy under `docs/products/`.
 
+## Additional platform engineering specifications
+
+The following implementation-level specifications are part of the accessible ecosystem documentation and are indexed here explicitly:
+
+### Zuri OS platform foundation and deliverable 6A
+
+- [Foundation Status](./architecture/FOUNDATION-STATUS.md) — implemented foundation scope, verification evidence and outstanding gates.
+- [Deliverable 6A — Platform Foundation](./architecture/DELIVERABLE-6A.md) — foundation scope and deliverables.
+- [Deliverable 6A implementation roadmap](./architecture/DELIVERABLE-6A-IMPLEMENTATION-ROADMAP.md) — sequenced implementation plan and acceptance dependencies.
+- [Deliverable 6A.1 acceptance criteria](./architecture/DELIVERABLE-6A.1-ACCEPTANCE.md) — testable acceptance conditions.
+- [Deliverable 6A.3 platform API](./architecture/DELIVERABLE-6A.3-PLATFORM-API.md) — platform API scope and contracts.
+- [Deliverable 6A.3 event contracts](./architecture/6A.3-EVENT-CONTRACTS.md) — event envelope and lifecycle requirements.
+- [Deliverable 6A.4 governance and administration](./architecture/DELIVERABLE-6A.4-GOVERNANCE-ADMIN.md) — governance and administrative controls.
+- [Security and release gates](./architecture/6A-SECURITY-AND-RELEASE-GATES.md) — security, operational and release acceptance gates.
+
+### Audit archive and independent storage
+
+- [Audit archive provider comparison](./security/AUDIT-ARCHIVE-PROVIDER-COMPARISON.md) — comparison of immutable-storage provider capabilities and selection considerations.
+- [Key management and audit archiving](./security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md) — signing keys, migration, verification and immutable archive controls.
+
 ## Document control
 
 Every authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions and change history.
