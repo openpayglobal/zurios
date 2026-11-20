@@ -6,6 +6,8 @@ import { registerAuthRoutes } from "./auth.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 import { hashToken, newOpaqueToken } from "./security.js";
+import { normalizeMfaRecoveryCode } from "./mfa.js";
+import { hashPassword } from "./passwords.js";
 
 const mongoUri = process.env.MONGODB_TEST_URI;
 
@@ -32,6 +34,12 @@ test("MongoDB-backed invitation lifecycle is tenant-isolated, one-time, and audi
       _id: ownerId,
       normalizedEmail: "owner@example.test",
       displayName: "Tenant Owner",
+      passwordHash: await hashPassword("owner-secure-password-123"),
+      mfaEnabled: true,
+      mfaRecoveryCodeHashes: [
+        hashToken(normalizeMfaRecoveryCode("AAAA-BBBB-CCCC-DDDD")),
+        hashToken(normalizeMfaRecoveryCode("EEEE-FFFF-1111-2222")),
+      ],
       status: "active",
     });
     await db.collection("tenants").insertMany([
@@ -113,6 +121,34 @@ test("MongoDB-backed invitation lifecycle is tenant-isolated, one-time, and audi
       acceptedAt: { $exists: true },
       acceptedBy: registered.userId,
     }), 1);
+    const recoveryStepUp = await app.inject({
+      method: "POST",
+      url: "/v1/auth/step-up",
+      headers: auth,
+      payload: { recoveryCode: "AAAA-BBBB-CCCC-DDDD" },
+    });
+    assert.equal(recoveryStepUp.statusCode, 200);
+    const recoveryReplay = await app.inject({
+      method: "POST",
+      url: "/v1/auth/step-up",
+      headers: auth,
+      payload: { recoveryCode: "AAAA-BBBB-CCCC-DDDD" },
+    });
+    assert.equal(recoveryReplay.statusCode, 403);
+
+    const factorReset = await app.inject({
+      method: "POST",
+      url: "/v1/auth/mfa/reset",
+      headers: auth,
+      payload: { currentPassword: "owner-secure-password-123", recoveryCode: "EEEE-FFFF-1111-2222" },
+    });
+    assert.equal(factorReset.statusCode, 200);
+    assert.equal((factorReset.json() as { sessionsRevoked: boolean }).sessionsRevoked, true);
+    const resetUser = await db.collection("users").findOne({ _id: ownerId });
+    assert.notEqual(resetUser?.mfaEnabled, true);
+    assert.equal(Array.isArray(resetUser?.mfaRecoveryCodeHashes), false);
+    const revokedSession = await db.collection("sessions").findOne({ tokenHash: hashToken(bearer) });
+    assert.ok(revokedSession?.revokedAt instanceof Date);
   } finally {
     await app.close();
     await db.dropDatabase().catch(() => undefined);
