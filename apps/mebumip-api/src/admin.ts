@@ -88,6 +88,50 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     return reply.code(201).send({ id: String(tenantResult.insertedId), name: parsed.data.name, slug: parsed.data.slug, ownerUserId: String(owner._id), status: "active" });
   });
 
+  app.get("/v1/mac/admins", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:admins:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const admins = await db.collection("users").find(
+      { platformRole: { $in: ["platform_owner", "platform_admin", "platform_operator", "platform_auditor"] } },
+      { projection: { normalizedEmail: 1, displayName: 1, platformRole: 1, platformAdminStatus: 1, createdAt: 1 } },
+    ).sort({ createdAt: 1 }).limit(100).toArray();
+    return reply.send({ items: admins.map((item) => ({
+      id: String(item._id), email: item.normalizedEmail, displayName: item.displayName,
+      role: item.platformRole, status: item.platformRole === "platform_owner" ? "protected" : (item.platformAdminStatus ?? "active"),
+    })) });
+  });
+
+  app.patch("/v1/mac/admins/:userId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:admins:write")) return reply.code(403).send({ error: "FORBIDDEN" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const { userId } = request.params as { userId: string };
+    if (!ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_USER_ID" });
+    const parsed = z.object({
+      role: z.enum(["platform_admin", "platform_operator", "platform_auditor"]).optional(),
+      status: z.enum(["active", "suspended"]).optional(),
+    }).refine((value) => value.role !== undefined || value.status !== undefined).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const target = await db.collection("users").findOne({ _id: new ObjectId(userId), platformRole: { $in: ["platform_admin", "platform_operator", "platform_auditor"] } });
+    if (!target) return reply.code(404).send({ error: "PLATFORM_ADMIN_NOT_FOUND_OR_PROTECTED" });
+    const now = new Date();
+    const set: Record<string, unknown> = { updatedAt: now, platformAdminUpdatedBy: resolved.principal.userId };
+    if (parsed.data.role) set.platformRole = parsed.data.role;
+    if (parsed.data.status) set.platformAdminStatus = parsed.data.status;
+    await db.collection("users").updateOne({ _id: target._id }, { $set: set });
+    if (parsed.data.status === "suspended") {
+      await db.collection("sessions").updateMany({ userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "platform_admin_suspended" } });
+    }
+    await db.collection("auditEvents").insertOne(createAuditEvent({
+      actorUserId: resolved.principal.userId, action: "platform.admin.updated", targetType: "platform_admin", targetId: userId,
+      outcome: "success", correlationId: request.id,
+      metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) },
+    }));
+    return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
+  });
+
   app.get("/v1/mac/audit-events", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
