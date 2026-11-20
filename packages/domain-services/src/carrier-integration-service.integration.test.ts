@@ -13,7 +13,7 @@ test("carrier tracking events require verified signatures, exact shipment owners
    db.collection("audit_events").createIndex({eventId:1},{unique:true}),
    db.collection("outbox_events").createIndex({eventId:1},{unique:true})
   ]);
-  await db.collection("supply_chain_shipments").insertOne({
+  await db.collection<any>("supply_chain_shipments").insertOne({
    _id:tenantId+":shipment-1",tenantId,organizationId:"org-a",shipmentId:"shipment-1",
    carrierId:"carrier-a",trackingNumber:"TRACK-1",status:"dispatched",version:1
   });
