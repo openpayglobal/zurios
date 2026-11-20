@@ -75,6 +75,9 @@ test("Workflow approvals support assigned multi-approver tasks and requester sep
   assert.deepEqual(sequentialTasks.map(task=>task.status),["rejected","cancelled"]);
   const rejectedRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-003"});
   assert.equal(rejectedRun.status,"rejected");
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId,action:"workflows.task.activated"}),1);
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId,action:"workflows.tasks.cancelled"}),1);
+  assert.equal(await db.collection("outbox_events").countDocuments({tenantId,eventType:"workflows.task.activated"}),1);
  }finally{
   await db.dropDatabase();await client.close();
  }
