@@ -3,7 +3,7 @@ import type {ClientSession,Db} from "mongodb";
 import {SignJWT,jwtVerify} from "jose";
 import {coreCollections} from "@zuri/core-platform";
 import {createSession,rotateRefreshToken,revokeSession} from "@zuri/core-platform";
-import {permissionsForMembership} from "@zuri/core-platform";
+import {permissionsForMembership,platformPermissionsForUser} from "@zuri/core-platform";
 import {appendAuditEvent,appendOutboxEvent} from "@zuri/core-platform";
 import {decryptMfaSecret,encryptMfaSecret,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
 export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string};
@@ -26,12 +26,25 @@ async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenan
  await appendAuditEvent(db,{tenantId:claims.tenantId,actor:{userId:claims.userId},action:auditAction,resourceType:"session",resourceId:session.sessionId,outcome:"success",metadata:{method:"password+mfa-if-enabled"}});
  return {accessToken,refreshToken:session.refreshToken,sessionId:session.sessionId,expiresAt:session.expiresAt,tokenType:"Bearer" as const};
 }
+async function completePlatformLogin(db:Db,config:AuthConfig,userId:string,auditAction="auth.platform.login"){
+ const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"});
+ if(!user)throw new Error("ACTIVE_USER_REQUIRED");
+ const platformPermissions=await platformPermissionsForUser(db,userId,now);
+ if(!platformPermissions.length)throw new Error("PLATFORM_ACCESS_REQUIRED");
+ const refreshToken=randomBytes(48).toString("base64url"),sessionId=randomUUID(),expiresAt=new Date(now.getTime()+config.sessionTtlSeconds*1000);
+ await c.sessions.insertOne({tenantId:"platform",sessionId,userId,membershipId:"platform",refreshTokenHash:createHash("sha256").update(refreshToken).digest("hex"),refreshTokenHistory:[],tokenFamilyId:randomUUID(),expiresAt,lastUsedAt:now,createdAt:now,updatedAt:now,createdBy:userId,updatedBy:userId});
+ const accessToken=await issueAccessToken(config,{userId,tenantId:"platform",membershipId:"platform",sessionId,permissions:[]});
+ await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:auditAction,resourceType:"session",resourceId:sessionId,outcome:"success",metadata:{context:"platform"}});
+ return {accessToken,refreshToken,sessionId,expiresAt,tokenType:"Bearer" as const};
+}
 async function listWorkspaceChoices(db:Db,userId:string){
  const c=coreCollections(db);
- const memberships=await c.memberships.find({userId,status:"active"}).toArray();
- if(!memberships.length)return [];
+ const [memberships,platformPermissions]=await Promise.all([
+  c.memberships.find({userId,status:"active"}).toArray(),
+  platformPermissionsForUser(db,userId)
+ ]);
  const tenantIds=[...new Set(memberships.map(m=>m.tenantId))];
- const tenants=await c.tenants.find({tenantId:{$in:tenantIds},status:"active"}).toArray();
+ const tenants=tenantIds.length?await c.tenants.find({tenantId:{$in:tenantIds},status:"active"}).toArray():[];
  const tenantById=new Map(tenants.map(t=>[t.tenantId,t]));
  const choices=await Promise.all(memberships.map(async membership=>{
   const tenant=tenantById.get(membership.tenantId);
@@ -39,16 +52,18 @@ async function listWorkspaceChoices(db:Db,userId:string){
   const roleIds=Array.isArray(membership.roleIds)?membership.roleIds:[];
   const roles=roleIds.length?await c.roles.find({tenantId:membership.tenantId,roleId:{$in:roleIds},status:"active"}).toArray():[];
   return {
-   tenantId:tenant.tenantId,
-   slug:tenant.slug,
-   displayName:tenant.displayName||tenant.legalName||tenant.slug,
-   legalName:tenant.legalName||tenant.displayName||tenant.slug,
-   membershipId:membership.membershipId,
+   tenantId:tenant.tenantId,slug:tenant.slug,displayName:tenant.displayName||tenant.legalName||tenant.slug,
+   legalName:tenant.legalName||tenant.displayName||tenant.slug,membershipId:membership.membershipId,
    roleKeys:roles.map(role=>role.key as string),
    organizationIds:Array.isArray(membership.organizationIds)?membership.organizationIds:[],
    locationIds:Array.isArray(membership.locationIds)?membership.locationIds:[]
   };
  }));
+ if(platformPermissions.length)choices.push({
+  tenantId:"platform",slug:"platform",displayName:"Zuri OS Platform Administration",
+  legalName:"Zuri OS Platform Administration",membershipId:"platform",
+  roleKeys:["Platform operator"],organizationIds:[],locationIds:[]
+ });
  return choices.filter((choice):choice is NonNullable<typeof choice>=>choice!==null).sort((a,b)=>a.displayName.localeCompare(b.displayName));
 }
 
@@ -186,7 +201,23 @@ export async function resetPassword(db:Db,userId:string,token:string,newPassword
  await c.sessions.updateMany({userId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:"security:password-reset"}});
 }
 export async function refreshLogin(db:Db,config:AuthConfig,tenantId:string,sessionId:string,refreshToken:string){
- const c=coreCollections(db),session=await c.sessions.findOne({tenantId,sessionId});if(!session)throw new Error("SESSION_INVALID");
+ const c=coreCollections(db),session=await c.sessions.findOne({tenantId,sessionId});
+ if(!session||session.revokedAt||session.expiresAt<=new Date())throw new Error("SESSION_INVALID");
+ if(tenantId==="platform"&&session.membershipId==="platform"){
+  const user=await c.users.findOne({userId:session.userId,status:"active"});
+  const permissions=await platformPermissionsForUser(db,session.userId);
+  if(!user||!permissions.length){await revokeSession(db,"platform",sessionId,"security:platform-access-revoked");throw new Error("PLATFORM_ACCESS_REVOKED");}
+  const presentedHash=createHash("sha256").update(refreshToken).digest("hex");
+  if(session.refreshTokenHash!==presentedHash){
+   if(session.refreshTokenHistory?.includes(presentedHash))await c.sessions.updateMany({tenantId:"platform",tokenFamilyId:session.tokenFamilyId,revokedAt:{$exists:false}},{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:"security:refresh-replay"}});
+   throw new Error("SESSION_INVALID");
+  }
+  const nextRefreshToken=randomBytes(48).toString("base64url"),nextHash=createHash("sha256").update(nextRefreshToken).digest("hex");
+  const rotated=await c.sessions.updateOne({tenantId:"platform",sessionId,refreshTokenHash:presentedHash,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{refreshTokenHash:nextHash,lastUsedAt:new Date(),updatedAt:new Date()},$addToSet:{refreshTokenHistory:presentedHash}});
+  if(!rotated.modifiedCount)throw new Error("SESSION_INVALID");
+  const accessToken=await issueAccessToken(config,{userId:session.userId,tenantId:"platform",membershipId:"platform",sessionId,permissions:[]});
+  return {accessToken,refreshToken:nextRefreshToken,sessionId,tokenType:"Bearer" as const};
+ }
  const rotated=await rotateRefreshToken(db,tenantId,sessionId,refreshToken),permissions=await permissionsForMembership(db,tenantId,session.membershipId);
  const accessToken=await issueAccessToken(config,{userId:session.userId,tenantId,membershipId:session.membershipId,sessionId,permissions});
  return {accessToken,refreshToken:rotated.refreshToken,sessionId,tokenType:"Bearer" as const};
@@ -198,27 +229,35 @@ export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:str
  const challenge=await db.collection("workspace_selection_challenges").findOne({tokenHash,usedAt:{$exists:false},expiresAt:{$gt:now}});
  if(!challenge||typeof challenge.userId!=="string")throw new Error("WORKSPACE_SELECTION_INVALID_OR_EXPIRED");
  const userId=challenge.userId;
- const [tenant,membership]=await Promise.all([
-  c.tenants.findOne({tenantId,status:"active"}),
-  c.memberships.findOne({tenantId,userId,status:"active"})
- ]);
- if(!tenant||!membership)throw new Error("WORKSPACE_ACCESS_DENIED");
+ let membership: any;
+ if(tenantId==="platform"){
+  if(!(await platformPermissionsForUser(db,userId)).length)throw new Error("WORKSPACE_ACCESS_DENIED");
+ }else{
+  const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId,status:"active"}),c.memberships.findOne({tenantId,userId,status:"active"})]);
+  if(!tenant||!activeMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
+  membership=activeMembership;
+ }
  const consumed=await db.collection("workspace_selection_challenges").updateOne(
   {selectionId:challenge.selectionId,userId,tokenHash,usedAt:{$exists:false},expiresAt:{$gt:new Date()}},
   {$set:{usedAt:new Date()}}
  );
  if(!consumed.modifiedCount)throw new Error("WORKSPACE_SELECTION_REPLAYED");
- return completeLogin(db,config,{userId,tenantId,membershipId:membership.membershipId});
+ return tenantId==="platform"?completePlatformLogin(db,config,userId):completeLogin(db,config,{userId,tenantId,membershipId:membership.membershipId});
 }
 
 export async function switchWorkspace(db:Db,config:AuthConfig,current:{userId:string;tenantId:string;membershipId:string;sessionId:string},targetTenantId:string){
  const c=coreCollections(db);
- const [tenant,membership]=await Promise.all([
-  c.tenants.findOne({tenantId:targetTenantId,status:"active"}),
-  c.memberships.findOne({tenantId:targetTenantId,userId:current.userId,status:"active"})
- ]);
- if(!tenant||!membership)throw new Error("WORKSPACE_ACCESS_DENIED");
- const next=await completeLogin(db,config,{userId:current.userId,tenantId:targetTenantId,membershipId:membership.membershipId},"auth.workspace.switched");
+ let membership:any;
+ let next;
+ if(targetTenantId==="platform"){
+  if(!(await platformPermissionsForUser(db,current.userId)).length)throw new Error("WORKSPACE_ACCESS_DENIED");
+  next=await completePlatformLogin(db,config,current.userId,"auth.workspace.switched");
+ }else{
+  const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId:targetTenantId,status:"active"}),c.memberships.findOne({tenantId:targetTenantId,userId:current.userId,status:"active"})]);
+  if(!tenant||!activeMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
+  membership=activeMembership;
+  next=await completeLogin(db,config,{userId:current.userId,tenantId:targetTenantId,membershipId:membership.membershipId},"auth.workspace.switched");
+ }
  const revoked=await c.sessions.updateOne(
   {tenantId:current.tenantId,sessionId:current.sessionId,userId:current.userId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},
   {$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:current.userId}}
