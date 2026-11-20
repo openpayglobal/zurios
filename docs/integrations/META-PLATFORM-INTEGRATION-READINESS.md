@@ -14,7 +14,7 @@ The implementation must not assume that Meta approval, business verification, Te
 
 ## 2. Version governance — mandatory
 
-Meta documents distinct versioning schedules for Graph API and Marketing API. The current official changelog observed on 20 November 2026 lists Graph API v26.0 (released 29 July 2026) and Marketing API v25.0 (released 18 February 2026), with a Marketing API auto-upgrade milestone dated 29 July 2026. These are research observations, not a hardcoded deployment selection.
+Meta documents distinct versioning schedules for Graph API and Marketing API. As checked on 20 November 2026, Meta's Graph API landing page and Platform Versioning guide identify **Graph API v27.0** as the latest version. The official versions changelog separately lists Graph API v26.0 (released 29 July 2026) and Marketing API v25.0 (released 18 February 2026), and records a Marketing API auto-upgrade milestone dated 29 July 2026. Meta's published pages are not perfectly synchronized; therefore v27.0 is a discovery observation, not an unconditional production selection. Before implementation or release, verify the specific endpoint's availability, Marketing API version, app permissions and changelog using Meta's current versioning tools. These observations must never be converted into a hardcoded version without compatibility testing.
 
 Requirements:
 - Keep Graph API and Marketing API versions as separate configuration values.
@@ -28,7 +28,8 @@ Requirements:
 - Do not assume Marketing API follows the Graph API schedule.
 
 Official sources:
-- [Meta Platform Versioning](https://developers.facebook.com/docs/graph-api/guides/versioning)
+- [Meta Graph API landing page](https://developers.facebook.com/docs/graph-api/) — current page identifies v27.0.
+- [Meta Platform Versioning](https://developers.facebook.com/docs/graph-api/guides/versioning) — current latest-version statement and versioning policy.
 - [Graph API and Marketing API version changelog](https://developers.facebook.com/docs/graph-api/changelog/versions/)
 - [Graph API overview](https://developers.facebook.com/docs/graph-api/overview/)
 
