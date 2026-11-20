@@ -28,7 +28,7 @@ Untrusted inputs include caller-supplied tenant IDs, identifiers, filters, event
 
 | Threat | Current control in source | Acceptance evidence still required |
 |---|---|---|
-| Cross-tenant object access / IDOR | Tenant-scoped repository helper, tenant IDs in domain collections, tenant membership checks and default-deny route guards | Exhaustive endpoint/query/export/background-worker isolation matrix; adversarial tests for every tenant-owned resource |
+| Cross-tenant object access / IDOR | Tenant-scoped repository helper, tenant IDs in domain collections, tenant membership checks, default-deny route guards, and active-parent-organization validation for location-scoped list access | Exhaustive endpoint/query/export/background-worker isolation matrix; adversarial tests for every tenant-owned resource, including inactive parent organizations and stale location memberships |
 | Privilege escalation / stale role | RBAC and ABAC checks; explicit allow required; explicit deny wins; scoped policy provisioning | Independent policy-engine review; scope/condition fuzzing; privilege-change and revocation race tests |
 | Legacy policy lockout | Dry-run-first ABAC backfill; conflict detection; per-policy majority transactions | Production dry-run evidence, approved counts, backup proof, controlled apply and post-apply authorization smoke tests |
 | Credential theft / session replay | Argon2 password hashing, JWT verification, refresh-token rotation/reuse revocation, MFA and rate-limit collections | Password/MFA abuse tests, key rotation drill, cookie/CSRF review, secret scan and independent penetration test |
