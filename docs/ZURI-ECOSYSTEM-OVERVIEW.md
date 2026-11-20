@@ -1,7 +1,7 @@
 # ZURI Ecosystem — Vision, Architecture and Programme Overview
 
 **Document status:** Baseline ecosystem reference (In Review)  
-**Programme owner:** Blockchain Innovations LTD  
+**Programme owner:** OIPTECH / ODEL Developers  
 **Repository:** openpayglobal/zurios  
 **Last updated:** 2026-11-20
 
