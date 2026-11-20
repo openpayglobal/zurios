@@ -43,10 +43,10 @@ app.get("/health/ready", async (_request, reply) => {
   return { status: "ready", database: "connected" };
 });
 
-// Authentication/bootstrap routes are registered only after MongoDB indexes are ready.
-// Tenant and Meta product routes remain disabled until tenant-scoped authorization
-// and provider-specific audit/webhook controls are implemented. MAC/MAD routes are
-// registered with platform permission checks in admin.ts.
+// All application routes are registered only after MongoDB indexes are ready.
+// Authenticated tenant-membership routes enforce active membership, role permissions
+// and recent MFA step-up on sensitive mutations. Meta product routes remain disabled
+// until provider-specific token, webhook, consent and audit controls are implemented.
 app.setNotFoundHandler((_request, reply) => {
   return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
