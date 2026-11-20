@@ -257,6 +257,28 @@ export function AdminData({ resource }: { resource: Resource }) {
       setData((current) => current ? { ...current, items: (current.items ?? []).filter((item) => String(item.id) !== sessionId) } : current);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not revoke session."); }
   }
+  async function prepareAuditArchive() {
+    const fromRaw = window.prompt("First audit sequence to include:");
+    if (fromRaw === null) return;
+    const toRaw = window.prompt("Last audit sequence to include:");
+    if (toRaw === null) return;
+    const fromSequence = Number(fromRaw), toSequence = Number(toRaw);
+    if (!Number.isSafeInteger(fromSequence) || !Number.isSafeInteger(toSequence) || fromSequence < 1 || toSequence < fromSequence || toSequence - fromSequence + 1 > 1000) {
+      setAuditResult("Enter a valid contiguous sequence range of at most 1,000 events.");
+      return;
+    }
+    setAuditAction("archive"); setAuditResult("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/audit-events/archive?fromSequence=" + fromSequence + "&toSequence=" + toSequence, { credentials: "include" });
+      if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Archive package preparation failed."); }
+      const blob = await response.blob(), objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a"); link.href = objectUrl; link.download = "mebumip-audit-" + fromSequence + "-" + toSequence + ".json"; link.click(); URL.revokeObjectURL(objectUrl);
+      const digest = response.headers.get("X-Audit-Archive-SHA256") ?? "unavailable";
+      setAuditResult("Prepared signed archive package for sequences " + fromSequence + "–" + toSequence + " (SHA-256 " + digest + "). It has not yet been written to independent immutable storage.");
+    } catch (cause) { setAuditResult(cause instanceof Error ? cause.message : "Archive package preparation failed."); }
+    finally { setAuditAction(""); }
+  }
+
   async function runAuditAction(action: "verify" | "export") {
     setAuditAction(action); setAuditResult("");
     try {
@@ -281,5 +303,5 @@ export function AdminData({ resource }: { resource: Resource }) {
   if (resource === "settings" && data.settings) return <div className="api-data"><h3>Runtime configuration · read only</h3><p>Safe configuration status only. Secret values are never returned to the browser.</p><div className="api-stats">{Object.entries(data.settings).map(([key, value]) => <span key={key}><b>{typeof value === "boolean" ? (value ? "Configured / enabled" : "Not configured / disabled") : Array.isArray(value) ? value.join(", ") : String(value)}</b>{key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase())}</span>)}</div><p>Change secrets and deployment-level settings through the approved secret manager and deployment configuration, not through the browser.</p></div>;
   if (resource === "sessions") return <div className="api-data"><h3>Your active sessions</h3><p>Review active sign-in sessions for this account. Device labels are based on the reported browser user-agent; IP addresses are never displayed.</p>
     {items.length === 0 ? <p>No active sessions found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Device / browser</th><th>Created</th><th>Expires</th><th>Action</th></tr></thead><tbody>{items.map((item, index) => { const id = String(item.id ?? ""); return <tr key={id || index}><td>{String(item.userAgent ?? "Unknown device")}{item.current ? <small>Current session</small> : null}</td><td>{item.createdAt ? new Date(String(item.createdAt)).toLocaleString() : ""}</td><td>{item.expiresAt ? new Date(String(item.expiresAt)).toLocaleString() : ""}</td><td>{item.current ? "Current" : <button type="button" onClick={() => void revokeSession(id)}>Revoke</button>}</td></tr>; })}</tbody></table></div>}</div>;
-  return <div className="api-data"><h3>Audit events · latest {items.length}</h3><div className="api-audit-actions"><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("verify")}>{auditAction === "verify" ? "Verifying…" : "Verify latest 500"}</button><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("export")}>{auditAction === "export" ? "Preparing…" : "Prepare export"}</button></div>{auditResult && <p role="status">{auditResult}</p>}{data.retention && <p>{data.retention}</p>}{items.length === 0 ? <p>No audit events found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Action</th><th>Actor</th><th>Outcome</th><th>Time</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item._id ?? index)}><td>{String(item.action ?? "")}</td><td>{String(item.actorUserId ?? "")}</td><td>{String(item.outcome ?? "")}</td><td>{item.occurredAt ? new Date(String(item.occurredAt)).toLocaleString() : ""}</td></tr>)}</tbody></table></div>}</div>;
+  return <div className="api-data"><h3>Audit events · latest {items.length}</h3><div className="api-audit-actions"><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("verify")}>{auditAction === "verify" ? "Verifying…" : "Verify latest 500"}</button><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("export")}>{auditAction === "export" ? "Preparing…" : "Prepare export"}</button><button type="button" disabled={auditAction !== ""} onClick={() => void prepareAuditArchive()}>{auditAction === "archive" ? "Preparing…" : "Prepare archive batch"}</button></div>{auditResult && <p role="status">{auditResult}</p>}{data.retention && <p>{data.retention}</p>}{items.length === 0 ? <p>No audit events found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Action</th><th>Actor</th><th>Outcome</th><th>Time</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item._id ?? index)}><td>{String(item.action ?? "")}</td><td>{String(item.actorUserId ?? "")}</td><td>{String(item.outcome ?? "")}</td><td>{item.occurredAt ? new Date(String(item.occurredAt)).toLocaleString() : ""}</td></tr>)}</tbody></table></div>}</div>;
 }
