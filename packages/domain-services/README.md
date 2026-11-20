@@ -37,3 +37,7 @@ This package implements the first transactional service layer for Inventory (6D)
 - Complete the 6A.6 security, isolation, backup/restore and independent acceptance gates before production use.
 
 All database operations assume a MongoDB replica set. The integration test suite uses MONGODB_TEST_URI and a disposable test database. The cross-domain integration test passed in Actions run #805.
+
+## Supply-chain carrier event ingestion
+
+`ingestCarrierTrackingEvent` is a provider-neutral adapter boundary for verified carrier callbacks. A provider adapter must resolve the carrier account to the correct tenant and organization, verify the provider-specific signature using an approved secret manager, and only then call the service. The service independently binds the event to the shipment's tenant, organization, carrier and tracking number; enforces optimistic shipment version and legal lifecycle transitions; requires proof-of-delivery for delivery; deduplicates provider event IDs; and commits the carrier event, shipment update, audit record and outbox event in one MongoDB transaction. No carrier-specific credentials, signature formats or live carrier network integration are included until a provider is selected.
