@@ -49,7 +49,7 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     const invalidBootstrap = await app.inject({
       method: "POST",
       url: "/v1/platform/bootstrap",
-      payload: { ...bootstrapPayload("intruder@example.test", `intruder-${process.pid}`), bootstrapToken: "incorrect-bootstrap-secret-2026" },
+      payload: { ...bootstrapPayload("intruder@example.test", `intruder-${process.pid}`), bootstrapToken: "incorrect-bootstrap-secret-2026x" },
     });
     assert.equal(invalidBootstrap.statusCode, 403);
 
