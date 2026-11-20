@@ -149,6 +149,13 @@ test("invitation acceptance and password login use active tenant membership", {s
   assert.equal(platformMe.json().principal.tenantId,"platform");
   const macQueue=await app.inject({method:"GET",url:"/platform/admin/access-requests?status=pending",headers:{authorization:"Bearer "+platformLoginSession.accessToken}});
   assert.equal(macQueue.statusCode,200);
+  const queuedAccessRequest=macQueue.json().data.find((item:any)=>item.emailNormalized==="prospective@example.test");
+  assert.ok(queuedAccessRequest);
+  const membershipsBeforeReview=await db.collection("memberships").countDocuments({userId:user.userId});
+  const reviewedAccessRequest=await app.inject({method:"PATCH",url:"/platform/admin/access-requests/"+queuedAccessRequest.requestId,headers:{authorization:"Bearer "+platformLoginSession.accessToken,"idempotency-key":"access-review-0001"},payload:{status:"approved",reason:"Approved for follow-up after organization verification."}});
+  assert.equal(reviewedAccessRequest.statusCode,200);
+  assert.equal(await db.collection("memberships").countDocuments({userId:user.userId}),membershipsBeforeReview);
+
   const platformSwitch=await app.inject({method:"POST",url:"/auth/workspace/switch",headers:{authorization:"Bearer "+platformLoginSession.accessToken},payload:{tenantId:tenant.tenantId}});
   assert.equal(platformSwitch.statusCode,200);
   const oldPlatformMe=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+platformLoginSession.accessToken}});
