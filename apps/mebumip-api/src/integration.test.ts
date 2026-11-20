@@ -100,6 +100,20 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(registered.statusCode, 201);
   const replayInvite = await app.inject({ method: "POST", url: "/v1/auth/register", payload: { token: invitationToken, email: "member@example.test", password: "Integration-Member-Password-2026!", displayName: "Invited Member" } });
   assert.equal(replayInvite.statusCode, 404);
+  clearTestMailOutbox();
+  const existingUserAdminInvite = await app.inject({ method: "POST", url: "/v1/mac/admin-invitations", headers, payload: { email: "member@example.test", role: "platform_operator" } });
+  assert.equal(existingUserAdminInvite.statusCode, 201);
+  const existingInviteToken = getTestMailOutbox().at(-1)?.text.match(/Invitation token: ([A-Za-z0-9_-]+)/)?.[1];
+  assert.ok(existingInviteToken);
+  const memberLogin = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "member@example.test", password: "Integration-Member-Password-2026!" } });
+  assert.equal(memberLogin.statusCode, 200);
+  const existingAdminAccept = await app.inject({ method: "POST", url: "/v1/mac/admin-invitations/accept", headers: { authorization: "Bearer " + memberLogin.json().accessToken }, payload: { token: existingInviteToken } });
+  assert.equal(existingAdminAccept.statusCode, 200);
+  assert.equal(existingAdminAccept.json().role, "platform_operator");
+  const cancellableInvite = await app.inject({ method: "POST", url: "/v1/mac/admin-invitations", headers, payload: { email: "cancelled-admin@example.test", role: "platform_auditor" } });
+  assert.equal(cancellableInvite.statusCode, 201);
+  const revokeAdminInvite = await app.inject({ method: "DELETE", url: "/v1/mac/admin-invitations/" + cancellableInvite.json().invitationId, headers });
+  assert.equal(revokeAdminInvite.statusCode, 204);
 
   const recoveryRequest = await app.inject({ method: "POST", url: "/v1/auth/password/recovery", payload: { email: "member@example.test" } });
   assert.equal(recoveryRequest.statusCode, 202);
