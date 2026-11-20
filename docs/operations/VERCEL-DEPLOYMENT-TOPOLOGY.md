@@ -23,6 +23,13 @@ Retired duplicate projects `web` and `web-ojqo` are no longer part of the deploy
 - Production and preview environment variables are separate. Never copy preview secrets into production automatically.
 - MongoDB connection and JWT/MFA secrets are configured only in the API project; they are never exposed to the Vite client.
 
+## Environment templates
+
+- [API environment template](../../apps/api/.env.example) documents required local variables without containing credentials.
+- [Web environment template](../../apps/web/.env.example) documents the public API origin.
+- Production secrets must be configured directly in Vercel's production environment. Never commit real values or copy branch-scoped preview credentials into production.
+- Configure exact CORS origins; do not use wildcard origins for credentialed requests.
+
 ## Release gates
 
 1. Verify the project, branch, commit and root directory.
