@@ -150,3 +150,6 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Platform administrator onboarding UI follow-through (2026-11-20):** the sign-in panel now supports invited platform administrator registration for new users using the emailed one-time token; authenticated existing users can accept an administrator invitation from the same panel. MAC owners can send, list and revoke pending invitations. New platform administrator registration and existing-user acceptance are covered by the MongoDB integration suite; final UI build verification is pending the newest CI run.
+
+
+**MAC tenant membership control follow-through (2026-11-20):** added platform-scoped tenant member and invitation endpoints so the MAC can administer tenants even when the platform administrator is not a member of that tenant. The MAC can list members and pending invitations, send tenant invitations, change member roles/status, remove memberships, and revoke invitations. Tenant-owner memberships are protected; every mutation requires platform tenant-write permission plus recent MFA step-up and emits a sequenced signed audit event. The tenant directory UI now includes member/invitation management. MongoDB integration tests cover MAC tenant membership listing, invitation send/revoke and member role update.
