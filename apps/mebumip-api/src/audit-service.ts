@@ -120,7 +120,7 @@ export async function verifyAuditChain(db: Db): Promise<{
       ...(typeof event.tenantId === "string" ? { tenantId: event.tenantId } : {}),
       outcome: event.outcome as AuditEventInput["outcome"],
       correlationId: String(event.correlationId),
-      ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as AuditEventInput["metadata"] } : {}),
+      ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
       sequence,
       previousHash: String(event.previousHash),
       occurredAt: event.occurredAt,
