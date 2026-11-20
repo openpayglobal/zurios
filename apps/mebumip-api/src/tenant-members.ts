@@ -126,6 +126,25 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     return reply.send({ status: "updated" });
   });
 
+  app.delete("/v1/tenants/:tenantId/invitations/:invitationId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    const { tenantId, invitationId } = request.params as { tenantId: string; invitationId: string };
+    if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(invitationId) || !hasTenantPermission(resolved.principal, tenantId, "tenant:members:write")) {
+      return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
+    }
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
+      return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    }
+    const result = await db.collection("tenantInvitations").updateOne(
+      { _id: new ObjectId(invitationId), tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
+      { $set: { revokedAt: new Date(), revokedBy: resolved.principal.userId } },
+    );
+    if (!result.matchedCount) return reply.code(404).send({ error: "PENDING_INVITATION_NOT_FOUND" });
+    await audit(db, resolved.principal.userId, request.id, "tenant.invitation.revoked", tenantId, invitationId);
+    return reply.code(204).send();
+  });
+
   app.delete("/v1/tenants/:tenantId/members/:userId", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
