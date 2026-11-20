@@ -195,3 +195,14 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - **Important migration boundary:** audit records created before this change have no sequence/hash/signature. They remain unverified until a dry-run/apply backfill is designed and approved. No historical audit rewrite or production migration has been run.
 - **Still open:** controlled legacy audit backfill, independent WORM/object-lock archive and restore verification, database role restrictions preventing update/delete, key rotation/escrow procedure and independent security review. The signing key protects new event integrity but does not alone make MongoDB storage immutable.
 - Fresh CI is required for this increment; prior passing workflows predate the signed-chain code.
+
+
+**Audit chain verification and migration tooling follow-through — 2026-11-20:**
+
+- MeBuMIP verification **#330** passed on commit `57d59253a52a541b9b720111cbb799d4b1bea602`: API typecheck, MongoDB integration tests, API build, web typecheck and web build.
+- Full monorepo CI **#1294** passed on the same commit: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
+- Added versioned audit signing key identifiers and previous-key keyring support so a controlled key rotation can retain verification of older signatures. Production requires the current signing key; previous keys must remain available until corresponding records are independently archived.
+- Added a dry-run-first legacy audit backfill service and CLI. It orders old events by timestamp/ObjectId, signs and sequences up to 5,000 records in a single transaction, and refuses mixed legacy/sequenced histories or invalid legacy fields. No backfill runs automatically.
+- Added integration tests for dry-run no-write behavior, successful backfill, verification, idempotent no-op and refusal of mixed histories.
+- Added MAC audit integrity display showing chain status, checked count, legacy unchained count and first invalid sequence.
+- The backfill, keyring, audit UI and final documentation commits are newer than #330/#1294 and require fresh verification.
