@@ -1,7 +1,8 @@
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
-import {coreCollections} from "./repositories.js";\nimport type {LocationDocument} from "./types.js";
+import {coreCollections} from "./repositories.js";
+import type {LocationDocument} from "./types.js";
 const schema=z.object({organizationId:z.string().min(1),code:z.string().min(1).max(40).regex(/^[A-Za-z0-9._-]+$/),name:z.string().min(2).max(150),type:z.enum(["site","store","warehouse","office","other"]),parentLocationId:z.string().optional(),timezone:z.string().default("Africa/Kampala"),address:z.record(z.string()).optional()});
 export async function createLocation(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession){
  const d=schema.parse(input),{parentLocationId,address,...rest}=d,c=coreCollections(db);
