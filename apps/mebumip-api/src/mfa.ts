@@ -55,3 +55,17 @@ export function verifyTotp(secret: string, token: string, now = Date.now()): boo
   }
   return false;
 }
+
+
+/** Generate one-time printable recovery codes. Persist only hashToken(code) values. */
+export function generateMfaRecoveryCodes(count = 10): string[] {
+  if (!Number.isInteger(count) || count < 1 || count > 20) throw new Error("INVALID_RECOVERY_CODE_COUNT");
+  return Array.from({ length: count }, () => {
+    const raw = randomBytes(8).toString("hex").toUpperCase();
+    return raw.match(/.{1,4}/g)!.join("-");
+  });
+}
+
+export function normalizeMfaRecoveryCode(code: string): string {
+  return code.replace(/-/g, "").trim().toUpperCase();
+}
