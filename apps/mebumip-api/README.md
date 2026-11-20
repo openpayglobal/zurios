@@ -42,7 +42,7 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: list and revoke the authenticated user’s sessions.
 - `POST /v1/auth/password/change`: changes password and revokes other sessions.
 - `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
-- `POST /v1/auth/step-up`: verifies TOTP for a five-minute privileged-action window.
+- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.\n- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
 Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persisted. Passwords use salted scrypt hashes.
 
