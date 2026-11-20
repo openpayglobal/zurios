@@ -33,7 +33,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    reply.header("Cache-Control","no-store");
    try{
     const body=accessRequestSchema.parse(request.body),ipHash=createHash("sha256").update(request.ip).digest("hex");
-    const result=await requestWorkspaceAccess(db,{...body,ipHash});
+    const result=await requestWorkspaceAccess(db,{email:body.email,displayName:body.displayName,organizationName:body.organizationName,...(body.requestNote?{requestNote:body.requestNote}:{}),ipHash});
     return reply.code(202).send(result);
    }catch(error){return failure(error,reply);}
   });
