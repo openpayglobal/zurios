@@ -279,3 +279,10 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Full monorepo CI **#1329** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
 - The MongoDB-backed authentication lifecycle test now exercises the complete basic cookie flow: login cookie issuance, cookie-only identity, missing-CSRF rejection, matching CSRF + trusted Origin logout, and post-logout rejection.
 - Cross-site browser behavior for `SameSite=None`, custom cookie domains and real production origins remains a deployment acceptance test.
+
+
+**Final cookie/CSRF documentation-head verification — 2026-11-20:**
+
+- MeBuMIP verification **#403** passed on documentation head `eb24beb6207bf0458b9932fbd4187391d3cec9ee`.
+- Full monorepo CI **#1330** passed on the same documentation head.
+- The underlying cookie/CSRF code and integration assertions passed on preceding code head `8fa7541d27ff1900b2c148db50f40a4d362c6f29` in MeBuMIP **#401** and monorepo **#1329**. The documentation follow-up did not change application code.
