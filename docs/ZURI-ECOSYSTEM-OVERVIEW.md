@@ -203,3 +203,8 @@ The full repository CI passed on commit `b65cda422aaa18158cc00bf8774b7bf54d65870
 The latest full-repository validation run (44746548613) passed both OpenAPI 3.1 lint steps, API route drift, monorepo typechecking, all tests and the monorepo build. The three workspace test suites reported 52 tests: 45 passed, 7 skipped and 0 failed. The MeBuMIP Phase 1 workflow (44746548651) passed API typecheck, 23 API tests, API build, web typecheck and web build. Both runs were in runner cleanup after all validation steps succeeded.
 
 The MeBuMIP audit archive work now includes signed package preparation, a MAC download action, archive-preparation audit logging, a provider-neutral immutable-storage contract and a researched provider comparison. It is not yet independently archived: no provider, region, retention schedule, legal-hold policy or credentials have been approved.
+
+
+## Latest complete verification — 2026-11-20
+
+On commit `d22b5a705d751595070533367a6b189677fca147`, repository CI run 44747048754 passed both OpenAPI 3.1 lint checks, route drift (32 paths, 20 idempotent mutations, 20 shared Zod request schemas), monorepo typecheck, all tests and build. Test suites reported 52 tests (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44747048522 passed API typecheck, 23 API tests (all passed), API build, web typecheck and web build. This is code verification only; production configuration, external Meta approvals and independent immutable archive storage remain open gates.
