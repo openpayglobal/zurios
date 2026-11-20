@@ -508,6 +508,7 @@ paths:
       responses:
         "202": {description: "Non-enumerating acknowledgement; no user, tenant or membership is created"}
         "400": {$ref: "#/components/responses/InvalidRequest"}
+        "503": {description: Access requests are disabled until an approved public privacy notice is configured}
   /auth/memberships/{membershipId}/accept:
     servers:
       - url: /
