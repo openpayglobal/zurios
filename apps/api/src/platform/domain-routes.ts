@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry,receivePurchaseOrder,createWorkflowDefinition,startWorkflowRun,decideWorkflowTask} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema,PurchaseOrderReceiptSchema,WorkflowDefinitionSchema,WorkflowRunStartSchema,WorkflowTaskDecisionSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry,receivePurchaseOrder,getOperationalAnalytics,createWorkflowDefinition,startWorkflowRun,decideWorkflowTask} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema,PurchaseOrderReceiptSchema,AnalyticsQuerySchema,WorkflowDefinitionSchema,WorkflowRunStartSchema,WorkflowTaskDecisionSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -887,6 +887,16 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   };
   app.post("/projects/time-entries/:timeEntryId/approve",async(request,reply)=>decideTime(request,reply,"approved"));
   app.post("/projects/time-entries/:timeEntryId/reject",async(request,reply)=>decideTime(request,reply,"rejected"));
+  app.get("/analytics/operational",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const query=AnalyticsQuerySchema.parse({...request.query as Record<string,unknown>,tenantId:p.tenantId});
+    const scope=await resolveOrganizationScope(db,p.tenantId,query.organizationId);
+    if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"analytics.report.read",scope);if(denied)return denied;
+    return await getOperationalAnalytics(db,query);
+   }catch(error){return sendError(error,reply);}
+  });
   app.get("/workflows",async(request)=>{
    const p=getPrincipal(request);
    const allowed=await authorizedOrganizationIds(db,request,p,"workflows.definition.read",p.organizationIds??[]);
