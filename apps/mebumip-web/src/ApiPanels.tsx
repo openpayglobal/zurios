@@ -86,9 +86,15 @@ export function AdminData({ resource }: { resource: Resource }) {
   const [stepUpMessage, setStepUpMessage] = useState("");
   const [stepUpBusy, setStepUpBusy] = useState(false);
   const [adminBusy, setAdminBusy] = useState("");
+  const [adminInviteEmail, setAdminInviteEmail] = useState("");
+  const [adminInviteRole, setAdminInviteRole] = useState("platform_auditor");
+  const [adminInviteMessage, setAdminInviteMessage] = useState("");
+  const [adminInviteBusy, setAdminInviteBusy] = useState(false);
+  const [pendingAdminInvitations, setPendingAdminInvitations] = useState<Array<Record<string, unknown>>>([]);
   useEffect(() => {
     let active = true;
     const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : resource === "sessions" ? "/v1/auth/sessions" : resource === "settings" ? "/v1/mac/settings" : "/v1/mac/audit-events?limit=50";
+    if (resource === "admins") fetch(API_BASE + "/v1/mac/admin-invitations", { credentials: "include" }).then((response) => response.ok ? response.json() : null).then((body) => { if (active && body) setPendingAdminInvitations(body.items ?? []); }).catch(() => undefined);
     fetch(API_BASE + path, { credentials: "include" })
       .then(async (response) => {
         const body = await response.json();
@@ -117,6 +123,18 @@ export function AdminData({ resource }: { resource: Resource }) {
     finally { setStepUpBusy(false); }
   }
 
+  async function invitePlatformAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setAdminInviteBusy(true); setAdminInviteMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/admin-invitations", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ email: adminInviteEmail, role: adminInviteRole }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before inviting administrators." : body.error ?? "Invitation failed.");
+      setAdminInviteEmail(""); setAdminInviteMessage("Invitation email sent to " + body.email + ". Expires " + new Date(body.expiresAt).toLocaleString() + ".");
+      const pending = await fetch(API_BASE + "/v1/mac/admin-invitations", { credentials: "include" });
+      if (pending.ok) setPendingAdminInvitations((await pending.json()).items ?? []);
+    } catch (cause) { setAdminInviteMessage(cause instanceof Error ? cause.message : "Invitation failed."); }
+    finally { setAdminInviteBusy(false); }
+  }
   async function updatePlatformAdmin(userId: string, changes: { role?: string; status?: string }) {
     setAdminBusy(userId); setStepUpMessage("");
     try {
@@ -130,6 +148,8 @@ export function AdminData({ resource }: { resource: Resource }) {
   }
   if (resource === "admins") return <div className="api-data"><h3>Platform administrators · live API</h3>
     <form className="api-auth" onSubmit={verifyAdminStepUp}><div><strong>Privileged action verification</strong><small>Enter the current six-digit authenticator code. Verification lasts five minutes.</small></div><input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="6-digit MFA code" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required/><button type="submit" disabled={stepUpBusy}>{stepUpBusy ? "Verifying…" : "Verify MFA"}</button></form>
+    <form className="api-auth" onSubmit={invitePlatformAdmin}><div><strong>Invite a platform administrator</strong><small>Requires platform-owner authorization and a recent MFA verification.</small></div><input type="email" placeholder="Administrator email" value={adminInviteEmail} onChange={(event) => setAdminInviteEmail(event.target.value)} required/><select value={adminInviteRole} onChange={(event) => setAdminInviteRole(event.target.value)}><option value="platform_admin">Platform administrator</option><option value="platform_operator">Platform operator</option><option value="platform_auditor">Platform auditor</option></select><button type="submit" disabled={adminInviteBusy}>{adminInviteBusy ? "Sending invitation…" : "Send invitation"}</button>{adminInviteMessage && <span role="status">{adminInviteMessage}</span>}</form>
+    {pendingAdminInvitations.length > 0 && <div className="api-data"><h4>Pending administrator invitations</h4>{pendingAdminInvitations.map((item) => <p key={String(item.id)}>{String(item.email)} · {String(item.role)} · expires {new Date(String(item.expiresAt)).toLocaleString()}</p>)}</div>}
     {stepUpMessage && <p role="status">{stepUpMessage}</p>}
     {items.length === 0 ? <p>No platform administrators found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Administrator</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item, index) => { const id = String(item.id ?? ""); const protectedOwner = item.status === "protected"; return <tr key={id || index}><td>{String(item.displayName ?? item.email ?? "")}<small>{String(item.email ?? "")}</small></td><td>{String(item.role ?? "")}</td><td>{String(item.status ?? "")}</td><td>{protectedOwner ? "Protected owner" : <div className="api-admin-actions"><button type="button" disabled={adminBusy === id} onClick={() => void updatePlatformAdmin(id, { role: "platform_admin" })}>Make admin</button><button type="button" disabled={adminBusy === id} onClick={() => void updatePlatformAdmin(id, { status: item.status === "suspended" ? "active" : "suspended" })}>{item.status === "suspended" ? "Reactivate" : "Suspend"}</button></div>}</td></tr>; })}</tbody></table></div>}
     <p>New administrator invitations and account creation remain pending. Every role or status change requires platform-owner authorization, MFA step-up and audit logging.</p></div>;
