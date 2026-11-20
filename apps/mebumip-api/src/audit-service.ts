@@ -271,7 +271,7 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         if (result.modifiedCount !== 1) throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
         previousHash = eventHash;
       }
-      await db.collection("auditCounters").updateOne(
+      await db.collection<{ _id: string; sequence: number; updatedAt: Date }>("auditCounters").updateOne(
         { _id: "global" },
         { $set: { sequence, updatedAt: new Date() } },
         { upsert: true, session },
