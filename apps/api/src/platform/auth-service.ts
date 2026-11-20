@@ -184,10 +184,11 @@ export async function refreshLogin(db:Db,config:AuthConfig,tenantId:string,sessi
 }
 export async function logout(db:Db,tenantId:string,sessionId:string,userId:string){await revokeSession(db,tenantId,sessionId,userId);}
 
-export async function selectWorkspace(db:Db,config:AuthConfig,userId:string,selectionToken:string,tenantId:string){
+export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:string,tenantId:string){
  const now=new Date(),tokenHash=hashOpaqueToken(selectionToken),c=coreCollections(db);
- const challenge=await db.collection("workspace_selection_challenges").findOne({userId,tokenHash,usedAt:{$exists:false},expiresAt:{$gt:now}});
- if(!challenge)throw new Error("WORKSPACE_SELECTION_INVALID_OR_EXPIRED");
+ const challenge=await db.collection("workspace_selection_challenges").findOne({tokenHash,usedAt:{$exists:false},expiresAt:{$gt:now}});
+ if(!challenge||typeof challenge.userId!=="string")throw new Error("WORKSPACE_SELECTION_INVALID_OR_EXPIRED");
+ const userId=challenge.userId;
  const [tenant,membership]=await Promise.all([
   c.tenants.findOne({tenantId,status:"active"}),
   c.memberships.findOne({tenantId,userId,status:"active"})
