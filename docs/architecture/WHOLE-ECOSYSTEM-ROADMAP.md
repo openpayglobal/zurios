@@ -298,3 +298,16 @@ The feature branch now includes an initial read-only operational analytics endpo
 - Replica-set integration tests cover tenant, organization and date-window isolation, plus API permission denial for an organization outside the caller's membership.
 
 **Explicit limitations:** this is an operational count dashboard, not a financial BI warehouse or statutory report. It does not yet calculate revenue, cash flow, margin, tax, inventory valuation or payroll statutory totals; it does not yet include POS sales because POS records need a verified organization linkage through terminal/location before they can be aggregated safely. A CSV export for the allowlisted metrics is now available through the protected API and web workspace. Scheduled reports, saved definitions, dimensional drill-down, data freshness SLAs and dashboard accessibility acceptance remain open.
+
+
+### 7.2 Supply chain and logistics — initial shipment lifecycle
+
+The branch now includes an initial shipment lifecycle service and authenticated API:
+- Create planned shipments between two active locations in the same tenant and organization.
+- List shipments only in organizations authorized for the caller.
+- Advance shipments through guarded states: planned → dispatched → in transit/delayed → delivered, with cancellation allowed only before terminal completion.
+- Require proof-of-delivery reference when marking a shipment delivered.
+- Enforce optimistic version checks and idempotent mutations; shipment state, audit event and outbox event commit in one MongoDB transaction.
+- Replica-set service tests cover location-scope rejection, replay, state transitions, missing delivery evidence and terminal-state protection; API tests cover create, dispatch, deliver and scoped listing.
+
+**Explicit limitations:** carrier master/onboarding, carrier API adapters, tracking webhooks/polling, route planning, freight cost/tax, customs documentation, shipment legs, partial delivery, returns and delivery exception workflows remain open. The current tracking number is recorded but is not yet verified with an external carrier.
