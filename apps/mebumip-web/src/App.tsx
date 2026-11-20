@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AdminData, AuthPanel } from "./ApiPanels";
 import {
   Activity, ArrowDownRight, ArrowUpRight, BadgeCheck, BarChart3, Bell,
   Blocks, Building2, CheckCircle2, ChevronDown, CircleAlert, Command,
@@ -86,7 +87,9 @@ function App() {
             <div className="date-pill"><Activity size={15}/> Programme status · 19 Nov 2026</div>
           </div>
 
+          <AuthPanel />
           {section === "dashboard" && <>
+            <AdminData resource="overview" />
             <div className="notice"><CircleAlert size={18}/><div><strong>Meta Business Portfolio not connected</strong><span>Live Meta integrations are intentionally deferred. The platform foundation can be developed and tested using mock adapters until the owner completes Meta setup.</span></div><span className="notice-tag">EXPECTED</span></div>
             <div className="metrics">
               <Metric icon={Building2} label="Registered businesses" value="0" detail="Tenant onboarding not enabled"/>
@@ -104,10 +107,10 @@ function App() {
 
           {section === "objectives" && <><div className="section-head"><div><h2>Objective delivery register</h2><p>Search and review the complete A–E scope.</p></div><div className="search"><Search size={15}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search objectives"/></div></div><div className="objective-grid">{filtered.map((item) => <ObjectiveCard key={item.id} item={item}/>)}</div><div className="panel phase-panel"><div className="panel-head"><div><h3>Full implementation roadmap</h3><p>Phase gates and current delivery status</p></div></div>{phases.map((phase) => <div className="phase-row" key={phase[0]}><div className="phase-number">{phase[0]}</div><div className="phase-copy"><strong>{phase[1]}</strong><small>{phase[3]}</small></div><Status>{phase[2]}</Status></div>)}</div></>}
 
-          {section === "tenants" && <EmptyState icon={Building2} title="Business directory" detail="Tenant registration and business workspaces are scheduled for Phase 5. The directory will list each customer's isolated workspace, membership, plan and Meta asset connections." phase="Phase 5 · Objective D"/>}
+          {section === "tenants" && <AdminData resource="tenants" />}
           {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Facebook, Instagram, advertising and WhatsApp connection flows will be enabled in their respective delivery phases. No customer credentials or Meta tokens are configured in this development shell." phase="Phases 2–4 · Objectives A–C"/>}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
-          {section === "security" && <EmptyState icon={ShieldEllipsis} title="Security & audit" detail="The MAC security area will provide platform roles, access policies, audit search, credential lifecycle controls and privileged-action approvals. These controls must be enforced by the API, not only by the interface." phase="Phase 1 foundation"/>}
+          {section === "security" && <AdminData resource="audit" />}
           {section === "settings" && <EmptyState icon={Settings2} title="Platform settings" detail="Global configuration, feature flags, integration policy and service settings will be managed here by explicitly authorized platform administrators." phase="Phase 1 foundation"/>}
 
           <footer><span>© 2026 Blockchain Innovations LTD</span><span>Zuri MeBuMIP · Development foundation · Not connected to Meta</span></footer>
