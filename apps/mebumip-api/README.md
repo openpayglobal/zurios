@@ -50,6 +50,8 @@ Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persist
 
 - `GET /v1/mad/overview`: authenticated platform metrics read; read-only aggregates only.
 - `GET /v1/mac/tenants`: platform tenant directory read.
+- `GET /v1/mac/admins`: platform administrator directory read.
+- `PATCH /v1/mac/admins/:userId`: platform-owner-only role/status updates for existing platform administrators; requires recent MFA step-up. The platform owner is immutable through this route. Suspending an administrator revokes their active sessions.
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
 - `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded.
 
