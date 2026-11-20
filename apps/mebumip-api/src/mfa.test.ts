@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createCipheriv } from "node:crypto";
 
 process.env.MFA_ENCRYPTION_KEY = "a".repeat(64);
-const { createMfaEncryptionService, decryptMfaSecret, encryptMfaSecret, generateTotpSecret, generateTotpCode, verifyTotp, generateMfaRecoveryCodes, normalizeMfaRecoveryCode } = await import("./mfa.js");
+const { createMfaEncryptionService, decryptMfaSecret, encryptMfaSecret, generateTotpSecret, generateTotpCode, verifyTotp, generateMfaRecoveryCodes, normalizeMfaRecoveryCode, getMfaEncryptionKeyId } = await import("./mfa.js");
 
 test("TOTP secrets are random and encrypted at rest with versioned ciphertext", () => {
   const secret = generateTotpSecret();
@@ -67,4 +67,10 @@ test("MFA recovery codes are unique, normalized, and bounded", () => {
   assert.match(codes[0]!, /^[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}$/);
   assert.equal(normalizeMfaRecoveryCode(codes[0]!), codes[0]!.replace(/-/g, ""));
   assert.throws(() => generateMfaRecoveryCodes(0), /INVALID_RECOVERY_CODE_COUNT/);
+});
+
+test("MFA ciphertext key identifiers distinguish legacy and versioned envelopes", () => {
+  assert.equal(getMfaEncryptionKeyId("v2.key-2026.iv.tag.body"), "key-2026");
+  assert.equal(getMfaEncryptionKeyId("iv.tag.body"), "legacy-unversioned");
+  assert.throws(() => getMfaEncryptionKeyId("malformed"), /INVALID_ENCRYPTED_MFA_SECRET/);
 });
