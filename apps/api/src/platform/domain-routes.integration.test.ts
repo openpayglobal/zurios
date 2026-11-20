@@ -55,7 +55,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "payments.intent.read","payments.intent.create","payments.refund.request",
    "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create",
    "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete",
-   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve"
+   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.approve"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -78,7 +78,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    tenantId:"tenant-a",policyId:"inventory-allow-"+index,key:"inventory-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"inventory-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
-  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve","projects.project.read","projects.time_entry.read","projects.time_entry.approve"].map((action,index)=>({
+  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve","projects.project.read","projects.time_entry.read","projects.time_entry.approve","workflows.definition.read","workflows.run.read","workflows.task.approve"].map((action,index)=>({
    tenantId:"tenant-a",policyId:"manager-allow-"+index,key:"manager-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"hr-manager-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
@@ -430,7 +430,42 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const projectEntries=await app.inject({method:"GET",url:"/v1/projects/project-api-001/time-entries",headers:managerHeaders});
   assert.equal(projectEntries.statusCode,200);
   assert.equal(projectEntries.json().data[0].status,"approved");
-  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=44);
+
+  const workflow=await app.inject({
+   method:"POST",url:"/v1/workflows",headers:{...headers,"idempotency-key":"workflow-definition-api-001"},
+   payload:{organizationId:"org-a",workflowId:"workflow-api-001",name:"Purchase approval",triggerType:"manual",version:1,status:"active",
+    steps:[{stepId:"finance-review",stepType:"approval",assigneeUserIds:["hr-manager-user"],requiredApprovals:1}]}
+  });
+  assert.equal(workflow.statusCode,201);
+  const workflowReplay=await app.inject({
+   method:"POST",url:"/v1/workflows",headers:{...headers,"idempotency-key":"workflow-definition-api-001"},
+   payload:{organizationId:"org-a",workflowId:"workflow-api-001",name:"Purchase approval",triggerType:"manual",version:1,status:"active",
+    steps:[{stepId:"finance-review",stepType:"approval",assigneeUserIds:["hr-manager-user"],requiredApprovals:1}]}
+  });
+  assert.deepEqual(workflowReplay.json(),workflow.json());
+  const workflowList=await app.inject({method:"GET",url:"/v1/workflows",headers:managerHeaders});
+  assert.equal(workflowList.statusCode,200);
+  assert.equal(workflowList.json().data.length,1);
+  const workflowRun=await app.inject({
+   method:"POST",url:"/v1/workflows/workflow-api-001/runs",headers:{...headers,"idempotency-key":"workflow-run-api-001"},
+   payload:{organizationId:"org-a",runId:"workflow-run-api-001",context:{purchaseOrderId:"PO-API-001"}}
+  });
+  assert.equal(workflowRun.statusCode,201);
+  const workflowRuns=await app.inject({method:"GET",url:"/v1/workflow-runs",headers:managerHeaders});
+  assert.equal(workflowRuns.statusCode,200);
+  assert.equal(workflowRuns.json().data.length,1);
+  const selfWorkflowApproval=await app.inject({
+   method:"POST",url:"/v1/workflow-tasks/workflow-run-api-001-finance-review/approve",headers:{...headers,"idempotency-key":"workflow-self-approve-api"},
+   payload:{organizationId:"org-a",reason:"Requester cannot approve their own workflow task",expectedVersion:0}
+  });
+  assert.equal(selfWorkflowApproval.statusCode,409);
+  const workflowApproval=await app.inject({
+   method:"POST",url:"/v1/workflow-tasks/workflow-run-api-001-finance-review/approve",headers:{...managerHeaders,"idempotency-key":"workflow-approve-api-001"},
+   payload:{organizationId:"org-a",reason:"Independent finance approval completed with evidence",expectedVersion:0}
+  });
+  assert.equal(workflowApproval.statusCode,200);
+  assert.equal(workflowApproval.json().runStatus,"completed");
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId:"tenant-a"})>=48);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId:"tenant-a"})>=3);
  }finally{
   await app.close();await db.dropDatabase();await client.close();
