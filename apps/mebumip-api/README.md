@@ -1,5 +1,7 @@
 # Zuri MeBuMIP API
 
+The versioned API contract is maintained at [docs/api/mebumip-openapi.yaml](../../docs/api/mebumip-openapi.yaml).
+
 Fastify API workspace for Zuri MeBuMIP.
 
 ## Local configuration
