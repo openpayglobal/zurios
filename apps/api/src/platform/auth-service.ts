@@ -235,7 +235,7 @@ export async function getUserWorkspaces(db:Db,userId:string){
 }
 
 export async function requestWorkspaceAccess(db:Db,input:{email:string;displayName:string;organizationName:string;requestNote?:string;ipHash:string}){
- const email=normalizeEmail(input.email),now=new Date(),bucket=Math.floor(now.getTime()/60*60*1000);
+ const email=normalizeEmail(input.email),now=new Date(),bucket=Math.floor(now.getTime()/(60*60*1000));
  const keys=[
   {key:createHash("sha256").update("access-email|"+email+"|"+input.ipHash+"|"+bucket).digest("hex"),limit:3},
   {key:createHash("sha256").update("access-ip|"+input.ipHash+"|"+bucket).digest("hex"),limit:10}
