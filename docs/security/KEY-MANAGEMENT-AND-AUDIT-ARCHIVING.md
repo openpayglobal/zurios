@@ -85,7 +85,7 @@ A re-sign operation must never silently rewrite historical event content or clai
 
 ## 5. Independent immutable audit archive
 
-Application HMAC signatures and sequential counters are tamper-evident but do not prevent a privileged database operator from deleting data. A provider-neutral, content-addressed archive package builder and immutable-sink contract now exist in the MeBuMIP API; receipts are stored with sequence-range indexes. An independent archive is still mandatory for production release, and no concrete storage adapter, provider, retention duration or legal-hold policy has been approved or configured.
+Application HMAC signatures and sequential counters are tamper-evident but do not prevent a privileged database operator from deleting data. A provider-neutral, content-addressed archive package builder and immutable-sink contract now exist in the MeBuMIP API; receipts are stored with sequence-range indexes. An independent archive is still mandatory for production release. The provider-neutral sink contract and signed archive-package preparation endpoint are implemented, and a provider comparison is documented; no concrete storage adapter, provider, retention duration or legal-hold policy has been approved or configured.
 
 Provider selection criteria:
 - WORM/object-lock retention and versioning;
