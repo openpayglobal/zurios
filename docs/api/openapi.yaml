@@ -1577,6 +1577,32 @@ paths:
         "200": {description: Time entry rejected}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /analytics/operational:
+    get:
+      tags: [Analytics]
+      operationId: getOperationalAnalytics
+      summary: Read organization-scoped operational metrics for a bounded reporting period
+      parameters:
+        - {name: organizationId, in: query, required: true, schema: {type: string}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+      responses:
+        "200":
+          description: Operational metrics scoped to the authorized organization and period
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenantId, organizationId, period, generatedAt, metrics]
+                properties:
+                  tenantId: {type: string}
+                  organizationId: {type: string}
+                  period: {type: object, properties: {from: {type: string, format: date-time}, to: {type: string, format: date-time}}}
+                  generatedAt: {type: string, format: date-time}
+                  metrics: {type: object, additionalProperties: {type: integer, minimum: 0}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Invalid reporting period or inactive organization}
   /workflows:
     get:
       tags: [Workflow Automation]
