@@ -80,8 +80,9 @@ The multi-tenant identity and session design is informed by the following curren
 - [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html): protect authentication and recovery paths, use risk-based reauthentication and require step-up authentication for sensitive operations where appropriate.
 - [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html): use protected session identifiers, server-side invalidation, rotation, expiry and explicit logout; do not rely on browser-close events for revocation.
 - [NIST SP 800-63B-4](https://csrc.nist.gov/pubs/sp/800/63/B/4/final), published July 2025: current digital identity guidance for authentication, authenticator management and session lifecycle. Apply the assurance level appropriate to the service risk; do not claim NIST conformance without a formal control assessment.
+- [OWASP Authorization Regression Testing Cheat Sheet](https://github.com/OWASP/CheatSheetSeries/blob/master/cheatsheets/Authorization_Regression_Testing_Cheat_Sheet.md): use two or more tenants with distinct seeded records and assert that broad reads, object lookups, list endpoints and mutations never disclose or alter another tenant's records. Treat a single cross-tenant identifier leak as a critical regression.
 
-Implementation follow-up: keep tenant scope in every tenant-owned query and cache key, enforce resource ownership on every access path, and re-establish authorization for delayed/background work. Add cross-tenant denial tests as each product module is activated.
+Implementation follow-up: keep tenant scope in every tenant-owned query and cache key, enforce resource ownership on every access path, and re-establish authorization for delayed/background work. Add cross-tenant denial tests as each product module is activated. Tests should use at least two tenants and include broad list/read, direct-object lookup, update/delete, cache-key separation and background-job reauthorization scenarios.
 
 
 ## Implementation checkpoint — 2026-11-20
