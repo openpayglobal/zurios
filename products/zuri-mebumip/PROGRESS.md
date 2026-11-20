@@ -250,3 +250,10 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Full monorepo CI **#1319** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
 - The integration suite verifies the signed archive manifest and all included event signatures, and rejects a modified archive event.
 - This remains a signed export file, not an independently retained WORM archive. Object-lock provisioning, retention policy, delete protection and restore tests are still required.
+
+
+**Production database topology guard — 2026-11-20:**
+
+- API startup now checks MongoDB `hello` topology and refuses to mark the service ready in production unless connected to a replica set or sharded cluster. This is required for transactional audit sequence allocation, append and legacy backfill.
+- Local development can continue using a standalone MongoDB; the stricter topology requirement is production-only.
+- This startup guard and the latest archive-export documentation require a fresh CI run.
