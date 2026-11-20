@@ -356,6 +356,30 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return {data:await c.tenants.find(query.status?{status:query.status}:{},{projection:{_id:0}}).sort({createdAt:-1}).limit(query.limit).toArray()};
    }catch(error){return fail(error,reply);}
   });
+  app.get("/platform/admin/access-requests",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.read")},async(request,reply)=>{
+   try{
+    const query=z.object({status:z.enum(["pending","reviewed","approved","declined"]).optional(),limit:z.coerce.number().int().min(1).max(200).default(100)}).parse(request.query);
+    return {data:await db.collection("access_requests").find(query.status?{status:query.status}:{},{projection:{_id:0}}).sort({requestedAt:-1}).limit(query.limit).toArray()};
+   }catch(error){return fail(error,reply);}
+  });
+  app.patch("/platform/admin/access-requests/:requestId",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.provision")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    const params=z.object({requestId:z.string().uuid()}).parse(request.params);
+    const body=z.object({status:z.enum(["reviewed","approved","declined"]),reason:z.string().trim().min(20).max(500)}).parse(request.body);
+    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.access-requests.review",async session=>{
+     const result=await db.collection("access_requests").updateOne(
+      {requestId:params.requestId,status:"pending"},
+      {$set:{status:body.status,reviewedAt:new Date(),reviewedBy:p.userId,reviewReason:body.reason,updatedAt:new Date()}},
+      {session}
+     );
+     if(!result.modifiedCount)throw new Error("ACCESS_REQUEST_NOT_PENDING");
+     await appendAuditEvent(db,{tenantId:"platform",actor:{userId:p.userId},action:"platform.access_request.reviewed",resourceType:"access_request",resourceId:params.requestId,outcome:"success",metadata:{status:body.status,reason:body.reason}},session);
+     await appendOutboxEvent(db,session,{tenantId:"platform",eventType:"platform.access_request.reviewed",aggregateType:"access_request",aggregateId:params.requestId,payload:{requestId:params.requestId,status:body.status}});
+     return {statusCode:200,body:{data:{requestId:params.requestId,status:body.status}}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
   app.post("/platform/admin/tenants",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.provision")},async(request,reply)=>{
    const p=principal(request);try{
     const body=provisionTenantSchema.parse(request.body);
