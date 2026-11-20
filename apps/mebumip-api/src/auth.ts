@@ -2,7 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId, type Db, type Document } from "mongodb";
 import { z } from "zod";
-import { config } from "./config.js";
+import { config, corsOrigins } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
@@ -21,23 +21,82 @@ const loginSchema = z.object({
   password: z.string().min(1).max(256),
 });
 
+const SESSION_COOKIE = "mebumip_session";
+const CSRF_COOKIE = "mebumip_csrf";
+
 function safeSecretEqual(candidate: string, expected: string): boolean {
   const left = createHash("sha256").update(candidate).digest();
   const right = createHash("sha256").update(expected).digest();
   return timingSafeEqual(left, right);
 }
 
+function readCookie(request: FastifyRequest, name: string): string | null {
+  const header = request.headers.cookie;
+  if (typeof header !== "string") return null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 0) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    try { return decodeURIComponent(part.slice(separator + 1).trim()); } catch { return null; }
+  }
+  return null;
+}
+
+function cookiePolicy(maxAgeSeconds: number): string {
+  const sameSite = config.SESSION_COOKIE_SAME_SITE === "strict" ? "Strict" : config.SESSION_COOKIE_SAME_SITE === "none" ? "None" : "Lax";
+  const secure = config.NODE_ENV === "production" || sameSite === "None";
+  const domain = config.SESSION_COOKIE_DOMAIN ? "; Domain=" + config.SESSION_COOKIE_DOMAIN : "";
+  return "Path=/; SameSite=" + sameSite + "; Max-Age=" + maxAgeSeconds + (secure ? "; Secure" : "") + domain;
+}
+
+function setSessionCookies(reply: FastifyReply, token: string, csrfToken: string, expiresAt: Date): void {
+  const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  const policy = cookiePolicy(maxAge);
+  reply.header("Set-Cookie", [
+    SESSION_COOKIE + "=" + encodeURIComponent(token) + "; HttpOnly; " + policy,
+    CSRF_COOKIE + "=" + encodeURIComponent(csrfToken) + "; " + policy,
+  ]);
+}
+
+function clearSessionCookies(reply: FastifyReply): void {
+  const policy = cookiePolicy(0);
+  reply.header("Set-Cookie", [
+    SESSION_COOKIE + "=; HttpOnly; " + policy,
+    CSRF_COOKIE + "=; " + policy,
+  ]);
+}
+
 export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise<{ principal: Principal; sessionId: ObjectId; stepUpUntil?: Date } | null> {
   const authorization = request.headers.authorization;
-  if (!authorization?.startsWith("Bearer ")) return null;
-  const token = authorization.slice(7);
-  if (token.length < 40 || token.length > 200) return null;
+  const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null;
+  const cookieToken = bearerToken ? null : readCookie(request, SESSION_COOKIE);
+  const token = bearerToken ?? cookieToken;
+  if (!token || token.length < 40 || token.length > 200) return null;
   const session = await db.collection("sessions").findOne({
     tokenHash: hashToken(token),
     revokedAt: { $exists: false },
     expiresAt: { $gt: new Date() },
   });
   if (!session || typeof session.userId !== "string" || !ObjectId.isValid(session.userId)) return null;
+
+  if (cookieToken) {
+    const method = request.method.toUpperCase();
+    if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
+      const csrfCookie = readCookie(request, CSRF_COOKIE);
+      const csrfHeader = request.headers["x-csrf-token"];
+      const origin = request.headers.origin;
+      if (
+        !csrfCookie ||
+        typeof csrfHeader !== "string" ||
+        !safeSecretEqual(csrfCookie, csrfHeader) ||
+        typeof session.csrfTokenHash !== "string" ||
+        !safeSecretEqual(hashToken(csrfCookie), session.csrfTokenHash) ||
+        typeof origin !== "string" ||
+        !corsOrigins.includes(origin)
+      ) return null;
+    }
+  }
+
   const user = await db.collection("users").findOne({ _id: new ObjectId(session.userId), status: "active" });
   if (!user) return null;
   const memberships = await db.collection("memberships").find({ userId: String(user._id), status: "active" }).toArray();
