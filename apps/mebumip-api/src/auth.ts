@@ -256,8 +256,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       createdAt: now,
       expiresAt,
     });
-    setSessionCookies(reply, token, csrfToken, expiresAt);
     await writeAudit(db, request, String(user._id), "auth.session.created", "session", "success");
+    setSessionCookies(reply, token, csrfToken, expiresAt);
     const response = { tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } };
     return reply.send(config.NODE_ENV === "production" ? response : { ...response, accessToken: token });
   });
