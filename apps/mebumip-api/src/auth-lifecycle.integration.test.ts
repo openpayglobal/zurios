@@ -176,7 +176,7 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     const csrfPart = cookieParts.find((value) => value.startsWith("mebumip_csrf="));
     if (!sessionPart || !csrfPart) throw new Error("Expected session and CSRF cookies");
     const cookieHeader = sessionPart.split(";")[0] + "; " + csrfPart.split(";")[0];
-    const csrfToken = decodeURIComponent(csrfPart.slice("mebumip_csrf=".length).split(";")[0]);
+    const csrfToken = decodeURIComponent(csrfPart.slice("mebumip_csrf=".length).split(";")[0] ?? "");
     assert.equal((await app.inject({ method: "GET", url: "/v1/auth/me", headers: { cookie: cookieHeader } })).statusCode, 200);
     assert.equal((await app.inject({ method: "POST", url: "/v1/auth/logout", headers: { cookie: cookieHeader, origin: "http://localhost:5174" } })).statusCode, 401);
     assert.equal((await app.inject({ method: "POST", url: "/v1/auth/logout", headers: { cookie: cookieHeader, origin: "http://localhost:5174", "x-csrf-token": csrfToken } })).statusCode, 204);
