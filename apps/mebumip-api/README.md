@@ -10,10 +10,12 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
 - `AUDIT_SIGNING_KEY`: at least 32 characters; required in production. HMAC-SHA256 signs newly created audit events. Keep it in a secret manager and back it up separately from MongoDB.
 - `RESEND_API_KEY` and `MAIL_FROM`: required in production for invitation and password-recovery delivery. The sender address must belong to a verified sending domain in Resend. Never commit these values.
-- `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
+- `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
+- `SESSION_COOKIE_SAME_SITE`: `Strict`, `Lax` (default) or `None`; `None` is appropriate only for cross-site HTTPS deployments.
+- `TRUSTED_PROXY_CIDRS`: optional comma-separated proxy IPs/CIDRs. Set only to known reverse proxies so IP-based rate limits do not trust spoofed forwarded headers.
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
-The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
+The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Configure `CORS_ORIGINS` to the exact frontend origins. Production must terminate TLS, use secure cookies, and configure only trusted proxy CIDRs when deployed behind a reverse proxy. Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
 
 ## Initial owner bootstrap
 
