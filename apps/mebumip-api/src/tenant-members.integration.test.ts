@@ -6,6 +6,7 @@ import { hashToken, newOpaqueToken } from "./security.js";
 import { hashPassword } from "./passwords.js";
 
 process.env.NODE_ENV = "test";
+process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-2026-not-production";
 const { registerAuthRoutes } = await import("./auth.js");
 const { registerTenantMemberRoutes } = await import("./tenant-members.js");
 const { ensureMeBuMIPIndexes } = await import("./database.js");
