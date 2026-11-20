@@ -94,3 +94,7 @@ No backup or restore drill has been claimed as completed by this implementation 
 - [ ] Release owner signs the deployment and rollback checklist.
 
 Until every applicable item is evidenced, 6A.6 remains **acceptance pending** and business modules must not be described as production-ready.
+
+## 8. Webhook worker deployment boundary
+
+A separately runnable API worker entry point now consumes the durable webhook queue. It uses leased claims, bounded retries and dead-letter behavior from the core delivery service. The initial secret adapter accepts only `env://ZURI_WEBHOOK_SECRET_<NAME>` references and reads values injected at runtime; it rejects arbitrary environment names and non-environment URI schemes, and enforces a 32-character minimum. This allows a deployment platform's secret manager to inject values without persisting plaintext in MongoDB. It is not yet a provider-specific Vault/KMS integration, and no worker deployment or production secret configuration is asserted. Production acceptance still requires a named secret-manager integration, egress/DNS-rebinding review, worker health/queue-age alerts, and crash/restart delivery tests.
