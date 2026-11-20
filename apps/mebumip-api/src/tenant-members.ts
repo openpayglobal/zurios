@@ -44,6 +44,9 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     if (!ObjectId.isValid(tenantId) || !hasTenantPermission(resolved.principal, tenantId, "tenant:members:write")) {
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
+      return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    }
     const parsed = invitationSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
     const email = parsed.data.email.trim().toLowerCase();
@@ -97,7 +100,7 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
       { $set: { acceptedAt: new Date(), acceptedBy: resolved.principal.userId } },
     );
     if (accepted.modifiedCount !== 1) return reply.code(409).send({ error: "INVITATION_ALREADY_USED" });
-    await audit(db, resolved.principal.userId, request.id, "tenant.invitation.accepted", invitation.tenantId, String(membership.upsertedId ?? membership.upsertedId));
+    await audit(db, resolved.principal.userId, request.id, "tenant.invitation.accepted", invitation.tenantId, resolved.principal.userId);
     return reply.send({ status: "accepted", tenantId: invitation.tenantId, role: invitation.role });
   });
 
@@ -109,6 +112,9 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
     if (userId === resolved.principal.userId) return reply.code(409).send({ error: "SELF_ROLE_CHANGE_NOT_ALLOWED" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
+      return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    }
     const parsed = updateSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
     const result = await db.collection("memberships").updateOne(
@@ -126,6 +132,9 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     const { tenantId, userId } = request.params as { tenantId: string; userId: string };
     if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId) || !hasTenantPermission(resolved.principal, tenantId, "tenant:members:write")) {
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
+    }
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
+      return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
     }
     const result = await db.collection("memberships").updateOne(
       { tenantId, userId, role: { $ne: "tenant_owner" }, status: "active" },
