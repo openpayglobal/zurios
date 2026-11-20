@@ -1,10 +1,10 @@
 import {createHash} from "node:crypto";
 import type {Db} from "mongodb";
 import {appendOutboxEvent,runIdempotentMutation} from "@zuri/core-platform";
-import {CarrierTrackingEventSchema} from "@zuri/domain-contracts";
+import {CarrierTrackingEventSchema,type CarrierTrackingEvent} from "@zuri/domain-contracts";
 import {auditDomainMutation} from "./audit.js";
 
-export type CarrierTrackingSignatureVerifier=(input:{tenantId:string;carrierId:string;trackingNumber:string;providerEventId:string;signature:string})=>Promise<boolean>;
+export type CarrierTrackingSignatureVerifier=(input:{event:CarrierTrackingEvent;signature:string})=>Promise<boolean>;
 
 const transitions:Record<string,string[]>={planned:["dispatched","cancelled"],dispatched:["in_transit","delayed","delivered","cancelled"],in_transit:["delayed","delivered","cancelled"],delayed:["in_transit","delivered","cancelled"]};
 
@@ -16,7 +16,7 @@ const transitions:Record<string,string[]>={planned:["dispatched","cancelled"],di
 export async function ingestCarrierTrackingEvent(db:Db,input:unknown,signature:string,verifySignature:CarrierTrackingSignatureVerifier){
  const event=CarrierTrackingEventSchema.parse(input);
  if(!signature||signature.length>2048)throw new Error("CARRIER_SIGNATURE_INVALID");
- const verified=await verifySignature({tenantId:event.tenantId,carrierId:event.carrierId,trackingNumber:event.trackingNumber,providerEventId:event.providerEventId,signature});
+ const verified=await verifySignature({event,signature});
  if(!verified)throw new Error("CARRIER_SIGNATURE_INVALID");
  const actorId="carrier:"+event.carrierId;
  const key="carrier-event-"+createHash("sha256").update(event.carrierId+":"+event.providerEventId).digest("hex");
