@@ -147,3 +147,14 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - The bootstrap lease is an application-level concurrency guard, not a substitute for the unique owner index or a transactional deployment environment.
 
 **Verification:** the new integration test and bootstrap guard are committed to `feat/mebumip-phase1-security-hardening`. The latest Actions run must pass before this increment is treated as verified. Phase 1 remains **In progress**; production mail delivery, independent immutable archive/WORM storage, deployment-specific cookie/session hardening, backup/restore and independent security review remain release gates.
+
+
+**Bootstrap and session lifecycle verification — 2026-11-20:**
+
+- The first-owner bootstrap now serializes concurrent requests using a unique MongoDB lease. The partial unique platform-owner index remains the final database invariant. Failed hashing or partial account/tenant creation releases the lease and removes created records; completed bootstrap state prevents another owner bootstrap.
+- Session refresh is now single-use under concurrency: a candidate replacement session is inserted, the source session is atomically revoked only if still active, and losing refresh requests delete their candidate session. Audit-write failure triggers compensating rollback of the candidate and source rotation.
+- MongoDB integration coverage now includes concurrent bootstrap (exactly one success), invalid bootstrap secret, owner/tenant/membership persistence, bad and successful login, authenticated identity, session inventory, session revocation, concurrent refresh replay, password-change session revocation, old-password rejection and logout.
+- Dedicated MeBuMIP verification run **#232** passed on commit `d1383e44406d62d7cb2fcef2336c2b41f9624b64`: API typecheck, API tests (**15 passed, 0 failed, 0 skipped**), API build, web typecheck and web build all succeeded. The MongoDB 7 replica-set-backed integration tests ran (not skipped).
+- Full monorepo CI run **#1246** is validating the same head; record its final result separately before claiming the complete monorepo pipeline passed.
+
+**Phase 1 remains In progress.** This evidence closes the code-side bootstrap/session test increment only. Production email provider configuration, independent immutable audit archive and database-role restrictions, exhaustive tenant-isolation review, backup/restore drill, production session/deployment review and independent security acceptance remain open.
