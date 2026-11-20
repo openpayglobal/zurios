@@ -110,3 +110,19 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 | Production session/security architecture | Not complete | Current browser bearer token remains in sessionStorage. Production needs HttpOnly Secure SameSite cookie/BFF, CSRF/origin policy, proxy trust review, device/session metadata, recovery delivery, secrets rotation and deployment security review. |
 
 **Phase 1 decision:** remain **In progress**. No closure or production-readiness claim is authorized until all seven gates are evidenced as complete.
+
+
+## Phase 1 implementation continuation — 2026-11-20
+
+**MongoDB-backed security workflow coverage added on `feat/mebumip-phase1-security-hardening`:**
+
+- Added a real MongoDB integration test that creates isolated tenant fixtures and exercises the Fastify invitation/member endpoints against persisted users, memberships, sessions, invitations and audit events.
+- Verified the exact-tenant boundary: a valid owner session for Tenant A receives `403` when reading Tenant B's member directory.
+- Verified invitation creation, invited-user registration, membership persistence, accepted-invitation state, audit persistence and rejection of registration replay.
+- Extended the same database-backed test to consume an MFA recovery code for step-up, reject reuse of that code, reset the factor with a second unused code plus the current password, and verify active-session revocation and removal of stored recovery hashes.
+- Updated the dedicated Phase 1 GitHub Actions workflow to start a MongoDB 7 replica set and provide `MONGODB_TEST_URI`; the integration test is skipped only when that URI is absent, and is enabled in this workflow.
+- Recovery codes and factor reset were already implemented in the merged Phase 1 foundation; this increment adds route-level database evidence rather than claiming that the feature was newly implemented.
+
+**Verification state:** implementation committed to the new branch; remote workflow results still need to be observed. Trusted email provider integration, audit tamper-evidence/archive, secure production browser session architecture, backup/restore, independent security review and production deployment remain open. Phase 1 remains **In progress**.
+
+**Objective traceability:** objectives A–E remain intentionally deferred to their planned Meta integration phases; no Meta credentials or live integrations were introduced by this security-hardening increment.
