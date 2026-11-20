@@ -12,7 +12,7 @@ export async function getOperationalAnalytics(db:Db,input:unknown){
   count("erp_purchase_orders"),count("hr_employees"),count("hr_employees",{status:"active"}),
   count("assets"),count("assets",{status:"active"}),count("maintenance_work_orders",{status:"open"}),
   count("projects"),count("projects",{status:"active"}),count("crm_accounts"),
-  count("crm_opportunities",{status:{$nin:["won","lost","closed"]}}),
+  count("crm_opportunities",{stage:{$nin:["won","lost"]}}),
   count("payment_intents",{status:{$in:["pending","authorized"]}}),count("payroll_runs")
  ]);
  return {tenantId:query.tenantId,organizationId:query.organizationId,period:{from:query.from,to:query.to},generatedAt:new Date().toISOString(),metrics:{invoices,openInvoices,purchaseOrders,employees,activeEmployees,assets,activeAssets,openMaintenanceOrders,projects,activeProjects,crmAccounts,openOpportunities,pendingPayments,payrollRuns}};
