@@ -12,7 +12,7 @@ const envSchema = z.object({
   TRUSTED_PROXY_CIDRS: z.string().optional(),
   PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
-  MFA_ENCRYPTION_KEYRING: z.string().optional(),
+  MFA_ENCRYPTION_KEYRING: z.string().max(16384).optional(),
   MFA_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   AUDIT_SIGNING_KEY: z.string().min(32).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
@@ -32,6 +32,7 @@ const parsed = envSchema.superRefine((value, context) => {
       const parsedKeyring: unknown = JSON.parse(value.MFA_ENCRYPTION_KEYRING);
       if (!parsedKeyring || typeof parsedKeyring !== "object" || Array.isArray(parsedKeyring)) throw new Error("MFA key ring must be a JSON object");
       keyring = parsedKeyring as Record<string, unknown>;
+      if (Object.keys(keyring).length < 1 || Object.keys(keyring).length > 20) throw new Error("MFA key ring must contain between 1 and 20 keys");
       for (const [keyId, key] of Object.entries(keyring)) {
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Each MFA key-ring entry must have a valid identifier and 32-byte hex key");
       }
