@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {JournalEntrySchema,PosSaleSchema,StockMovementSchema,DomainEventEnvelopeSchema} from "./index.js";
+import {JournalEntrySchema,PosSaleSchema,StockMovementSchema,DomainEventEnvelopeSchema,CarrierTrackingEventSchema} from "./index.js";
 
 test("ERP journal entries require balanced debit and credit lines",()=>{
  const base={tenantId:"tenant-a",idempotencyKey:"journal-0000001",entryNumber:"JE-1",fiscalPeriodId:"FY-2026-11",sourceType:"manual",sourceId:"source-1",currency:"UGX",status:"posted",postedAt:"2026-11-19T08:00:00.000Z",lines:[
@@ -68,4 +68,13 @@ test("Inventory valuation and reorder levels preserve arithmetic invariants",()=
  const policy={tenantId:"tenant-a",warehouseId:"warehouse-a",sku:"SKU-1",minimumQuantityMilli:1000,reorderQuantityMilli:3000,maximumQuantityMilli:5000,leadTimeDays:7};
  assert.equal(ReorderPolicySchema.safeParse(policy).success,true);
  assert.equal(ReorderPolicySchema.safeParse({...policy,reorderQuantityMilli:6000}).success,false);
+});
+
+test("carrier tracking contracts require delivery evidence and exclude internal database versions",()=>{
+ const event={tenantId:"tenant-a",organizationId:"org-a",shipmentId:"shipment-1",carrierId:"carrier-a",trackingNumber:"TRACK-1",providerEventId:"provider-event-1",status:"in_transit",reason:"Carrier scan received",occurredAt:"2026-11-20T10:00:00.000Z"};
+ assert.equal(CarrierTrackingEventSchema.safeParse(event).success,true);
+ assert.equal(CarrierTrackingEventSchema.safeParse({...event,status:"delivered"}).success,false);
+ assert.equal(CarrierTrackingEventSchema.safeParse({...event,status:"delivered",proofOfDeliveryRef:"pod://shipment-1"}).success,true);
+ assert.equal(CarrierTrackingEventSchema.safeParse({...event,expectedShipmentVersion:7}).success,false);
+ assert.equal(CarrierTrackingEventSchema.safeParse({...event,proofOfDeliveryRef:"pod://shipment-1"}).success,false);
 });
