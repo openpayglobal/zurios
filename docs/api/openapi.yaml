@@ -57,6 +57,8 @@ tags:
     description: Asset register, straight-line depreciation inputs and maintenance work orders
   - name: Project Management
     description: Organization-scoped projects, tasks and approved timesheets
+  - name: Analytics
+    description: Organization-scoped, period-bounded operational reporting metrics
   - name: Workflow Automation
     description: Organization-scoped approval workflow definitions, runs and multi-approver tasks
 paths:
