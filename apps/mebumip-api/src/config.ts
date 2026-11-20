@@ -26,8 +26,24 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && (!value.RESEND_API_KEY || !value.MAIL_FROM)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["RESEND_API_KEY"], message: "RESEND_API_KEY and MAIL_FROM are required in production" });
   }
-  if (value.NODE_ENV === "production" && !value.MFA_ENCRYPTION_KEY) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEY"], message: "MFA_ENCRYPTION_KEY is required in production" });
+  let keyring: Record<string, unknown> | undefined;
+  if (value.MFA_ENCRYPTION_KEYRING) {
+    try {
+      const parsedKeyring: unknown = JSON.parse(value.MFA_ENCRYPTION_KEYRING);
+      if (!parsedKeyring || typeof parsedKeyring !== "object" || Array.isArray(parsedKeyring)) throw new Error("MFA key ring must be a JSON object");
+      keyring = parsedKeyring as Record<string, unknown>;
+      for (const [keyId, key] of Object.entries(keyring)) {
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Each MFA key-ring entry must have a valid identifier and 32-byte hex key");
+      }
+      if (!value.MFA_ENCRYPTION_ACTIVE_KEY_ID || !Object.hasOwn(keyring, value.MFA_ENCRYPTION_ACTIVE_KEY_ID)) throw new Error("MFA_ENCRYPTION_ACTIVE_KEY_ID must identify a key in MFA_ENCRYPTION_KEYRING");
+    } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEYRING"], message: error instanceof Error ? error.message : "Invalid MFA key ring" });
+    }
+  } else if (value.MFA_ENCRYPTION_ACTIVE_KEY_ID) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_ACTIVE_KEY_ID"], message: "An active key ID requires MFA_ENCRYPTION_KEYRING" });
+  }
+  if (value.NODE_ENV === "production" && !value.MFA_ENCRYPTION_KEY && !value.MFA_ENCRYPTION_KEYRING) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEY"], message: "MFA_ENCRYPTION_KEY or MFA_ENCRYPTION_KEYRING is required in production" });
   }
   if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
