@@ -28,7 +28,7 @@ export function registerDatabaseRateLimit(app: FastifyInstance, db: Db): void {
     const now = Date.now();
     const windowStart = Math.floor(now / policy.windowMs) * policy.windowMs;
     const key = clientKey(request, windowStart);
-    const counters = db.collection("rateLimitCounters");
+    const counters = db.collection<{ _id: string; count?: number; expiresAt?: Date }>("rateLimitCounters");
     await counters.updateOne(
       { _id: key },
       { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date(windowStart + policy.windowMs * 2) } },
