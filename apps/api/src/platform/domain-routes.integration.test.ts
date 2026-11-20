@@ -40,6 +40,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   await db.collection("locations").insertMany([
    {tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",status:"active"},
    {tenantId:"tenant-a",locationId:"loc-b",organizationId:"org-b",status:"active"},
+   {tenantId:"tenant-a",locationId:"loc-dest",organizationId:"org-a",status:"active"},
    {tenantId:"tenant-b",locationId:"loc-secret",organizationId:"org-secret",status:"active"}
   ]);
   const permissions=[
@@ -55,7 +56,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "payments.intent.read","payments.intent.create","payments.refund.request",
    "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create",
    "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete",
-   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.read","workflows.task.approve","analytics.report.read"
+   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.read","workflows.task.approve","analytics.report.read","supply_chain.shipment.read","supply_chain.shipment.create","supply_chain.shipment.update"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -444,6 +445,25 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   assert.equal(analyticsCsv.statusCode,200);
   assert.match(analyticsCsv.headers["content-type"]??"",/text\/csv/);
   assert.match(analyticsCsv.body,/invoices,2/);
+  const shipmentCreate=await app.inject({
+   method:"POST",url:"/v1/shipments",headers:{...headers,"idempotency-key":"shipment-api-create-001"},
+   payload:{organizationId:"org-a",shipmentId:"shipment-api-001",referenceType:"purchase_order",referenceId:"PO-API-001",carrierId:"carrier-api-001",trackingNumber:"TRACK-API-001",originLocationId:"loc-a",destinationLocationId:"loc-dest",expectedDeliveryAt:"2026-11-25T12:00:00.000Z"}
+  });
+  assert.equal(shipmentCreate.statusCode,201);
+  const shipmentDispatch=await app.inject({
+   method:"POST",url:"/v1/shipments/shipment-api-001/status",headers:{...headers,"idempotency-key":"shipment-api-dispatch-001"},
+   payload:{organizationId:"org-a",status:"dispatched",reason:"Carrier collected the sealed consignment",occurredAt:"2026-11-20T10:00:00.000Z",expectedVersion:0}
+  });
+  assert.equal(shipmentDispatch.statusCode,200);
+  const shipmentDeliver=await app.inject({
+   method:"POST",url:"/v1/shipments/shipment-api-001/status",headers:{...headers,"idempotency-key":"shipment-api-deliver-001"},
+   payload:{organizationId:"org-a",status:"delivered",reason:"Consignee accepted and signed for delivery",occurredAt:"2026-11-21T12:00:00.000Z",expectedVersion:1,proofOfDeliveryRef:"pod://api-signed-document"}
+  });
+  assert.equal(shipmentDeliver.statusCode,200);
+  assert.equal(shipmentDeliver.json().status,"delivered");
+  const shipmentList=await app.inject({method:"GET",url:"/v1/shipments",headers});
+  assert.equal(shipmentList.statusCode,200);
+  assert.equal(shipmentList.json().data.length,1);
   const analyticsDenied=await app.inject({method:"GET",url:"/v1/analytics/operational?organizationId=org-b&from=2026-11-01T00%3A00%3A00.000Z&to=2026-11-30T23%3A59%3A59.999Z",headers});
   assert.equal(analyticsDenied.statusCode,403);
   const workflow=await app.inject({
