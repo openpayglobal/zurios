@@ -184,6 +184,7 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
 
     const auditActions = await db.collection("auditEvents").distinct("action");
     assert.ok(auditActions.includes("platform.bootstrap.completed"));
+    assert.equal(await db.collection("auditEvents").countDocuments({ action: "platform.bootstrap.completed" }), 1);
     assert.ok(auditActions.includes("platform.bootstrap.denied"));
     assert.ok(auditActions.includes("auth.login.denied"));
     assert.ok(auditActions.includes("auth.session.rotated"));
