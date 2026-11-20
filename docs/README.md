@@ -28,6 +28,10 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 | MeBuMIP product | [products/zuri-mebumip/](../products/zuri-mebumip/README.md) | Detailed product-specific documentation |
 | CI workflows | [../.github/workflows/](../.github/workflows/) | Automated engineering verification |
 
+## Security engineering standards
+
+- [Key Management and Audit Archiving](./security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md) — MFA key rings, safe migration, audit-signing lifecycle, WORM archive requirements and external standards.
+
 ## Canonical identity and operations specifications
 
 - [Identity and Multi-Workspace Architecture](./architecture/IDENTITY-AND-MULTI-WORKSPACE.md) — one global identity, multiple tenant memberships and tenant-bound sessions.
