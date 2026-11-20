@@ -321,3 +321,14 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Added an integration assertion that exactly one successful bootstrap audit event persists.
 - Dedicated MeBuMIP workflow **#417 passed** (API typecheck, MongoDB-backed API tests, API build, web typecheck and web build). Full monorepo CI **#1336 passed** (MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build).
 - Verified commit: `4f66d03c83d27e79e52a04b4f3ffd8b5655c27f0`. This is CI verification, not production deployment or external security sign-off.
+
+
+**Bootstrap-lock recovery hardening — 2026-11-20:**
+
+- Additional edge-case review covered an existing platform owner with a missing bootstrap lock. The handler now detects the owner inside the transaction and reseals the lock instead of leaving the initialization endpoint repeatedly open.
+- Duplicate-key errors are classified by MongoDB key pattern: platform-owner conflict, normalized-email conflict and tenant-slug conflict no longer collapse into one misleading response.
+- Added a replica-set integration scenario that deletes the bootstrap lock after successful initialization, retries with a different owner identity, and asserts a 409 response, a completed replacement lock and exactly one platform owner.
+- An initial CI attempt exposed a test-fixture type mismatch (`string` versus inferred `ObjectId` for `_id`); the fixture now declares the string-keyed lock document explicitly.
+- Corrected code commit: `eb2320e5f4a3faa50401121f1ab72fb771363bab`.
+- Dedicated MeBuMIP verification **#426 passed**. Full monorepo CI **#1340 passed**, including MongoDB replica-set startup, OpenAPI validation, route drift, typecheck, tests and build.
+- Production rollout, external security review and deployment acceptance remain outstanding.
