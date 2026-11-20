@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId, type Db, type Document } from "mongodb";
 import { z } from "zod";
@@ -21,6 +21,38 @@ const loginSchema = z.object({
   password: z.string().min(1).max(256),
 });
 
+function readCookies(header: string | undefined): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const part of (header ?? "").split(";")) {
+    const separator = part.indexOf("=");
+    if (separator < 1) continue;
+    const key = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    try { result[key] = decodeURIComponent(value); } catch { /* Ignore malformed cookie values. */ }
+  }
+  return result;
+}
+
+function csrfForSession(token: string): string {
+  return createHmac("sha256", token).update("zuri-mebumip-csrf-v1").digest("base64url");
+}
+
+function setSessionCookies(reply: FastifyReply, token: string): void {
+  const secure = config.NODE_ENV === "production" ? "; Secure" : "";
+  const maxAge = config.SESSION_TTL_HOURS * 60 * 60;
+  reply.header("set-cookie", [
+    "mebumip_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + secure,
+    "mebumip_csrf=" + encodeURIComponent(csrfForSession(token)) + "; Path=/; SameSite=Lax; Max-Age=" + maxAge + secure,
+  ]);
+}
+
+function clearSessionCookies(reply: FastifyReply): void {
+  const secure = config.NODE_ENV === "production" ? "; Secure" : "";
+  reply.header("set-cookie", [
+    "mebumip_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + secure,
+    "mebumip_csrf=; Path=/; SameSite=Lax; Max-Age=0" + secure,
+  ]);
+}
 function safeSecretEqual(candidate: string, expected: string): boolean {
   const left = createHash("sha256").update(candidate).digest();
   const right = createHash("sha256").update(expected).digest();
@@ -29,9 +61,17 @@ function safeSecretEqual(candidate: string, expected: string): boolean {
 
 export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise<{ principal: Principal; sessionId: ObjectId; stepUpUntil?: Date } | null> {
   const authorization = request.headers.authorization;
-  if (!authorization?.startsWith("Bearer ")) return null;
-  const token = authorization.slice(7);
-  if (token.length < 40 || token.length > 200) return null;
+  const bearerToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : undefined;
+  const cookies = readCookies(request.headers.cookie);
+  const cookieToken = cookies.mebumip_session;
+  const token = bearerToken ?? cookieToken;
+  if (!token || token.length < 40 || token.length > 200) return null;
+  if (!bearerToken && cookieToken && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    const csrfHeader = request.headers["x-csrf-token"];
+    const csrfCookie = cookies.mebumip_csrf;
+    const expectedCsrf = csrfForSession(cookieToken);
+    if (typeof csrfHeader !== "string" || !csrfCookie || !safeSecretEqual(csrfHeader, csrfCookie) || !safeSecretEqual(csrfHeader, expectedCsrf)) return null;
+  }
   const session = await db.collection("sessions").findOne({
     tokenHash: hashToken(token),
     revokedAt: { $exists: false },
@@ -148,7 +188,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       expiresAt,
     });
     await writeAudit(db, request, String(user._id), "auth.session.created", "session", "success");
-    return reply.send({ accessToken: token, tokenType: "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } });
+    setSessionCookies(reply, token);
+    return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } });
   });
 
   app.post("/v1/auth/register", async (request, reply) => {
@@ -209,7 +250,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     );
     await db.collection("sessions").insertOne({ userId: resolved.principal.userId, tokenHash: hashToken(token), createdAt: now, expiresAt });
     await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
-    return reply.send({ accessToken: token, tokenType: "Bearer", expiresAt: expiresAt.toISOString() });
+    setSessionCookies(reply, token);
+    return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString() });
   });
 
   app.post("/v1/auth/password/change", async (request, reply) => {
@@ -257,6 +299,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (changed.modifiedCount !== 1) return reply.code(400).send({ error: "PASSWORD_RESET_TOKEN_INVALID_OR_EXPIRED" });
     await db.collection("sessions").updateMany({ userId: String(user._id), revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "password_recovery" }, $unset: { stepUpUntil: "" } });
     await writeAudit(db, request, String(user._id), "auth.password.recovery.completed", "user", "success");
+    clearSessionCookies(reply);
     return reply.send({ status: "password_reset", sessionsRevoked: true });
   });
 
@@ -337,6 +380,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const now = new Date();
     await db.collection("sessions").updateMany({ userId: resolved.principal.userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "mfa_factor_reset" }, $unset: { stepUpUntil: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset", "user", "success");
+    clearSessionCookies(reply);
     return reply.send({ status: "mfa_reset", sessionsRevoked: true, note: "Sign in again and enroll a new authenticator. Recovery codes have been invalidated." });
   });
 
@@ -345,6 +389,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved) return unauthorized(reply);
     await db.collection("sessions").updateOne({ _id: resolved.sessionId, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
     await writeAudit(db, request, resolved.principal.userId, "auth.session.revoked", "session", "success", String(resolved.sessionId));
+    clearSessionCookies(reply);
     return reply.code(204).send();
   });
 }
