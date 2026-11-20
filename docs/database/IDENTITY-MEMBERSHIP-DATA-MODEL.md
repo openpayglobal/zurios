@@ -45,3 +45,14 @@ A membership must reference an existing user and tenant. Membership acceptance c
 ## Privacy
 
 Workspace listing reveals only tenant names and roles for memberships belonging to the authenticated user. Avoid exposing internal database identifiers in UI where a friendly display label is available. Retention and deletion follow the ecosystem data-governance policy.
+
+
+## Additional indexes and platform context — 2026-11-20
+
+- `workspace_selection_challenges.selectionId` unique.
+- `workspace_selection_challenges.tokenHash` unique.
+- `workspace_selection_challenges.expiresAt` TTL cleanup; single-use remains enforced by atomic conditional update.
+- `auth_challenges.challengeId` unique and `expiresAt` TTL cleanup.
+- `auth_rate_limits.key` unique and `expiresAt` TTL cleanup.
+- `access_requests.requestId` unique; status/time and normalized-email/time indexes support the review queue.
+- Platform-only sessions use `tenantId="platform"` and `membershipId="platform"` as a reserved control-plane context. It is not a tenant or membership document. Platform grants are checked on every authenticated request and token refresh.
