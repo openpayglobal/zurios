@@ -525,6 +525,21 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     return reply.send({ status: "mfa_reset", sessionsRevoked: true, note: "Sign in again and enroll a new authenticator. Recovery codes have been invalidated." });
   });
 
+  app.get("/v1/auth/csrf", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const csrfToken = readCookie(request, CSRF_COOKIE);
+    if (!csrfToken) return unauthorized(reply);
+    const session = await db.collection("sessions").findOne({
+      _id: resolved.sessionId,
+      csrfTokenHash: hashToken(csrfToken),
+      revokedAt: { $exists: false },
+      expiresAt: { $gt: new Date() },
+    });
+    if (!session) return unauthorized(reply);
+    return reply.send({ csrfToken });
+  });
+
   app.post("/v1/auth/logout", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
