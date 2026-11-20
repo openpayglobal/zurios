@@ -3,7 +3,7 @@ import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { createAuditEvent } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
-import { hasPlatformPermission } from "./security.js";
+import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 
 export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   // MAD: strictly read-only operational aggregates. No tenant content or credentials.
@@ -132,6 +132,28 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
   });
 
+  app.get("/v1/mac/audit-events/verify", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const events = await db.collection("auditEvents").find({}).sort({ _id: -1 }).limit(500).toArray();
+    const verified = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
+    const unsigned = events.filter((event) => !event.integrity || (event.integrity as { algorithm?: string }).algorithm === "unsigned").length;
+    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, integrity: process.env.AUDIT_SIGNING_KEY ? "hmac_sha256" : "signing_key_not_configured", scope: "latest_500_events", note: "Signature verification does not replace restricted database roles, immutable backups or independent archive storage." });
+  });
+
+  app.get("/v1/mac/audit-events/export", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const query = request.query as { before?: string; limit?: string };
+    const limit = Math.min(500, Math.max(1, Number.parseInt(query.limit ?? "200", 10) || 200));
+    if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
+    const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
+    const events = await db.collection("auditEvents").find(filter).sort({ _id: -1 }).limit(limit).toArray();
+    const signed = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
+    return reply.send({ format: "zuri-mebumip-audit-export-v1", generatedAt: new Date().toISOString(), count: events.length, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: process.env.AUDIT_SIGNING_KEY ? "HMAC-SHA256" : "not_configured" }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
+  });
   app.get("/v1/mac/audit-events", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
@@ -143,7 +165,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
     const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
     const events = await db.collection("auditEvents")
-      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1 } })
+      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1, integrity: 1 } })
       .sort({ _id: -1 }).limit(limit + 1).toArray();
     const hasMore = events.length > limit;
     if (hasMore) events.pop();
