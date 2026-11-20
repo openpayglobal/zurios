@@ -25,6 +25,8 @@ test("invitation acceptance and password login use active tenant membership", {s
   const secondTenant=await provisionTenant(db,"test",{slug:"auth-test-two",legalName:"Auth Test Two Ltd",displayName:"Auth Test Two"});
   await setTenantStatus(db,secondTenant.tenantId,"active","test");
   await createMembership(db,secondTenant.tenantId,"test",{userId:user.userId});
+  const unrelatedTenant=await provisionTenant(db,"test",{slug:"auth-test-unrelated",legalName:"Unrelated Tenant Ltd",displayName:"Unrelated Tenant"});
+  await setTenantStatus(db,unrelatedTenant.tenantId,"active","test");
 
   const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64")};
   const workspaceLogin=await login(db,cfg,{email:"AUTH@example.test",password,ipHash:"multi-workspace"});
@@ -32,6 +34,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   if(!("selectionToken" in workspaceLogin))throw new Error("Expected workspace selection after identity authentication");
   assert.equal(workspaceLogin.workspaces.length,2);
   assert.deepEqual(new Set(workspaceLogin.workspaces.map(w=>w.tenantId)),new Set([tenant.tenantId,secondTenant.tenantId]));
+  await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,unrelatedTenant.tenantId));
   const selected=await selectWorkspace(db,cfg,workspaceLogin.selectionToken,secondTenant.tenantId);
   assert.ok(selected.accessToken);
   await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,tenant.tenantId));
@@ -45,6 +48,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   if(!("selectionToken" in orphanLogin))throw new Error("Expected workspace selection for an account without memberships");
   assert.equal(orphanLogin.workspaces.length,0);
   await assert.rejects(()=>selectWorkspace(db,cfg,orphanLogin.selectionToken,tenant.tenantId));
+  await assert.rejects(()=>switchWorkspace(db,cfg,{userId:user.userId,tenantId:secondTenant.tenantId,sessionId:selected.sessionId,targetTenantId:unrelatedTenant.tenantId}));
   const switched=await switchWorkspace(db,cfg,{userId:user.userId,tenantId:secondTenant.tenantId,sessionId:selected.sessionId,targetTenantId:tenant.tenantId});
   assert.ok(switched.accessToken);
   const priorContext=await db.collection("sessions").findOne({tenantId:secondTenant.tenantId,sessionId:selected.sessionId});
