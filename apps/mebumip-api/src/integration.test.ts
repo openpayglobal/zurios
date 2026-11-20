@@ -184,6 +184,8 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(archiveBody.archiveFormat,"zuri-mebumip-immutable-audit-archive-v1");
   assert.equal(archiveBody.archiveStatus,"prepared_not_archived");
   assert.equal(archiveBody.eventCount,auditEvents.length);
+  const archivePreparationAudit=await db.collection("auditEvents").findOne({action:"audit.archive.package.prepared",targetId:archiveDownload.headers["x-audit-archive-object-key"]});
+  assert.ok(archivePreparationAudit);
 
   const auditExport = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=100", headers });
   assert.equal(auditExport.statusCode, 200);
