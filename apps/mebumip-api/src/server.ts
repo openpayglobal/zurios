@@ -24,7 +24,7 @@ await app.register(cors, {
   origin: corsOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["content-type", "authorization", "x-correlation-id"],
+  allowedHeaders: ["content-type", "authorization", "x-correlation-id", "x-csrf-token"],
 });
 
 app.get("/health/live", async () => ({
