@@ -46,6 +46,8 @@ test("MFA ciphertext rejects tampering and malformed payloads", () => {
   parts[4] = Buffer.from("tampered").toString("base64url");
   assert.throws(() => service.decrypt(parts.join(".")));
   assert.throws(() => service.decrypt("not.a.valid.payload"));
+  const keyIdTampered = encrypted.replace(".current.", ".current-alias.");
+  assert.throws(() => createMfaEncryptionService({ keys: { current: Buffer.alloc(32, 6), "current-alias": Buffer.alloc(32, 6) }, activeKeyId: "current" }).decrypt(keyIdTampered));
 });
 
 test("TOTP verification rejects malformed and incorrect codes", () => {
