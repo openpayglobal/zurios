@@ -38,16 +38,19 @@ export function decryptMfaSecret(encoded: string): string {
   decipher.setAuthTag(Buffer.from(tagText, "base64url"));
   return Buffer.concat([decipher.update(Buffer.from(bodyText, "base64url")), decipher.final()]).toString("utf8");
 }
-export function verifyTotp(secret: string, token: string, now = Date.now()): boolean {
-  if (!/^\d{6}$/.test(token)) return false;
+export function generateTotpCode(secret: string, now = Date.now()): string {
   const key = base32Decode(secret);
   const counter = Math.floor(now / 30_000);
+  const message = Buffer.alloc(8); message.writeBigUInt64BE(BigInt(counter));
+  const digest = createHmac("sha1", key).update(message).digest();
+  const offset = digest[digest.length - 1]! & 15;
+  const binary = ((digest[offset]! & 127) << 24) | ((digest[offset + 1]! & 255) << 16) | ((digest[offset + 2]! & 255) << 8) | (digest[offset + 3]! & 255);
+  return String(binary % 1_000_000).padStart(6, "0");
+}
+export function verifyTotp(secret: string, token: string, now = Date.now()): boolean {
+  if (!/^\\d{6}$/.test(token)) return false;
   for (let drift = -1; drift <= 1; drift++) {
-    const message = Buffer.alloc(8); message.writeBigUInt64BE(BigInt(counter + drift));
-    const digest = createHmac("sha1", key).update(message).digest();
-    const offset = digest[digest.length - 1]! & 15;
-    const binary = ((digest[offset]! & 127) << 24) | ((digest[offset + 1]! & 255) << 16) | ((digest[offset + 2]! & 255) << 8) | (digest[offset + 3]! & 255);
-    const expected = String(binary % 1_000_000).padStart(6, "0");
+    const expected = generateTotpCode(secret, now + drift * 30_000);
     if (timingSafeEqual(Buffer.from(expected), Buffer.from(token))) return true;
   }
   return false;
