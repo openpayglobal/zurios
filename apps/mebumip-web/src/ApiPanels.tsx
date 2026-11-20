@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 
 const API_BASE = import.meta.env.VITE_MEBUMIP_API_BASE ?? "http://localhost:4100";
+function csrfHeaders(): Record<string, string> { const value = document.cookie.split("; ").find((part) => part.startsWith("mebumip_csrf="))?.split("=").slice(1).join("="); return value ? { "x-csrf-token": decodeURIComponent(value) } : {}; }
 type Resource = "overview" | "tenants" | "admins" | "audit";
 type ApiData = {
   platform?: { tenants: number; activeTenants: number; activeUsers: number; activeSessions: number };
@@ -13,7 +14,9 @@ type ApiData = {
 export function AuthPanel() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [token, setToken] = useState(() => sessionStorage.getItem("mebumip_access_token") ?? "");
+  const [authenticated, setAuthenticated] = useState(false);
+  const [checking, setChecking] = useState(true);
+  useEffect(() => { fetch(API_BASE + "/v1/auth/me", { credentials: "include" }).then((response) => setAuthenticated(response.ok)).catch(() => setAuthenticated(false)).finally(() => setChecking(false)); }, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -21,26 +24,25 @@ export function AuthPanel() {
     event.preventDefault(); setBusy(true); setError("");
     try {
       const response = await fetch(API_BASE + "/v1/auth/login", {
-        method: "POST", headers: { "content-type": "application/json" },
+        method: "POST", credentials: "include", headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error === "UNAUTHORIZED" ? "Email or password is incorrect." : "Sign-in failed.");
-      sessionStorage.setItem("mebumip_access_token", data.accessToken);
-      setToken(data.accessToken); setPassword(""); window.location.reload();
+      setAuthenticated(true); setPassword(""); window.location.reload();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not sign in.");
     } finally { setBusy(false); }
   }
 
   async function logout() {
-    if (token) await fetch(API_BASE + "/v1/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
-    sessionStorage.removeItem("mebumip_access_token"); setToken(""); window.location.reload();
+    await fetch(API_BASE + "/v1/auth/logout", { method: "POST", credentials: "include", headers: csrfHeaders() }).catch(() => undefined);
+    setAuthenticated(false); window.location.reload();
   }
 
   return <section className="api-auth">
-    {token
-      ? <><span className="api-online">Authenticated session established</span><button type="button" onClick={logout}>Sign out</button></>
+    {checking ? <span>Checking secure session…</span> : authenticated
+      ? <><span className="api-online">Authenticated secure session established</span><button type="button" onClick={logout}>Sign out</button></>
       : <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button>{error && <span className="api-error">{error}</span>}</form>}
   </section>;
 }
@@ -56,14 +58,12 @@ export function AdminData({ resource }: { resource: Resource }) {
   const [stepUpBusy, setStepUpBusy] = useState(false);
   const [adminBusy, setAdminBusy] = useState("");
   useEffect(() => {
-    const token = sessionStorage.getItem("mebumip_access_token");
-    if (!token) { setLoading(false); setError("Sign in above to view protected platform data."); return; }
     let active = true;
     const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : "/v1/mac/audit-events?limit=50";
-    fetch(API_BASE + path, { headers: { Authorization: "Bearer " + token } })
+    fetch(API_BASE + path, { credentials: "include" })
       .then(async (response) => {
         const body = await response.json();
-        if (response.status === 401) { sessionStorage.removeItem("mebumip_access_token"); window.location.reload(); throw new Error("Session expired. Sign in again."); }
+        if (response.status === 401) throw new Error("Sign in above to view protected platform data.");
         if (!response.ok) throw new Error(response.status === 403 ? "Your platform role does not have permission to view this data." : "API request failed.");
         if (active) { setData(body as ApiData); setError(""); }
       }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Could not load data."); })
@@ -78,11 +78,9 @@ export function AdminData({ resource }: { resource: Resource }) {
   const items = data.items ?? [];
   async function verifyAdminStepUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const token = sessionStorage.getItem("mebumip_access_token");
-    if (!token) { setStepUpMessage("Sign in first."); return; }
     setStepUpBusy(true); setStepUpMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
+      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "MFA verification failed.");
       setStepUpCode(""); setStepUpMessage("MFA verified. Privileged MAC actions are enabled for five minutes.");
@@ -91,11 +89,9 @@ export function AdminData({ resource }: { resource: Resource }) {
   }
 
   async function updatePlatformAdmin(userId: string, changes: { role?: string; status?: string }) {
-    const token = sessionStorage.getItem("mebumip_access_token");
-    if (!token) { setStepUpMessage("Sign in first."); return; }
     setAdminBusy(userId); setStepUpMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/admins/" + encodeURIComponent(userId), { method: "PATCH", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const response = await fetch(API_BASE + "/v1/mac/admins/" + encodeURIComponent(userId), { method: "PATCH", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(changes) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before changing administrators." : body.error ?? "Administrator update failed.");
       setData((current) => current ? { ...current, items: (current.items ?? []).map((item) => String(item.id) === userId ? { ...item, role: body.role, status: body.status } : item) } : current);
@@ -110,11 +106,9 @@ export function AdminData({ resource }: { resource: Resource }) {
     <p>New administrator invitations and account creation remain pending. Every role or status change requires platform-owner authorization, MFA step-up and audit logging.</p></div>;
   if (resource === "tenants") return <div className="api-data"><h3>Business directory · live API</h3>{items.length === 0 ? <p>No tenant records found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Business</th><th>Slug</th><th>Status</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.name ?? "")}</td><td>{String(item.slug ?? "")}</td><td>{String(item.status ?? "")}</td></tr>)}</tbody></table></div>}</div>;
   async function runAuditAction(action: "verify" | "export") {
-    const token = sessionStorage.getItem("mebumip_access_token");
-    if (!token) { setAuditResult("Sign in to perform audit operations."); return; }
     setAuditAction(action); setAuditResult("");
     try {
-      const response = await fetch(API_BASE + (action === "verify" ? "/v1/mac/audit-events/verify" : "/v1/mac/audit-events/export?limit=200"), { headers: { Authorization: "Bearer " + token } });
+      const response = await fetch(API_BASE + (action === "verify" ? "/v1/mac/audit-events/verify" : "/v1/mac/audit-events/export?limit=200"), { credentials: "include" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Audit operation failed.");
       setAuditResult(action === "verify"
