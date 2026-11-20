@@ -9,6 +9,7 @@ process.env.PLATFORM_BOOTSTRAP_TOKEN = "mebumip-integration-bootstrap-secret-202
 
 const { registerAuthRoutes } = await import("./auth.js");
 const { ensureMeBuMIPIndexes } = await import("./database.js");
+const { clearTestMailOutbox, getTestMailOutbox } = await import("./mail.js");
 const mongoUri = process.env.MONGODB_TEST_URI;
 
 test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes and rotates credentials", {
@@ -127,6 +128,43 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     const logout = await app.inject({ method: "POST", url: "/v1/auth/logout", headers: { authorization: `Bearer ${finalToken}` } });
     assert.equal(logout.statusCode, 204);
     assert.equal((await app.inject({ method: "GET", url: "/v1/auth/me", headers: { authorization: `Bearer ${finalToken}` } })).statusCode, 401);
+
+    clearTestMailOutbox();
+    const unknownRecovery = await app.inject({
+      method: "POST", url: "/v1/auth/password/recovery",
+      payload: { email: "not-registered@example.test" },
+    });
+    assert.equal(unknownRecovery.statusCode, 202);
+    const recoveryRequest = await app.inject({
+      method: "POST", url: "/v1/auth/password/recovery",
+      payload: { email: winningEmail },
+    });
+    assert.equal(recoveryRequest.statusCode, 202);
+    assert.deepEqual(recoveryRequest.json(), unknownRecovery.json());
+    assert.equal("token" in (recoveryRequest.json() as Record<string, unknown>), false);
+    const recoveryEmail = getTestMailOutbox().find((message) => message.to === winningEmail);
+    assert.ok(recoveryEmail);
+    const recoveryToken = recoveryEmail.text.match(/Password reset token: ([A-Za-z0-9_-]+)/)?.[1];
+    assert.ok(recoveryToken && recoveryToken.length >= 40);
+    assert.ok(await db.collection("passwordRecoveries").findOne({ tokenHash: hashToken(recoveryToken) }));
+    assert.equal(await db.collection("passwordRecoveries").findOne({ token: recoveryToken }), null);
+
+    const passwordReset = await app.inject({
+      method: "POST", url: "/v1/auth/password/reset",
+      payload: { token: recoveryToken, newPassword: "owner-recovered-password-789" },
+    });
+    assert.equal(passwordReset.statusCode, 200);
+    assert.equal((passwordReset.json() as { sessionsRevoked: boolean }).sessionsRevoked, true);
+    assert.equal(await db.collection("sessions").countDocuments({
+      userId: meBody.userId, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() },
+    }), 0);
+    const recoveryReplay = await app.inject({
+      method: "POST", url: "/v1/auth/password/reset",
+      payload: { token: recoveryToken, newPassword: "owner-another-password-012" },
+    });
+    assert.equal(recoveryReplay.statusCode, 400);
+    assert.equal((await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: winningEmail, password: "owner-new-secure-password-456" } })).statusCode, 401);
+    assert.equal((await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: winningEmail, password: "owner-recovered-password-789" } })).statusCode, 200);
 
     const auditActions = await db.collection("auditEvents").distinct("action");
     assert.ok(auditActions.includes("platform.bootstrap.completed"));
