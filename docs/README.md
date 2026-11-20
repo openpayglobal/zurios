@@ -28,6 +28,15 @@ This directory is the authoritative home for approved project specifications and
 
 The identity-first sign-in and multi-workspace selection flow is specified across the architecture, UX, API and database documents above. Implementation and test status must be read from the corresponding pull request checks and product progress register.
 
+## Full Zuri OS baseline specifications
+
+- [Master Execution Plan](./project/ZURI-OS-MASTER-EXECUTION-PLAN.md) — work packages, sequence, governance, acceptance and release gates.
+- [Master Product Requirements Document](./product/ZURI-OS-MASTER-PRD-v1.0.md) — product outcomes, users, module catalogue, MVP boundary and requirements.
+- [Technical Architecture](./architecture/ZURI-OS-TECHNICAL-ARCHITECTURE-v1.0.md) — modular boundaries, trust zones, APIs, events, data and operations.
+- [MongoDB Database Blueprint](./database/ZURI-OS-MONGODB-DATABASE-BLUEPRINT-v1.0.md) — collections, tenancy, indexes, transactions, migrations and governance.
+- [UI/UX Design System](./ux/ZURI-OS-UI-UX-DESIGN-SYSTEM-v1.0.md) — app shell, navigation, reusable components, workflows and accessibility.
+- [Implementation Progress Register](./project/ZURI-OS-PROGRESS-REGISTER.md) — exact CI evidence, deployment state, blockers and release gates.
+
 ## Document control
 
 Each authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions, and change history.
