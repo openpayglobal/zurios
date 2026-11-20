@@ -1626,6 +1626,15 @@ paths:
         "201": {description: Workflow run started}
         "403": {$ref: "#/components/responses/Forbidden"}
         "404": {description: Active workflow not found}
+  /workflow-tasks:
+    get:
+      tags: [Workflow Automation]
+      operationId: listWorkflowTasks
+      summary: List workflow approval tasks in authorized organizations
+      responses:
+        "200": {description: Scoped workflow tasks}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
   /workflow-tasks/{taskId}/approve:
     post:
       tags: [Workflow Automation]
