@@ -52,6 +52,13 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const me = await app.inject({ method: "GET", url: "/v1/auth/me", headers });
   assert.equal(me.statusCode, 200);
   assert.equal(me.json().tenantMemberships[0].tenantId, String(tenant._id));
+  const sessions = await app.inject({ method: "GET", url: "/v1/auth/sessions", headers });
+  assert.equal(sessions.statusCode, 200);
+  assert.equal(sessions.json().items.length, 1);
+  assert.ok(String(sessions.json().items[0].userAgent).length > 0);
+  const runtimeSettings = await app.inject({ method: "GET", url: "/v1/mac/settings", headers });
+  assert.equal(runtimeSettings.statusCode, 200);
+  assert.equal(runtimeSettings.json().settings.auditSigningConfigured, true);
 
   const setup = await app.inject({ method: "POST", url: "/v1/auth/mfa/setup", headers, payload: { currentPassword: "Integration-Owner-Password-2026!" } });
   assert.equal(setup.statusCode, 200);
@@ -96,5 +103,11 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const auditEvents = await db.collection("auditEvents").find({}).toArray();
   assert.ok(auditEvents.length >= 4);
   assert.ok(auditEvents.every((event) => verifyAuditEvent(event as Record<string, unknown>)));
+  const auditVerification = await app.inject({ method: "GET", url: "/v1/mac/audit-events/verify", headers });
+  assert.equal(auditVerification.statusCode, 200);
+  assert.equal(auditVerification.json().invalid, 0);
+  const auditExport = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=100", headers });
+  assert.equal(auditExport.statusCode, 200);
+  assert.equal(auditExport.json().integrity.unsignedOrInvalid, 0);
   assert.equal(await db.collection("tenantInvitations").countDocuments({ acceptedAt: { $exists: false } }), 0);
 });
