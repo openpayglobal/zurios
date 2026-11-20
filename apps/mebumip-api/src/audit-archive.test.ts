@@ -34,21 +34,21 @@ test("audit archive package rejects gaps, invalid signatures, oversized batches,
 
 test("archive receipt is persisted only after sink confirms immutable retention",async()=>{
   const archive=buildAuditArchivePackage([event(10)],10,10);
-  const retention={mode:"COMPLIANCE" as const,retainUntil:new Date(Date.now()+365*24*60*60*1000),legalHold:true};
+  const retention={retainUntil:new Date(Date.now()+365*24*60*60*1000),legalHold:true,preventOverwrite:true as const,preventDeleteUntilRetention:true as const,preventAdministrativeBypass:true};
   let saved:Record<string,unknown>|undefined;
   const fakeDb={collection:()=>({
     findOne:async()=>null,
     updateOne:async(_filter:unknown,update:{$setOnInsert:Record<string,unknown>})=>{saved=update.$setOnInsert;return {upsertedCount:1};}
   })} as unknown as Db;
   const sink:ImmutableAuditArchiveSink={
-    putImmutableObject:async input=>({objectKey:input.objectKey,versionId:"version-123",sha256:input.sha256,retentionMode:input.retention.mode,retainUntil:input.retention.retainUntil,legalHold:true})
+    putImmutableObject:async input=>({objectKey:input.objectKey,versionId:"version-123",sha256:input.sha256,retainUntil:input.retention.retainUntil,legalHold:true,preventOverwrite:true,preventDeleteUntilRetention:true,preventAdministrativeBypass:true})
   };
   const receipt=await archiveAuditPackage(fakeDb,sink,archive,retention);
   assert.equal(receipt.versionId,"version-123");
   assert.equal(receipt.legalHold,true);
   assert.equal(saved?.objectKey,archive.objectKey);
   const badSink:ImmutableAuditArchiveSink={
-    putImmutableObject:async input=>({objectKey:input.objectKey,versionId:"version-456",sha256:input.sha256,retentionMode:"GOVERNANCE",retainUntil:input.retention.retainUntil,legalHold:false})
+    putImmutableObject:async input=>({objectKey:input.objectKey,versionId:"version-456",sha256:input.sha256,retainUntil:input.retention.retainUntil,legalHold:false,preventOverwrite:true,preventDeleteUntilRetention:true,preventAdministrativeBypass:false})
   };
   await assert.rejects(()=>archiveAuditPackage(fakeDb,badSink,archive,retention),/AUDIT_ARCHIVE_STORAGE_RETENTION_NOT_CONFIRMED/);
 });
