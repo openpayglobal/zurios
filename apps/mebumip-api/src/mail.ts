@@ -36,3 +36,9 @@ export function sendPasswordRecoveryEmail(input: { to: string; token: string; ex
   const html = "<p>A password reset was requested for your Zuri MeBuMIP account.</p><p>Use this one-time password reset token:</p><p><code>" + escapeHtml(input.token) + "</code></p><p>Expires: " + escapeHtml(input.expiresAt.toISOString()) + "</p><p>If you did not request this, ignore this email.</p>";
   return deliver({ to: input.to, subject: "Zuri MeBuMIP password recovery", text, html });
 }
+
+export function sendPlatformAdminInvitationEmail(input: { to: string; role: string; token: string; expiresAt: Date }): Promise<MailDelivery> {
+  const text = "You have been invited to become a Zuri MeBuMIP platform administrator (" + input.role + ").\n\nInvitation token: " + input.token + "\n\nThis token expires at " + input.expiresAt.toISOString() + " and can be used once. Platform administrator access is privileged and monitored."; 
+  const html = "<p>You have been invited to become a <strong>Zuri MeBuMIP platform administrator</strong> (" + escapeHtml(input.role) + ").</p><p>Use this one-time invitation token during registration or acceptance:</p><p><code>" + escapeHtml(input.token) + "</code></p><p>Expires: " + escapeHtml(input.expiresAt.toISOString()) + "</p><p>Privileged actions are audited and protected by MFA.</p>";
+  return deliver({ to: input.to, subject: "Zuri MeBuMIP platform administrator invitation", text, html });
+}
