@@ -20,7 +20,8 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 | Architecture | architecture/ | System boundaries, integration patterns, deployment topology and architecture decision records |
 | User experience | ux/ | Design system, navigation, accessibility and screen specifications |
 | Data | database/ | MongoDB collection catalogue, schemas, indexes, validation, tenancy and migrations |
-| APIs and events | api/ | API standards, OpenAPI documents, event contracts, webhooks and SDK guidance |
+| Integrations | [integrations/](./integrations/) | Provider readiness, API version governance, permissions, webhooks, data handling and external-service lifecycle; includes the Meta Platform Integration Readiness standard |
+| APIs and events | [api/](./api/) | API standards, OpenAPI documents, event contracts, webhooks and SDK guidance; includes [Zuri OS Platform API](./api/openapi.yaml) and [MeBuMIP API](./api/mebumip-openapi.yaml) |
 | Security | security/ | Threat model, identity, authorization, secrets, audit and incident response |
 | Compliance | compliance/ | Privacy, retention, jurisdictional requirements and evidence registers |
 | Operations | operations/ | Deployment, observability, backup, disaster recovery, support and runbooks |
