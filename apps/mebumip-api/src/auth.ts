@@ -131,7 +131,10 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const valid = user && typeof user.passwordHash === "string"
       ? await verifyPassword(parsed.data.password, user.passwordHash)
       : false;
-    if (!user || !valid) return unauthorized(reply);
+    if (!user || !valid) {
+      await writeAudit(db, request, "anonymous", "auth.login.denied", "session", "denied");
+      return unauthorized(reply);
+    }
 
     const token = newOpaqueToken();
     const now = new Date();
