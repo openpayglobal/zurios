@@ -24,6 +24,10 @@ function failure(error:unknown,reply:any){const status=statusFor(error);const co
 export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async function registerAuthRoutes(app){
   const requireAuth=authenticate(db,config);
+  app.get("/auth/public-config",async(_request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   return {accessRequestsEnabled:process.env.ACCESS_REQUESTS_ENABLED==="true",privacyNoticeUrl:process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL??null};
+  });
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
    try{const body=loginSchema.parse(request.body);const ipHash=createHash("sha256").update(request.ip).digest("hex");if(body.tenantSlug)return await login(db,config,{email:body.email,password:body.password,tenantSlug:body.tenantSlug,ipHash});return await login(db,config,{email:body.email,password:body.password,ipHash});}
