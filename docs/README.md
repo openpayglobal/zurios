@@ -14,6 +14,16 @@ This directory is the authoritative home for approved project specifications and
 - `operations/` — deployment, observability, backup, disaster recovery, support, and runbooks
 - `decisions/` — approved cross-cutting decisions where appropriate, or architecture ADRs under `architecture/decisions/`
 
+## Canonical ecosystem documents
+
+- [ZURI Ecosystem Overview](./ZURI-ECOSYSTEM-OVERVIEW.md) — product boundaries, shared principles, programme map and governance.
+- [Identity and Multi-Workspace Architecture](./architecture/IDENTITY-AND-MULTI-WORKSPACE.md) — one global identity, many tenant memberships and tenant-bound sessions.
+- [Sign-in and Workspace Selection](./ux/SIGN-IN-AND-WORKSPACE-SELECTION.md) — user journey, access request, chooser states and accessibility.
+- [Identity and Workspace API Contracts](./api/IDENTITY-AND-WORKSPACE-CONTRACTS.md) — login, MFA, workspace selection, switching and session contracts.
+- [Identity and Membership Data Model](./database/IDENTITY-MEMBERSHIP-DATA-MODEL.md) — global users, tenants, memberships, sessions and index requirements.
+- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
+- [MeBuMIP product documentation](../products/zuri-mebumip/README.md) — approved objectives, roadmap, architecture, progress and operational gates.
+
 ## Document control
 
 Each authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions, and change history.
