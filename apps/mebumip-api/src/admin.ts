@@ -94,9 +94,15 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) {
       return reply.code(403).send({ error: "FORBIDDEN" });
     }
+    const query = request.query as { limit?: string; before?: string };
+    const limit = Math.min(100, Math.max(1, Number.parseInt(query.limit ?? "50", 10) || 50));
+    if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
+    const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
     const events = await db.collection("auditEvents")
-      .find({}, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1 } })
-      .sort({ occurredAt: -1 }).limit(100).toArray();
-    return reply.send({ items: events, limit: 100 });
+      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1 } })
+      .sort({ _id: -1 }).limit(limit + 1).toArray();
+    const hasMore = events.length > limit;
+    if (hasMore) events.pop();
+    return reply.send({ items: events, limit, hasMore, nextCursor: hasMore && events.length ? String(events[events.length - 1]!._id) : null, retention: "No automatic TTL deletion is configured for auditEvents." });
   });
 }
