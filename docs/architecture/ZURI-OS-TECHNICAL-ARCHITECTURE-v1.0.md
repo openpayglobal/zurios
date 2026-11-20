@@ -196,6 +196,14 @@ The existing API may expose unprefixed compatibility routes during transition. N
 - Invitation, password reset and email verification tokens are single-use, hashed at rest and time-limited.
 - Service and agent identities are distinct from human identities.
 
+### 8.1.1 Global identity and multi-workspace membership
+
+A human user has one global identity and may hold active memberships in multiple tenants/workspaces. Password/MFA authentication establishes the identity without requiring a tenant slug. After authentication, the API returns only active, time-valid memberships. The user selects the active workspace; the server verifies the selected tenant and membership and issues a session bound to that user, tenant and membership.
+
+Workspace switching is an authenticated operation that revalidates the target membership, issues a new tenant-bound session and revokes the previous workspace session. It must not create another user, create a membership, copy roles between tenants or trust a client-provided tenant ID as authorization proof. Users with no active membership enter an access-request/invitation state; no tenant or membership is silently provisioned.
+
+See [Identity and Multi-Workspace Architecture](./IDENTITY-AND-MULTI-WORKSPACE.md) for invariants and acceptance criteria.
+
 ### 8.2 Tenant resolution
 Tenant scope is derived from authenticated identity, membership and requested active context. Client-supplied tenant or organization IDs are only selectors; they are checked against membership before any data access. Queries for tenant-owned data must include the authorized scope predicate.
 
