@@ -2,10 +2,11 @@ import { useEffect, useState, type FormEvent } from "react";
 
 const API_BASE = import.meta.env.VITE_MEBUMIP_API_BASE ?? "http://localhost:4100";
 function csrfHeaders(): Record<string, string> { const value = document.cookie.split("; ").find((part) => part.startsWith("mebumip_csrf="))?.split("=").slice(1).join("="); return value ? { "x-csrf-token": decodeURIComponent(value) } : {}; }
-type Resource = "overview" | "tenants" | "admins" | "audit" | "sessions";
+type Resource = "overview" | "tenants" | "admins" | "audit" | "sessions" | "settings";
 type ApiData = {
   platform?: { tenants: number; activeTenants: number; activeUsers: number; activeSessions: number };
   integrations?: { connectedMetaAccounts: number; pendingWebhookEvents: number };
+  settings?: Record<string, unknown>;
   items?: Array<Record<string, unknown>>;
   hasMore?: boolean;
   retention?: string;
@@ -59,7 +60,7 @@ export function AdminData({ resource }: { resource: Resource }) {
   const [adminBusy, setAdminBusy] = useState("");
   useEffect(() => {
     let active = true;
-    const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : resource === "sessions" ? "/v1/auth/sessions" : "/v1/mac/audit-events?limit=50";
+    const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : resource === "sessions" ? "/v1/auth/sessions" : resource === "settings" ? "/v1/mac/settings" : "/v1/mac/audit-events?limit=50";
     fetch(API_BASE + path, { credentials: "include" })
       .then(async (response) => {
         const body = await response.json();
@@ -126,6 +127,7 @@ export function AdminData({ resource }: { resource: Resource }) {
     } finally { setAuditAction(""); }
   }
 
+  if (resource === "settings" && data.settings) return <div className="api-data"><h3>Runtime configuration · read only</h3><p>Safe configuration status only. Secret values are never returned to the browser.</p><div className="api-stats">{Object.entries(data.settings).map(([key, value]) => <span key={key}><b>{typeof value === "boolean" ? (value ? "Configured / enabled" : "Not configured / disabled") : Array.isArray(value) ? value.join(", ") : String(value)}</b>{key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (character) => character.toUpperCase())}</span>)}</div><p>Change secrets and deployment-level settings through the approved secret manager and deployment configuration, not through the browser.</p></div>;
   if (resource === "sessions") return <div className="api-data"><h3>Your active sessions</h3><p>Review active sign-in sessions for this account. Device labels are based on the reported browser user-agent; IP addresses are never displayed.</p>
     {items.length === 0 ? <p>No active sessions found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Device / browser</th><th>Created</th><th>Expires</th><th>Action</th></tr></thead><tbody>{items.map((item, index) => { const id = String(item.id ?? ""); return <tr key={id || index}><td>{String(item.userAgent ?? "Unknown device")}{item.current ? <small>Current session</small> : null}</td><td>{item.createdAt ? new Date(String(item.createdAt)).toLocaleString() : ""}</td><td>{item.expiresAt ? new Date(String(item.expiresAt)).toLocaleString() : ""}</td><td>{item.current ? "Current" : <button type="button" onClick={() => void revokeSession(id)}>Revoke</button>}</td></tr>; })}</tbody></table></div>}</div>;
   return <div className="api-data"><h3>Audit events · latest {items.length}</h3><div className="api-audit-actions"><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("verify")}>{auditAction === "verify" ? "Verifying…" : "Verify latest 500"}</button><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("export")}>{auditAction === "export" ? "Preparing…" : "Prepare export"}</button></div>{auditResult && <p role="status">{auditResult}</p>}{data.retention && <p>{data.retention}</p>}{items.length === 0 ? <p>No audit events found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Action</th><th>Actor</th><th>Outcome</th><th>Time</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item._id ?? index)}><td>{String(item.action ?? "")}</td><td>{String(item.actorUserId ?? "")}</td><td>{String(item.outcome ?? "")}</td><td>{item.occurredAt ? new Date(String(item.occurredAt)).toLocaleString() : ""}</td></tr>)}</tbody></table></div>}</div>;
