@@ -113,3 +113,6 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Audit integrity follow-through (2026-11-20):** all new events created through the shared audit-event builder now carry an HMAC-SHA256 signature when `AUDIT_SIGNING_KEY` is configured. Production configuration now requires this key. Added MAC endpoints to verify the latest 500 records and export bounded pages with per-record integrity status. Unit tests cover signature verification and tamper detection. Existing historical records remain unsigned; exports are not yet copied to immutable object storage or independently archived. Production must keep the signing key outside MongoDB and back it up securely.
+
+
+**Database integration test milestone (2026-11-20):** added an opt-in MongoDB-backed API integration test covering platform bootstrap/login, TOTP enrollment, one-time MFA recovery-code consumption and replay rejection, tenant invitation registration and replay rejection, cross-tenant membership denial, and HMAC audit signature verification. Updated the Phase 1 GitHub Actions workflow to provision an ephemeral MongoDB 7 service and provide test-only environment keys. Awaiting the resulting CI run; this is not yet a passing test claim.
