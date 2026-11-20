@@ -226,7 +226,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
     if (!user || typeof user.mfaPendingSecret !== "string" || !(user.mfaSetupExpiresAt instanceof Date) || user.mfaSetupExpiresAt.getTime() <= Date.now()) return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED_OR_EXPIRED" });
-    if (!verifyTotp(decryptMfaSecret(user.mfaPendingSecret), parsed.data.code)) return reply.code(400).send({ error: "MFA_CODE_INVALID" });
+    if (!verifyTotp(decryptMfaSecret(user.mfaPendingSecret), parsed.data.code)) { await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enable.denied", "user", "denied"); return reply.code(400).send({ error: "MFA_CODE_INVALID" }); }
     await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret }, $unset: { mfaPendingSecret: "", mfaSetupExpiresAt: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enabled", "user", "success");
     return reply.send({ status: "mfa_enabled" });
@@ -239,7 +239,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
     if (!user || typeof user.mfaSecretEncrypted !== "string") return reply.code(403).send({ error: "MFA_REQUIRED" });
-    if (!verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code)) return reply.code(403).send({ error: "MFA_CODE_INVALID" });
+    if (!verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code)) { await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId)); return reply.code(403).send({ error: "MFA_CODE_INVALID" }); }
     const stepUpUntil = new Date(Date.now() + 5 * 60_000);
     await db.collection("sessions").updateOne({ _id: resolved.sessionId }, { $set: { stepUpUntil } });
     await writeAudit(db, request, resolved.principal.userId, "auth.step_up.completed", "session", "success", String(resolved.sessionId));
