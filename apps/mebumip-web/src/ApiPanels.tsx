@@ -27,7 +27,7 @@ export function AuthPanel() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error === "UNAUTHORIZED" ? "Email or password is incorrect." : "Sign-in failed.");
       sessionStorage.setItem("mebumip_access_token", data.accessToken);
-      setToken(data.accessToken); setPassword("");
+      setToken(data.accessToken); setPassword(""); window.location.reload();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not sign in.");
     } finally { setBusy(false); }
@@ -35,7 +35,7 @@ export function AuthPanel() {
 
   async function logout() {
     if (token) await fetch(API_BASE + "/v1/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
-    sessionStorage.removeItem("mebumip_access_token"); setToken("");
+    sessionStorage.removeItem("mebumip_access_token"); setToken(""); window.location.reload();
   }
 
   return <section className="api-auth">
