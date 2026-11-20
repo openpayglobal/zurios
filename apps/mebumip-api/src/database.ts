@@ -8,6 +8,7 @@ export async function ensureMeBuMIPIndexes(db: Db): Promise<void> {
     db.collection("memberships").createIndex({ tenantId: 1, userId: 1 }, { unique: true, name: "membership_tenant_user_unique" }),
     db.collection("memberships").createIndex({ userId: 1, status: 1 }, { name: "membership_user_status" }),
     db.collection("sessions").createIndex({ tokenHash: 1 }, { unique: true, name: "session_token_hash_unique" }),
+    db.collection("sessions").createIndex({ userId: 1, revokedAt: 1, expiresAt: 1 }, { name: "session_user_active_lookup" }),
     db.collection("sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "session_expiry_ttl" }),
     db.collection("auditEvents").createIndex({ occurredAt: -1 }, { name: "audit_time_desc" }),
     db.collection("auditEvents").createIndex({ tenantId: 1, occurredAt: -1 }, { name: "audit_tenant_time_desc", sparse: true }),
