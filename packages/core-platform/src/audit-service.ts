@@ -1,7 +1,8 @@
 import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
-import {coreCollections} from "./repositories.js";\nimport type {AuditEventDocument} from "./types.js";
+import {coreCollections} from "./repositories.js";
+import type {AuditEventDocument} from "./types.js";
 const eventSchema=z.object({tenantId:z.string().min(1),actor:z.object({userId:z.string().min(1).optional(),service:z.string().min(1).optional(),ipHash:z.string().max(128).optional(),userAgent:z.string().max(512).optional()}).refine(v=>Boolean(v.userId||v.service),{message:"Audit actor must be identified"}),action:z.string().min(2).max(160),resourceType:z.string().min(2).max(120),resourceId:z.string().max(200).optional(),outcome:z.enum(["success","denied","failure"]),correlationId:z.string().max(200).optional(),metadata:z.record(z.unknown()).default({})});
 const sensitiveKey=/(password|secret|token|authorization|cookie|otp|recovery|credential|private.?key)/i;
 function redact(value:unknown,depth=0):unknown{
