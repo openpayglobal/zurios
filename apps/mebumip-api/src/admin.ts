@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createAuditEvent } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
+import { config, corsOrigins } from "./config.js";
 
 export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   // MAD: strictly read-only operational aggregates. No tenant content or credentials.
@@ -88,6 +89,18 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     return reply.code(201).send({ id: String(tenantResult.insertedId), name: parsed.data.name, slug: parsed.data.slug, ownerUserId: String(owner._id), status: "active" });
   });
 
+  app.get("/v1/mac/settings", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:settings:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    return reply.send({ settings: {
+      environment: config.NODE_ENV, sessionTtlHours: config.SESSION_TTL_HOURS, sessionCookieSameSite: config.SESSION_COOKIE_SAME_SITE,
+      secureCookies: config.NODE_ENV === "production", trustedProxyConfigured: Boolean(config.TRUSTED_PROXY_CIDRS),
+      trustedProxyCount: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").filter((value) => value.trim()).length : 0,
+      corsOrigins, emailDeliveryConfigured: Boolean(config.RESEND_API_KEY && config.MAIL_FROM), emailProvider: config.RESEND_API_KEY ? "resend" : "not_configured",
+      auditSigningConfigured: Boolean(config.AUDIT_SIGNING_KEY), mfaEncryptionConfigured: Boolean(config.MFA_ENCRYPTION_KEY),
+    }, mode: "read_only_runtime_configuration", note: "Secret values are never returned. Runtime configuration changes are managed through the deployment secret manager." });
+  });
   app.get("/v1/mac/admins", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
