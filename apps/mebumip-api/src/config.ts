@@ -10,9 +10,10 @@ const envSchema = z.object({
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+  AUDIT_SIGNING_KEY: z.string().min(32).optional(),
 });
 
-const parsed = envSchema.safeParse(process.env);
+const parsed = envSchema.superRefine((value, context) => {\n  if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY) {\n    context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });\n  }\n}).safeParse(process.env);
 if (!parsed.success) {
   throw new Error(`Invalid Zuri MeBuMIP API configuration: ${parsed.error.message}`);
 }
