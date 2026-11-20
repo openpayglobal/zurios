@@ -149,10 +149,13 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
     if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) return reply.code(403).send({ error: "FORBIDDEN" });
-    const events = await db.collection("auditEvents").find({}).sort({ _id: -1 }).limit(500).toArray();
+    const events = await db.collection("auditEvents").find({}).sort({ sequence: -1, _id: -1 }).limit(500).toArray();
     const verified = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
     const unsigned = events.filter((event) => !event.integrity || (event.integrity as { algorithm?: string }).algorithm === "unsigned").length;
-    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, integrity: process.env.AUDIT_SIGNING_KEY ? "hmac_sha256" : "signing_key_not_configured", scope: "latest_500_events", note: "Signature verification does not replace restricted database roles, immutable backups or independent archive storage." });
+    const sequenced = events.filter((event) => Number.isSafeInteger(event.sequence)).sort((left, right) => Number(left.sequence) - Number(right.sequence));
+    let sequenceGaps = 0;
+    for (let index = 1; index < sequenced.length; index += 1) if (Number(sequenced[index]!.sequence) !== Number(sequenced[index - 1]!.sequence) + 1) sequenceGaps += 1;
+    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, sequenceGaps, integrity: process.env.AUDIT_SIGNING_KEY ? "hmac_sha256_sequenced" : "signing_key_not_configured", scope: "latest_500_events", note: "Sequence gaps can indicate missing or failed writes and require investigation; signatures do not replace restricted database roles or independent immutable archives." });
   });
 
   app.get("/v1/mac/audit-events/export", async (request, reply) => {
@@ -163,7 +166,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const limit = Math.min(500, Math.max(1, Number.parseInt(query.limit ?? "200", 10) || 200));
     if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
     const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
-    const events = await db.collection("auditEvents").find(filter).sort({ _id: -1 }).limit(limit).toArray();
+    const events = await db.collection("auditEvents").find(filter).sort({ sequence: -1, _id: -1 }).limit(limit).toArray();
     const signed = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
     return reply.send({ format: "zuri-mebumip-audit-export-v1", generatedAt: new Date().toISOString(), count: events.length, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: process.env.AUDIT_SIGNING_KEY ? "HMAC-SHA256" : "not_configured" }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
   });
