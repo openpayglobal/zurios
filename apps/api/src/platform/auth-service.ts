@@ -50,9 +50,7 @@ async function issueWorkspaceSelection(db:Db,config:AuthConfig,userId:string){
  return {workspaceSelectionRequired:true as const,selectionToken,workspaces,accessToken:undefined as never,refreshToken:undefined as never,sessionId:undefined as never};
 }
 export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:string,tenantId:string){
- let verified;
- try{verified=await jwtVerify(selectionToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});}
- catch{throw new Error("WORKSPACE_SELECTION_INVALID");}
+ const verified=await jwtVerify(selectionToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]}).catch(()=>{throw new Error("WORKSPACE_SELECTION_INVALID");});
  const claims=verified.payload,now=new Date();
  if(claims.purpose!=="workspace_selection"||typeof claims.sub!=="string"||typeof claims.selectionId!=="string")throw new Error("WORKSPACE_SELECTION_INVALID");
  const c=coreCollections(db),[user,tenant,membership]=await Promise.all([
