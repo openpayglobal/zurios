@@ -70,3 +70,15 @@ Use tenant-bound access tokens and refresh sessions. Initial login returns a sho
 - Cross-tenant resource access is denied even when a client alters tenant IDs.
 - Revoking one membership does not revoke access to unrelated active memberships except where global risk policy explicitly requires it.
 - Tests cover multiple memberships, no memberships, suspended tenant, revoked membership, replayed selection, session rotation and cross-tenant access.
+
+
+## External security research references
+
+The multi-tenant identity and session design is informed by the following current primary guidance. These sources are engineering references, not a claim of certification or compliance:
+
+- [OWASP Multi-Tenant Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Multi_Tenant_Security_Cheat_Sheet.html): derive tenant context from verified identity and active membership; enforce tenant scope at every data, cache, storage and asynchronous-work boundary; do not treat client-supplied tenant identifiers as authorization proof.
+- [OWASP Authentication Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html): protect authentication and recovery paths, use risk-based reauthentication and require step-up authentication for sensitive operations where appropriate.
+- [OWASP Session Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html): use protected session identifiers, server-side invalidation, rotation, expiry and explicit logout; do not rely on browser-close events for revocation.
+- [NIST SP 800-63B-4](https://csrc.nist.gov/pubs/sp/800/63/B/4/final), published July 2025: current digital identity guidance for authentication, authenticator management and session lifecycle. Apply the assurance level appropriate to the service risk; do not claim NIST conformance without a formal control assessment.
+
+Implementation follow-up: keep tenant scope in every tenant-owned query and cache key, enforce resource ownership on every access path, and re-establish authorization for delayed/background work. Add cross-tenant denial tests as each product module is activated.
