@@ -209,8 +209,12 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
     if (!config.MFA_ENCRYPTION_KEY) return reply.code(503).send({ error: "MFA_NOT_CONFIGURED" });
+    const parsed = z.object({ currentPassword: z.string().min(1).max(256) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
-    if (!user) return unauthorized(reply);
+    if (!user || typeof user.passwordHash !== "string" || !(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) {
+      return reply.code(403).send({ error: "CURRENT_PASSWORD_INVALID" });
+    }
     if (user.mfaEnabled === true) return reply.code(409).send({ error: "MFA_ALREADY_ENABLED" });
     const secret = generateTotpSecret();
     await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaPendingSecret: encryptMfaSecret(secret), mfaSetupAt: new Date(), mfaSetupExpiresAt: new Date(Date.now() + 15 * 60_000) } });
