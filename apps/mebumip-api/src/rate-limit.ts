@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 
 const POLICIES = [
   { match: (path: string) => path === "/v1/platform/bootstrap", limit: 3, windowMs: 60 * 60_000 },
-  { match: (path: string) => path === "/v1/auth/login" || path === "/v1/auth/register", limit: 8, windowMs: 15 * 60_000 },
+  { match: (path: string) => path === "/v1/auth/login" || path === "/v1/auth/register" || path === "/v1/auth/password/recovery" || path === "/v1/auth/password/reset", limit: 8, windowMs: 15 * 60_000 },
   { match: (path: string) => path === "/v1/auth/step-up" || path === "/v1/auth/mfa/enable", limit: 8, windowMs: 5 * 60_000 },
   { match: (path: string) => path === "/v1/auth/mfa/setup", limit: 5, windowMs: 60 * 60_000 },
   { match: (path: string) => path.startsWith("/v1/"), limit: 180, windowMs: 60_000 },
