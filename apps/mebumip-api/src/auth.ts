@@ -194,6 +194,26 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } });
   });
 
+  app.post("/v1/auth/register-platform-admin", async (request, reply) => {
+    const parsed = z.object({ token: z.string().min(40).max(200), email: z.string().email().max(254), password: z.string().min(12).max(256), displayName: z.string().trim().min(2).max(100) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const email = parsed.data.email.trim().toLowerCase();
+    const invitation = await db.collection("platformAdminInvitations").findOne({ tokenHash: hashToken(parsed.data.token), email, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
+    if (!invitation || !["platform_admin", "platform_operator", "platform_auditor"].includes(String(invitation.role))) return reply.code(404).send({ error: "PLATFORM_ADMIN_INVITATION_INVALID_OR_EMAIL_MISMATCH" });
+    if (await db.collection("users").findOne({ normalizedEmail: email })) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_USE_ACCEPT" });
+    const now = new Date();
+    const created = await db.collection("users").insertOne({ normalizedEmail: email, displayName: parsed.data.displayName, passwordHash: await hashPassword(parsed.data.password), platformRole: invitation.role, platformAdminStatus: "active", status: "active", platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: now, createdAt: now, updatedAt: now });
+    try {
+      const accepted = await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { acceptedAt: now, acceptedBy: String(created.insertedId) } });
+      if (accepted.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_INVITATION_ALREADY_USED");
+      await appendAuditEvent(db, { actorUserId: String(created.insertedId), action: "platform.admin.invitation.registration.completed", targetType: "platform_admin", targetId: String(created.insertedId), outcome: "success", correlationId: request.id, metadata: { role: String(invitation.role) } });
+    } catch (error) {
+      await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedBy: String(created.insertedId) }, { $unset: { acceptedAt: "", acceptedBy: "" } });
+      await db.collection("users").deleteOne({ _id: created.insertedId });
+      throw error;
+    }
+    return reply.code(201).send({ status: "registered", userId: String(created.insertedId), role: invitation.role, note: "Sign in to access the platform administrator console." });
+  });
   app.post("/v1/auth/register", async (request, reply) => {
     const parsed = z.object({ token: z.string().min(40).max(200), email: z.string().email().max(254), password: z.string().min(12).max(256), displayName: z.string().trim().min(2).max(100) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
