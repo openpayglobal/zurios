@@ -161,3 +161,16 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Documentation-head verification — 2026-11-20:** GitHub Actions [MeBuMIP Phase 1 run #234](https://github.com/openpayglobal/zurios/actions/runs/44710946762) and [full monorepo CI #1247](https://github.com/openpayglobal/zurios/actions/runs/44710946755) both passed on documentation head `f26a9f636900a6fad3e2a3c48e5b674107b0c2b8`. The code verification remains #232 / #1246 on `d1383e44406d62d7cb2fcef2336c2b41f9624b64`; the documentation update did not change application code.
+
+
+**Trusted email and password recovery implementation — 2026-11-20:**
+
+- Added a Resend-backed transactional mail adapter with bounded request timeout, safe HTML escaping, sanitized invitation subject, and an in-memory sink available only in `NODE_ENV=test`.
+- Tenant invitation tokens are now delivered by email only. The API response no longer includes the raw token; the database stores only its hash. If provider configuration or delivery is unavailable, the invitation is revoked, a failure audit event is written and the endpoint fails closed with 503.
+- Production configuration now requires MongoDB, MFA encryption key, Resend API key and sender address. Local examples document secret-manager configuration; the sender domain and credentials have not been configured in production.
+- Added password recovery request/reset endpoints. Requests return a generic 202 response for both known and unknown addresses; 30-minute one-time reset tokens are hashed at rest, rate-limited, TTL-indexed and consumed with an atomic update. Successful reset updates the password, revokes all active sessions and writes an audit event.
+- Added integration assertions for non-enumerating responses, email-only token delivery, hashed token persistence, one-time reset replay denial and session revocation. The MAC sign-in panel now exposes the recovery request and reset forms.
+- Dedicated MeBuMIP run **#268** passed on code head `f1c20f62e799042b13a54577ac6b84e3113d09fe`: API typecheck, tests (**15 passed, 0 failed**), API build, web typecheck and web build.
+- Full monorepo CI **#1264** passed on the same code head: OpenAPI checks, typecheck, tests and build.
+
+**Remaining email/recovery release work:** configure and verify the production Resend sender domain/secret; implement email verification; add durable retry/outbox semantics and delivery monitoring. The newest MAC UI follow-up requires fresh CI after its commit.
