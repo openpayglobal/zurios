@@ -17,7 +17,7 @@ function statusFor(error:unknown):number{
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_|WORKSPACE_/.test(code))return 401;
  return 500;
 }
-function failure(error:unknown,reply:any){const status=statusFor(error);return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===401?"AUTHENTICATION_FAILED":"INTERNAL_SERVER_ERROR"});}
+function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?"WORKSPACE_ACCESS_DENIED":status===409?"WORKSPACE_SELECTION_REPLAYED":status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
 export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async function registerAuthRoutes(app){
   const requireAuth=authenticate(db,config);
