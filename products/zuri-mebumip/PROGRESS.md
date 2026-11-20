@@ -291,3 +291,6 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **Access-request privacy governance (2026-11-20):** added a Draft privacy and retention requirements document under `docs/compliance/`, indexed it in the ecosystem docs hub, and updated the public request form to state purpose limitation, non-provisioning behavior and the requirement for an approved public privacy notice before production enablement. No retention period or jurisdiction-specific lawful basis has been invented; those remain owner/legal review gates.
+
+
+**Public access-request production gate (2026-11-20):** public access requests now default to disabled. The public auth configuration endpoint exposes only the enablement flag and privacy-notice URL; the browser hides the request action when disabled and links the approved notice when configured. Production configuration refuses to enable the endpoint without an HTTPS privacy-notice URL. Integration tests explicitly enable the endpoint in the test environment. This prevents an unreviewed privacy workflow from being enabled accidentally in production.
