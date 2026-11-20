@@ -45,11 +45,11 @@ A shared capability must have a documented owner and interface. A product must n
 MeBuMIP may initially be developed within this monorepo, but must retain its own frontend/API boundary, product documentation, tenant model and versioned integration interfaces.
 
 Product documentation:
-- [Product README](../products/zuri-mebumip/README.md)
-- [Implementation roadmap](../products/zuri-mebumip/IMPLEMENTATION-ROADMAP.md)
-- [Product architecture](../products/zuri-mebumip/ARCHITECTURE.md)
-- [Progress register](../products/zuri-mebumip/PROGRESS.md)
-- [Phase 1 production security runbook](../products/zuri-mebumip/PHASE1-PRODUCTION-SECURITY-RUNBOOK.md)
+- [Product README](./products/zuri-mebumip/README.md)
+- [Implementation roadmap](./products/zuri-mebumip/IMPLEMENTATION-ROADMAP.md)
+- [Product architecture](./products/zuri-mebumip/ARCHITECTURE.md)
+- [Progress register](./products/zuri-mebumip/PROGRESS.md)
+- [Phase 1 production security runbook](./products/zuri-mebumip/PHASE1-PRODUCTION-SECURITY-RUNBOOK.md)
 
 ### 3.3 Future ecosystem products
 
@@ -110,7 +110,7 @@ Technology changes require an architecture decision that records operational imp
 
 MAC controls; MAD monitors. MAD is read-only by default. The backend must enforce the boundary even if a frontend control is hidden. Privileged MAC mutations require appropriate platform permissions, step-up authentication where configured, CSRF protection for cookie-authenticated requests and an audit record.
 
-See the [MeBuMIP architecture](../products/zuri-mebumip/ARCHITECTURE.md) for product-specific boundaries and the [progress register](../products/zuri-mebumip/PROGRESS.md) for implementation evidence.
+See the [MeBuMIP architecture](./products/zuri-mebumip/ARCHITECTURE.md) for product-specific boundaries and the [progress register](./products/zuri-mebumip/PROGRESS.md) for implementation evidence.
 
 ## 8. Security and data governance baseline
 
@@ -125,7 +125,7 @@ See the [MeBuMIP architecture](../products/zuri-mebumip/ARCHITECTURE.md) for pro
 - Maintain backup, restore, incident response and key-recovery procedures.
 - Do not claim regulatory certification or Meta approval without formal evidence.
 
-The [Phase 1 production security runbook](../products/zuri-mebumip/PHASE1-PRODUCTION-SECURITY-RUNBOOK.md) records current MeBuMIP release gates. Its checklist is not proof that production controls have already been configured.
+The [Phase 1 production security runbook](./products/zuri-mebumip/PHASE1-PRODUCTION-SECURITY-RUNBOOK.md) records current MeBuMIP release gates. Its checklist is not proof that production controls have already been configured.
 
 ## 9. External provider and Meta integration governance
 
@@ -190,7 +190,7 @@ At the latest recorded checkpoint, MeBuMIP Phase 1 remains **In progress**. The 
 
 Outstanding closure gates include independently immutable audit archiving, safe key versioning/rotation and migration, production email configuration, production database least privilege and backup/restore evidence, and deployment-specific HTTPS/CORS/proxy/cookie verification. The repository validation and MeBuMIP Phase 1 workflows passed on commit 0506145297c3547ddc8f81f6130c264a3d803f4e (runs 44733364576 and 44733364512); see the product progress register for exact test summaries. Vercel checks remain blocked by the configured build-rate limit and are not treated as application CI evidence.
 
-No live Meta integration, production deployment, immutable archive provider configuration or Phase 1 closure is claimed here. Consult the [progress register](../products/zuri-mebumip/PROGRESS.md) for the latest evidence-based status.
+No live Meta integration, production deployment, immutable archive provider configuration or Phase 1 closure is claimed here. Consult the [progress register](./products/zuri-mebumip/PROGRESS.md) for the latest evidence-based status.
 
 
 ## Latest verification checkpoint — 2026-11-20
