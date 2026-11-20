@@ -322,7 +322,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       return reply.type("application/json").send(archive.content);
     } catch (error) {
       const code = error instanceof Error ? error.message : "AUDIT_ARCHIVE_PREPARATION_FAILED";
-      const status = code === "AUDIT_ARCHIVE_MANIFEST_UNSIGNED" ? 503 : code.startsWith("AUDIT_ARCHIVE") ? 409 : 400;
+      const status = code === "AUDIT_ARCHIVE_MANIFEST_UNSIGNED" ? 503 : code.startsWith("AUDIT_ARCHIVE") ? 409 : 500;
       return reply.code(status).send({ error: code });
     }
   });
