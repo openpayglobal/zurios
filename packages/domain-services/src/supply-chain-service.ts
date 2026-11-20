@@ -18,7 +18,7 @@ export async function createShipment(db:Db,input:unknown,actorId:string,key:stri
   }
   if(!referenceExists)throw new Error("SHIPMENT_REFERENCE_NOT_FOUND");
   const now=new Date();
-  await db.collection("supply_chain_shipments").insertOne({...shipment,_id:shipment.tenantId+":"+shipment.shipmentId,createdAt:now,updatedAt:now,createdBy:actorId},{session});
+  await db.collection<any>("supply_chain_shipments").insertOne({...shipment,_id:shipment.tenantId+":"+shipment.shipmentId,createdAt:now,updatedAt:now,createdBy:actorId},{session});
   await auditDomainMutation(db,session,shipment.tenantId,actorId,"supply_chain.shipment.created","shipment",shipment.shipmentId,{organizationId:shipment.organizationId,referenceType:shipment.referenceType,referenceId:shipment.referenceId,carrierId:shipment.carrierId,trackingNumber:shipment.trackingNumber});
   await appendOutboxEvent(db,session,{tenantId:shipment.tenantId,eventType:"supply_chain.shipment.created",aggregateType:"shipment",aggregateId:shipment.shipmentId,payload:{shipmentId:shipment.shipmentId,organizationId:shipment.organizationId,referenceType:shipment.referenceType,referenceId:shipment.referenceId,carrierId:shipment.carrierId,trackingNumber:shipment.trackingNumber}});
   return {statusCode:201,body:{shipmentId:shipment.shipmentId,status:"planned",version:0}};
