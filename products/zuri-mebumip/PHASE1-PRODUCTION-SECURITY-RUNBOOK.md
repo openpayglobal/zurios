@@ -39,7 +39,7 @@ Generate random key material in a controlled operator environment, for example w
 
 ### Key continuity warning
 
-The audit signer and MFA encryption implementation now support versioned key identifiers and key rings. For audit signing, set `AUDIT_SIGNING_KEYRING` to a JSON object mapping key IDs to 64-character hex-encoded 32-byte keys and `AUDIT_SIGNING_ACTIVE_KEY_ID` to the key used for new event signatures and export manifests. Keep `AUDIT_SIGNING_KEY` (or a `legacy` ring entry containing the hex-encoded original key bytes) available to verify historical `HMAC-SHA256` events. New ring-based writes use `HMAC-SHA256-v2` and embed the key ID in the signed payload. The dry-run-first migration command is documented in [Key Management and Audit Archiving](../../docs/security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md). For MFA, set `MFA_ENCRYPTION_KEYRING` to a JSON object mapping key IDs to 32-byte hex keys and `MFA_ENCRYPTION_ACTIVE_KEY_ID` to the key ID used for new ciphertext. Retain the prior key in the ring for decryption until all stored MFA ciphertext has been safely migrated and a recovery window has elapsed. Existing unversioned MFA ciphertext still requires its original key as `MFA_ENCRYPTION_KEY` or as the `legacy` entry in the key ring. Do not remove the old key merely because new writes use the active key. The audit signing key still requires a separate versioned-signature design before rotation; replacing `AUDIT_SIGNING_KEY` can make historical signatures unverifiable. **Do not rotate either key by simply replacing an environment variable.** Backup, migration, rollback and recovery tests remain required before production rotation.
+The audit signer and MFA encryption implementation now support versioned key identifiers and key rings. For audit signing, set `AUDIT_SIGNING_KEYRING` to a JSON object mapping key IDs to 64-character hex-encoded 32-byte keys and `AUDIT_SIGNING_ACTIVE_KEY_ID` to the key used for new event signatures and export manifests. Keep `AUDIT_SIGNING_KEY` (or a `legacy` ring entry containing the hex-encoded original key bytes) available to verify historical `HMAC-SHA256` events. New ring-based writes use `HMAC-SHA256-v2` and embed the key ID in the signed payload. The dry-run-first migration command is documented in [Key Management and Audit Archiving](../../docs/security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md). For MFA, set `MFA_ENCRYPTION_KEYRING` to a JSON object mapping key IDs to 32-byte hex keys and `MFA_ENCRYPTION_ACTIVE_KEY_ID` to the key ID used for new ciphertext. Retain the prior key in the ring for decryption until all stored MFA ciphertext has been safely migrated and a recovery window has elapsed. Existing unversioned MFA ciphertext still requires its original key as `MFA_ENCRYPTION_KEY` or as the `legacy` entry in the key ring. Do not remove the old key merely because new writes use the active key. Versioned audit signatures and historical verification are implemented. Production rotation is still blocked until backup, full-history verification, rollback and recovery tests are completed. **Do not rotate either key by simply replacing an environment variable.**
 
 ## 3. Browser, proxy, and API deployment checks
 
@@ -77,7 +77,7 @@ The audit signer and MFA encryption implementation now support versioned key ide
 
 ## 6. Audit retention, integrity, and independent archive
 
-The application currently provides sequenced HMAC-signed events, verification of a bounded recent event window, and signed paginated exports. This is tamper evidence, not independent immutable retention.
+The application provides sequenced HMAC-signed events, versioned key-ID signatures, signed paginated exports, export-manifest verification, and a MAC workflow that prepares bounded, contiguous, signed, content-addressed archive packages. The provider-neutral sink contract and receipt model are implemented. This is still not independent immutable retention until a concrete storage adapter writes the packages to a verified WORM/object-lock destination.
 
 Required before closure:
 
@@ -91,7 +91,7 @@ Required before closure:
 - [ ] Alert on missing sequence numbers, invalid signatures, unsigned legacy records, archive lag, failed writes, or retention-policy drift.
 - [ ] Perform a full-history reconciliation; do not treat the latest-500 verification endpoint as a full-history audit.
 
-No WORM provider, retention duration, archive destination, or archive credentials have been selected/configured in the repository at this stage.
+No WORM provider, retention duration, archive destination, legal-hold policy, or archive credentials have been selected/configured in the repository at this stage. The MAC package download reports `prepared_not_archived` until a storage adapter confirms immutable retention.
 
 ## 7. MongoDB, backup, and operational resilience
 
@@ -108,10 +108,10 @@ No WORM provider, retention duration, archive destination, or archive credential
 
 | Gate | Current status | Evidence still required |
 |---|---|---|
-| API/web build and test | Latest previously confirmed GitHub Actions run passed | Re-run after subsequent test changes and retain the run URL |
+| API/web build and test | Latest confirmed repository CI run 44748329176 and MeBuMIP Phase 1 run 44748328927 passed | Retain the run URLs and re-run after subsequent code changes |
 | Email delivery | Adapter implemented; live configuration pending | Verified sender, secret-manager values, successful delivery tests |
 | MFA recovery | Implemented; recovery tests exist | Production key custody and recovery exercise |
-| Audit integrity | Sequenced HMAC events and signed exports implemented | Restricted DB roles, versioned key handling, independent WORM archive, full-history verification |
+| Audit integrity | Sequenced HMAC events, versioned key rings, signed export-manifest verification and archive-package preparation implemented | Restricted DB roles, production key rotation/recovery evidence, independent WORM archive and full-history verification |
 | Database resilience | MongoDB-backed CI integration test exists | Production backup/restore exercise and least-privilege role review |
 | Session/proxy security | Cookie, CSRF, SameSite and proxy allowlist foundations implemented | HTTPS, exact CORS, proxy CIDR and cross-site topology verification |
 | MAC/MAD policy | Core control and read-only monitoring surfaces implemented | Final access review and production operational sign-off |
