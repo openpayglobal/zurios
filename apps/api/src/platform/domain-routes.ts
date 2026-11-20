@@ -928,6 +928,12 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return reply.code(result.statusCode).send(result.body);
    }catch(error){return sendError(error,reply);}
   });
+  app.get("/workflow-tasks",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"workflows.task.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("workflow_tasks").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({createdAt:-1}).limit(500).toArray()};
+  });
   const decideWorkflow=async(request:FastifyRequest,reply:FastifyReply,decision:"approved"|"rejected")=>{
    const p=getPrincipal(request);
    try{
