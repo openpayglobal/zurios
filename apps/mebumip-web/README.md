@@ -15,3 +15,6 @@ The browser authenticates with credentialed HttpOnly session cookies; access tok
 
 
 The sign-in panel includes password recovery request and one-time token reset flows. Recovery email delivery requires the configured Resend provider and verified sender address; no reset token is displayed in API responses.
+
+
+Platform administrator invitations can be accepted by existing signed-in users or used to register a new platform administrator from the one-time email token. MAC invitation creation and revocation require platform-owner authorization and MFA step-up.
