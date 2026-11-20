@@ -311,3 +311,5 @@ The branch now includes an initial shipment lifecycle service and authenticated 
 - Replica-set service tests cover location-scope rejection, replay, state transitions, missing delivery evidence and terminal-state protection; API tests cover create, dispatch, deliver and scoped listing.
 
 **Explicit limitations:** carrier master/onboarding, carrier API adapters, tracking webhooks/polling, route planning, freight cost/tax, customs documentation, shipment legs, partial delivery, returns and delivery exception workflows remain open. The current tracking number is recorded but is not yet verified with an external carrier.
+
+The web application also includes a Shipment Tracking workspace for creation, status progression and delivery evidence capture; carrier API verification and live tracking remain future work.
