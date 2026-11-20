@@ -365,8 +365,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     );
     await db.collection("sessions").updateMany(
       { userId, revokedAt: { $exists: false } },
-      { $set: { revokedAt: now, revokeReason: "password_recovered" } },
-      { $unset: { stepUpUntil: "" } },
+      { $set: { revokedAt: now, revokeReason: "password_recovered" }, $unset: { stepUpUntil: "" } },
     );
     await writeAudit(db, request, userId, "auth.password.recovered", "user", "success");
     return reply.send({ status: "password_reset", sessionsRevoked: true });
