@@ -41,7 +41,7 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/refresh`: rotates the current bearer token.
 - `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: list and revoke the authenticated user’s sessions.
 - `POST /v1/auth/password/change`: changes password and revokes other sessions.
-- `POST /v1/auth/mfa/setup` and `/v1/auth/mfa/enable`: configure TOTP MFA.
+- `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
 - `POST /v1/auth/step-up`: verifies TOTP for a five-minute privileged-action window.
 
 Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persisted. Passwords use salted scrypt hashes.
@@ -53,7 +53,7 @@ Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persist
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
 - `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded.
 
-MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are returned once by the API for delivery through a trusted mail adapter; automated email delivery is not configured yet. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
+MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are returned once by the API for delivery through a trusted mail adapter; automated email delivery is not configured yet. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
 
 ## Current limitations — not production-ready
 
