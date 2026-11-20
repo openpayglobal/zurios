@@ -174,6 +174,17 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(auditVerification.statusCode, 200);
   assert.equal(auditVerification.json().invalid, 0);
   assert.equal(auditVerification.json().sequenceGaps, 0);
+  const auditSequences=auditEvents.map(event=>Number(event.sequence)).sort((a,b)=>a-b);
+  const archiveFrom=auditSequences[0]!,archiveTo=auditSequences[auditSequences.length-1]!;
+  const archiveDownload=await app.inject({method:"GET",url:"/v1/mac/audit-events/archive?fromSequence="+archiveFrom+"&toSequence="+archiveTo,headers});
+  assert.equal(archiveDownload.statusCode,200);
+  assert.equal(archiveDownload.headers["x-audit-archive-status"],"prepared-not-archived");
+  assert.equal(String(archiveDownload.headers["x-audit-archive-sha256"]).length,64);
+  const archiveBody=JSON.parse(archiveDownload.body);
+  assert.equal(archiveBody.archiveFormat,"zuri-mebumip-immutable-audit-archive-v1");
+  assert.equal(archiveBody.archiveStatus,"prepared_not_archived");
+  assert.equal(archiveBody.eventCount,auditEvents.length);
+
   const auditExport = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=100", headers });
   assert.equal(auditExport.statusCode, 200);
   assert.equal(auditExport.json().integrity.unsignedOrInvalid, 0);
