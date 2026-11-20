@@ -170,7 +170,17 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
 
     const cookieLogin = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: winningEmail, password: "owner-recovered-password-789" } });
     assert.equal(cookieLogin.statusCode, 200);
-    assert.ok(cookieLogin.headers["set-cookie"]);
+    const rawCookies = cookieLogin.headers["set-cookie"];
+    const cookieParts = Array.isArray(rawCookies) ? rawCookies : rawCookies ? [rawCookies] : [];
+    const sessionPart = cookieParts.find((value) => value.startsWith("mebumip_session="));
+    const csrfPart = cookieParts.find((value) => value.startsWith("mebumip_csrf="));
+    assert.ok(sessionPart && csrfPart);
+    const cookieHeader = sessionPart.split(";")[0] + "; " + csrfPart.split(";")[0];
+    const csrfToken = decodeURIComponent(csrfPart.slice("mebumip_csrf=".length).split(";")[0]);
+    assert.equal((await app.inject({ method: "GET", url: "/v1/auth/me", headers: { cookie: cookieHeader } })).statusCode, 200);
+    assert.equal((await app.inject({ method: "POST", url: "/v1/auth/logout", headers: { cookie: cookieHeader, origin: "http://localhost:5174" } })).statusCode, 401);
+    assert.equal((await app.inject({ method: "POST", url: "/v1/auth/logout", headers: { cookie: cookieHeader, origin: "http://localhost:5174", "x-csrf-token": csrfToken } })).statusCode, 204);
+    assert.equal((await app.inject({ method: "GET", url: "/v1/auth/me", headers: { cookie: cookieHeader } })).statusCode, 401);
 
     const auditActions = await db.collection("auditEvents").distinct("action");
     assert.ok(auditActions.includes("platform.bootstrap.completed"));
