@@ -207,3 +207,8 @@ The route-drift checker was corrected to identify the outer schema properties bl
 
 
 **Versioned audit-signing key ring (2026-11-20):** added optional `AUDIT_SIGNING_KEYRING` and `AUDIT_SIGNING_ACTIVE_KEY_ID` configuration, HMAC-SHA256-v2 event and export-manifest signatures with key IDs bound into signed payloads, historical HMAC-SHA256 verification using the retained legacy key, and configuration conflict/shape validation. Added tests for active-key signing, old-key verification, key-ID tampering and export-manifest key IDs. MAC runtime settings now expose only whether key rings are configured and the active key identifiers, never key values. Production key rotation has not been configured or run.
+
+
+**Meta platform global research baseline (2026-11-20):** added `docs/integrations/META-PLATFORM-INTEGRATION-READINESS.md` and indexed it in `docs/README.md`. The document records the current official Meta Graph API and Marketing API version observations, separates their version schedules, and defines Tech Provider/App Review gates, least-privilege permissions, Pages/Instagram lifecycle, advertising spend controls, WhatsApp opt-in/templates/webhooks, event reliability and tenant isolation. This is a readiness specification, not implementation evidence. Objectives A–D remain not started; Meta setup remains deferred by the owner.
+
+**Audit export signer compile correction (2026-11-20):** CI had reported duplicate exported `signAuditExport` implementations in `apps/mebumip-api/src/security.ts`. Removed the duplicate legacy implementation while preserving the version-aware signer and the single manifest verifier. The failing run predates this fix; verification is pending on the subsequent commit.
