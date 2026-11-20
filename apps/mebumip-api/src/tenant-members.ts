@@ -70,18 +70,18 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
     if (!delivery.delivered) {
       await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
-      await db.collection("auditEvents").insertOne(createAuditEvent({
+      await appendAuditEvent(db, {
         actorUserId: resolved.principal.userId, action: "tenant.invitation.delivery_failed",
         targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
         outcome: "failure", correlationId: request.id,
-      }));
+      });
       return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" });
     }
     await db.collection("auditEvents").insertOne(createAuditEvent({
       actorUserId: resolved.principal.userId, action: "tenant.invitation.created",
       targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
       outcome: "success", correlationId: request.id,
-    }));
+    });
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
