@@ -23,7 +23,7 @@ export async function startWorkflowRun(db:Db,input:unknown,actorId:string,key:st
   const tasks=definition.steps.map((step:any,index:number)=>({
    tenantId:start.tenantId,organizationId:start.organizationId,taskId:start.runId+"-"+step.stepId,runId:start.runId,workflowId:start.workflowId,
    stepId:step.stepId,stepIndex:index,stepType:step.stepType,assigneeUserIds:step.assigneeUserIds??[],
-   requiredApprovals:step.requiredApprovals??1,approvals:[],status:"pending",version:0,createdAt:now,updatedAt:now
+   requiredApprovals:step.requiredApprovals??1,approvals:[],status:index===0?"pending":"queued",version:0,createdAt:now,updatedAt:now
   }));
   await db.collection("workflow_tasks").insertMany(tasks,{session});
   await auditDomainMutation(db,session,start.tenantId,actorId,"workflows.run.started","workflow_run",start.runId,{organizationId:start.organizationId,workflowId:start.workflowId,taskCount:tasks.length});
@@ -54,8 +54,22 @@ export async function decideWorkflowTask(db:Db,input:unknown,actorId:string,key:
    {$set:{status:nextStatus,approvals,decisionReason:decision.reason,updatedAt:now,lastDecidedByUserId:actorId},$inc:{version:1}},{session}
   );
   if(result.matchedCount!==1)throw new Error("WORKFLOW_TASK_VERSION_CONFLICT");
-  const runStatus=decision.decision==="rejected"?"rejected":
-   await db.collection("workflow_tasks").countDocuments({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:{$ne:"approved"}},{session})===0?"completed":"running";
+  let runStatus:"running"|"completed"|"rejected"="running";
+  if(decision.decision==="rejected"){
+   runStatus="rejected";
+   await db.collection("workflow_tasks").updateMany({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:"queued"},
+    {$set:{status:"cancelled",updatedAt:now}},{session});
+  }else if(nextStatus==="approved"){
+   const nextTask=await db.collection<any>("workflow_tasks").find({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,stepIndex:{$gt:task.stepIndex},status:"queued"},{session}).sort({stepIndex:1}).limit(1).next();
+   if(nextTask){
+    await db.collection("workflow_tasks").updateOne({tenantId:decision.tenantId,organizationId:decision.organizationId,taskId:nextTask.taskId,status:"queued"},
+     {$set:{status:"pending",activatedAt:now,updatedAt:now}},{session});
+    await appendOutboxEvent(db,session,{tenantId:decision.tenantId,eventType:"workflows.task.activated",aggregateType:"workflow_task",aggregateId:nextTask.taskId,payload:{taskId:nextTask.taskId,runId:task.runId,organizationId:decision.organizationId,stepIndex:nextTask.stepIndex}});
+   }else{
+    const remaining=await db.collection("workflow_tasks").countDocuments({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:{$ne:"approved"}},{session});
+    if(remaining===0)runStatus="completed";
+   }
+  }
   await db.collection("workflow_runs").updateOne({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:"running"},
    {$set:{status:runStatus,updatedAt:now,...(runStatus==="completed"||runStatus==="rejected"?{completedAt:now}:{})}},{session});
   await auditDomainMutation(db,session,decision.tenantId,actorId,"workflows.task."+decision.decision,"workflow_task",decision.taskId,{organizationId:decision.organizationId,runId:task.runId,approvals,requiredApprovals:task.requiredApprovals,taskStatus:nextStatus,runStatus,reason:decision.reason});
