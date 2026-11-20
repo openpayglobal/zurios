@@ -87,7 +87,14 @@ export function AuthPanel() {
   }
 
   async function logout() {
-    const csrfToken = readCookieValue("mebumip_csrf");
+    let csrfToken = readCookieValue("mebumip_csrf");
+    if (!token && !csrfToken) {
+      const csrfResponse = await fetch(API_BASE + "/v1/auth/csrf", { credentials: "include" }).catch(() => null);
+      if (csrfResponse?.ok) {
+        const csrfData = await csrfResponse.json() as { csrfToken?: string };
+        csrfToken = csrfData.csrfToken ?? null;
+      }
+    }
     const headers: Record<string, string> = { ...(token ? { Authorization: "Bearer " + token } : {}), ...(csrfToken ? { "x-csrf-token": csrfToken } : {}) };
     await fetch(API_BASE + "/v1/auth/logout", { method: "POST", credentials: "include", headers }).catch(() => undefined);
     sessionStorage.removeItem("mebumip_access_token"); setToken(""); setAuthenticated(false); window.location.reload();
