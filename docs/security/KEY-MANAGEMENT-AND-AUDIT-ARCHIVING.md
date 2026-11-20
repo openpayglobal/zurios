@@ -70,16 +70,18 @@ The utility uses conditional updates against the original ciphertext to avoid ov
 
 ## 4. Audit-signing key lifecycle
 
-MeBuMIP audit events currently use HMAC-SHA256 with a single configured signing key. Do not rotate `AUDIT_SIGNING_KEY` by replacing its value: historical records would no longer verify.
+MeBuMIP now supports an optional versioned audit key ring. When `AUDIT_SIGNING_KEYRING` and `AUDIT_SIGNING_ACTIVE_KEY_ID` are configured, new audit events and export manifests use `HMAC-SHA256-v2`, carry a key ID, and bind that ID into the signed payload. Historical `HMAC-SHA256` events remain verifiable using the original `AUDIT_SIGNING_KEY` or a `legacy` key-ring entry containing the original key bytes encoded as hex. The legacy key must remain available for historical events and retained backups.
 
-Before audit-key rotation, implement and test:
-- a key ID and algorithm version on each event/manifest;
-- a key registry with active-signing and historical-verification keys;
-- migration or re-signing policy that preserves original evidence and provenance;
-- export manifests that identify the signing key;
-- compromise/revocation handling and full-history verification.
+Safe rotation sequence:
+1. Back up the audit database and verify restore before changing key configuration.
+2. Add a new 32-byte key to the ring while retaining the legacy key and all prior verification keys.
+3. Set `AUDIT_SIGNING_ACTIVE_KEY_ID` to the new key and deploy to every API instance.
+4. Verify a newly generated event and signed export report `HMAC-SHA256-v2` with the new key ID.
+5. Verify a sample of historical events and all available export manifests using retained keys; then run full-history verification.
+6. Retain old keys until every historical event, export and backup that depends on them has passed its retention/recovery window.
+7. Record the key ID transition and verification counts, never key material.
 
-A re-sign operation must never silently rewrite historical event content or claim the original signature was produced by a replacement key.
+A re-sign operation must never silently rewrite historical event content or claim the original signature was produced by a replacement key. Key compromise/revocation requires a separate incident procedure and must not silently invalidate evidence.
 
 ## 5. Independent immutable audit archive
 
