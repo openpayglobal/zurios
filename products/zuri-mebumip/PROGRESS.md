@@ -95,3 +95,18 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **MAC administrator lifecycle follow-through (2026-11-20):** added protected administrator directory and a platform-owner-only role/status update endpoint for existing platform administrators. Changes require recent MFA step-up, are audited, protect the platform-owner account, and revoke active sessions when an administrator is suspended. Suspended platform administrators no longer receive platform-role permissions on subsequent requests. The MAC now has a connected administrator directory screen. Creation/invitation of new platform administrators and interactive role/suspension controls in the UI remain outstanding.
+
+
+## Phase 1 closure-gate snapshot — 2026-11-20
+
+| Gate | Status | Evidence / blocker |
+|---|---|---|
+| Trusted email delivery | Blocked on provider configuration | No mail provider or SMTP/API credentials have been selected/configured. Invitation delivery and password recovery must remain disabled until a trusted provider and secret-managed configuration are supplied. |
+| MFA recovery and factor reset | Implementation added; verification pending | Ten one-time codes are generated on MFA enable; only hashes are stored; recovery-code step-up consumes atomically; reset requires password plus unused code and revokes sessions. Unit tests added for generation/normalization. Database-backed route tests and CI remain pending. |
+| Audit immutability/archive | In progress | Existing append-style audit writes and pagination remain. Hash-chain/tamper evidence, restrictive DB roles, signed archive/export and retention governance are not implemented. |
+| Database-backed integration tests | Not started | Need MongoDB-backed tests for bootstrap/login/session, invitation acceptance/replay, MFA gates and cross-tenant denial. |
+| API/web verification | Not verified | CI workflow is committed. Latest observed commit checks are Vercel failures caused by the project's build-rate limit; no passing GitHub Actions typecheck/test/build evidence was retrieved. Local verification remains unavailable in this environment. |
+| MAC administrator lifecycle | Partially implemented | Added administrator directory and MFA-gated, audited role/status update API; owner account is protected; suspension revokes sessions and removes platform-role access. Admin creation/invitation and interactive role/suspension controls remain. |
+| Production session/security architecture | Not complete | Current browser bearer token remains in sessionStorage. Production needs HttpOnly Secure SameSite cookie/BFF, CSRF/origin policy, proxy trust review, device/session metadata, recovery delivery, secrets rotation and deployment security review. |
+
+**Phase 1 decision:** remain **In progress**. No closure or production-readiness claim is authorized until all seven gates are evidenced as complete.
