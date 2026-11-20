@@ -285,3 +285,6 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **Latest complete verification (2026-11-20):** repository CI run 44747048754 passed both OpenAPI 3.1 lint checks, route drift (32 paths, 20 idempotent mutations, 20 shared Zod request schemas), monorepo typecheck, tests and build. The three workspace test suites reported 52 tests (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44747048522 passed API typecheck, all 23 API tests (23 passed, 0 skipped, 0 failed), API build, web typecheck and web build. No outstanding code-check failures remain on commit `d22b5a705d751595070533367a6b189677fca147`.
+
+
+**External architecture reference check (2026-11-20):** attempted to inspect the previously referenced `infoedutechos/ODEI-Multi-Ecos` GitHub repository. The public GitHub API returned 404 and public search returned no result, so its contents could not be verified or incorporated. No architecture or requirements have been inferred from its name. If this repository is private or the URL has changed, repository access or an exported copy is needed before its specific requirements can be reconciled with the ecosystem docs.
