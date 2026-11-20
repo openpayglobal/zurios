@@ -103,9 +103,11 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const auditEvents = await db.collection("auditEvents").find({}).toArray();
   assert.ok(auditEvents.length >= 4);
   assert.ok(auditEvents.every((event) => verifyAuditEvent(event as Record<string, unknown>)));
+  assert.ok(auditEvents.every((event) => Number.isSafeInteger(event.sequence)));
   const auditVerification = await app.inject({ method: "GET", url: "/v1/mac/audit-events/verify", headers });
   assert.equal(auditVerification.statusCode, 200);
   assert.equal(auditVerification.json().invalid, 0);
+  assert.equal(auditVerification.json().sequenceGaps, 0);
   const auditExport = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=100", headers });
   assert.equal(auditExport.statusCode, 200);
   assert.equal(auditExport.json().integrity.unsignedOrInvalid, 0);
