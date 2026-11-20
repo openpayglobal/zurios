@@ -349,7 +349,20 @@ export function verifyAuditArchiveBundle(value: unknown): {
   const bundle = value as Partial<AuditArchiveBundle>;
   const manifest = bundle.manifest;
   const events = bundle.events;
-  if (!manifest || manifest.version !== 1 || !Array.isArray(events)) {
+  if (
+    !manifest ||
+    manifest.version !== 1 ||
+    typeof manifest.generatedAt !== "string" ||
+    typeof manifest.eventCount !== "number" ||
+    typeof manifest.firstSequence !== "number" ||
+    typeof manifest.lastSequence !== "number" ||
+    typeof manifest.firstHash !== "string" ||
+    typeof manifest.lastHash !== "string" ||
+    typeof manifest.manifestHash !== "string" ||
+    typeof manifest.signature !== "string" ||
+    typeof manifest.signatureKeyId !== "string" ||
+    !Array.isArray(events)
+  ) {
     return { valid: false, checked: 0, firstInvalidSequence: null, reason: "ARCHIVE_INVALID_SHAPE" };
   }
   const unsigned = {
