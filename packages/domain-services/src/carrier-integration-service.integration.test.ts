@@ -25,7 +25,7 @@ test("carrier tracking events require verified signatures, exact shipment owners
   await assert.rejects(()=>ingestCarrierTrackingEvent(db,event,"invalid",async()=>false),/CARRIER_SIGNATURE_INVALID/);
   assert.equal(await db.collection("supply_chain_carrier_events").countDocuments({tenantId}),0);
   await assert.rejects(()=>ingestCarrierTrackingEvent(db,{...event,carrierId:"carrier-b"},"valid",async()=>true),/CARRIER_SHIPMENT_NOT_FOUND/);
-  const result=await ingestCarrierTrackingEvent(db,event,"valid",async input=>input.signature==="valid");
+  const result=await ingestCarrierTrackingEvent(db,event,"valid",async input=>input.signature==="valid"&&input.event.shipmentId==="shipment-1"&&input.event.status==="in_transit"&&input.event.organizationId==="org-a");
   assert.deepEqual(result.body,{shipmentId:"shipment-1",providerEventId:"provider-event-1",status:"in_transit",version:2});
   const replay=await ingestCarrierTrackingEvent(db,event,"valid",async()=>true);
   assert.equal(replay.replayed,true);
