@@ -8,7 +8,6 @@ import {issueInvitation,acceptInvitation,login,beginMfaEnrollment,confirmMfaEnro
 import {totpCode} from "./auth-crypto.js";
 import {authRoutes} from "./auth-routes.js";
 import {adminRoutes} from "./admin-routes.js";
-process.env.ACCESS_REQUESTS_ENABLED="true";
 const uri=process.env.MONGODB_TEST_URI;
 test("invitation acceptance and password login use active tenant membership", {skip:!uri}, async()=>{
  const client=new MongoClient(uri!);await client.connect();
@@ -29,7 +28,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   const secondMembership=await createMembership(db,secondTenant.tenantId,"test",{userId:user.userId});
   const platformGrant={grantId:"pog-"+randomUUID(),userId:user.userId,permissionKeys:["platform.tenants.read","platform.tenants.provision"],status:"active",reason:"Integration test platform operator access grant",createdBy:"test",createdAt:new Date(),updatedAt:new Date(),validFrom:new Date()};
   await db.collection("platform_operator_grants").insertOne(platformGrant);
-  const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64")};
+  const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64"),accessRequestsEnabled:true,accessRequestsPrivacyNoticeUrl:"https://example.test/privacy"};
   const workspaceLogin=await login(db,cfg,{email:"AUTH@example.test",password,ipHash:"integration"});
   assert.equal(workspaceLogin.mfaRequired,false);
   if(workspaceLogin.mfaRequired||!("workspaceSelectionRequired" in workspaceLogin)||!workspaceLogin.workspaceSelectionRequired)throw new Error("Expected workspace selection");
@@ -159,17 +158,16 @@ test("invitation acceptance and password login use active tenant membership", {s
   }
   assert.ok(repeatedAccessResponses.every(response=>response.statusCode===202&&response.json().message===accessRequest.json().message));
   assert.equal(await db.collection("access_requests").countDocuments({emailNormalized:"prospective@example.test",status:"pending"}),3);
-  const previousPrivacyUrl=process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL;
-  process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL="https://example.test/privacy";
   const configuredPublicAuth=await app.inject({method:"GET",url:"/auth/public-config"});
   assert.equal(configuredPublicAuth.json().privacyNoticeUrl,"https://example.test/privacy");
-  process.env.ACCESS_REQUESTS_ENABLED="false";
-  const disabledPublicAuth=await app.inject({method:"GET",url:"/auth/public-config"});
+  const disabledApp=Fastify();
+  await disabledApp.register(authRoutes(db,{...cfg,accessRequestsEnabled:false,accessRequestsPrivacyNoticeUrl:undefined}));
+  const disabledPublicAuth=await disabledApp.inject({method:"GET",url:"/auth/public-config"});
   assert.equal(disabledPublicAuth.json().accessRequestsEnabled,false);
-  const disabledAccessRequest=await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"disabled@example.test",displayName:"Disabled User",organizationName:"Disabled Org"}});
+  assert.equal(disabledPublicAuth.json().privacyNoticeUrl,null);
+  const disabledAccessRequest=await disabledApp.inject({method:"POST",url:"/auth/access-requests",payload:{email:"disabled@example.test",displayName:"Disabled User",organizationName:"Disabled Org"}});
   assert.equal(disabledAccessRequest.statusCode,503);
-  process.env.ACCESS_REQUESTS_ENABLED="true";
-  if(previousPrivacyUrl===undefined)delete process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL;else process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL=previousPrivacyUrl;
+  await disabledApp.close();
 
 
 
