@@ -86,3 +86,6 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 **Latest code additions:** invited-user self-registration, per-session inventory/revocation, password reauthentication before MFA enrollment, MFA setup expiry, and corrected dedicated rate limits for MFA enrollment/step-up. The MAC/MAD web workspace now signs in against the API and reads live dashboard aggregates, tenant directory records and audit events. Expired browser sessions are cleared when the API returns 401.
 
 **Verification status:** a GitHub Actions workflow is committed for API typecheck, tests and build plus web typecheck and build. The latest queried commit had no reported status checks; earlier Vercel checks on an earlier commit failed because the Vercel project hit build-rate limits. No local test/build result is available from this environment.
+
+
+**Final review note for this implementation pass:** invited-user registration and existing-user invitation acceptance are both available. MFA enrollment now requires password reauthentication and an expiring confirmation window. Session inventory and per-session revocation are available. Source formatting for the registration route and shared token hashing imports was corrected during review. These changes have not yet passed a confirmed remote build or test run.
