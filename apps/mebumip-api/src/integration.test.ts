@@ -73,6 +73,22 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(replay.statusCode, 403);
 
   clearTestMailOutbox();
+  clearTestMailOutbox();
+  const platformInvitation = await app.inject({ method: "POST", url: "/v1/mac/admin-invitations", headers, payload: { email: "platform-admin@example.test", role: "platform_auditor" } });
+  assert.equal(platformInvitation.statusCode, 201);
+  assert.equal("token" in platformInvitation.json(), false);
+  const platformInviteEmail = getTestMailOutbox().at(-1);
+  assert.ok(platformInviteEmail);
+  const platformInviteToken = platformInviteEmail.text.match(/Invitation token: ([A-Za-z0-9_-]+)/)?.[1];
+  assert.ok(platformInviteToken);
+  const platformAdminRegistration = await app.inject({ method: "POST", url: "/v1/auth/register-platform-admin", payload: { token: platformInviteToken, email: "platform-admin@example.test", password: "Integration-Platform-Admin-Password-2026!", displayName: "Platform Auditor" } });
+  assert.equal(platformAdminRegistration.statusCode, 201);
+  const createdPlatformAdmin = await db.collection("users").findOne({ normalizedEmail: "platform-admin@example.test" });
+  assert.equal(createdPlatformAdmin?.platformRole, "platform_auditor");
+  const duplicateAdminRegistration = await app.inject({ method: "POST", url: "/v1/auth/register-platform-admin", payload: { token: platformInviteToken, email: "platform-admin@example.test", password: "Integration-Platform-Admin-Password-2026!", displayName: "Platform Auditor" } });
+  assert.equal(duplicateAdminRegistration.statusCode, 404);
+
+  clearTestMailOutbox();
   const invitation = await app.inject({ method: "POST", url: "/v1/tenants/" + String(tenant._id) + "/invitations", headers, payload: { email: "member@example.test", role: "viewer" } });
   assert.equal(invitation.statusCode, 201);
   assert.equal("invitationToken" in invitation.json(), false);
