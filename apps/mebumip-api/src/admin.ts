@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { createAuditEvent } from "./security.js";
+import { appendAuditEvent } from "./audit-service.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission } from "./security.js";
 
@@ -75,11 +75,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         tenantId: String(tenantResult.insertedId), userId: String(owner._id),
         role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
       });
-      await db.collection("auditEvents").insertOne(createAuditEvent({
+      await appendAuditEvent(db, {
         actorUserId: resolved.principal.userId, action: "platform.tenant.created",
         targetType: "tenant", targetId: String(tenantResult.insertedId),
         outcome: "success", correlationId: request.id,
-      }));
+      });
     } catch (error) {
       await db.collection("memberships").deleteOne({ tenantId: String(tenantResult.insertedId) });
       await db.collection("tenants").deleteOne({ _id: tenantResult.insertedId });
@@ -124,11 +124,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (parsed.data.status === "suspended") {
       await db.collection("sessions").updateMany({ userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "platform_admin_suspended" } });
     }
-    await db.collection("auditEvents").insertOne(createAuditEvent({
+    await appendAuditEvent(db, {
       actorUserId: resolved.principal.userId, action: "platform.admin.updated", targetType: "platform_admin", targetId: userId,
       outcome: "success", correlationId: request.id,
       metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) },
-    }));
+    });
     return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
   });
 
