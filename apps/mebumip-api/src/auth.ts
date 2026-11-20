@@ -156,6 +156,23 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     return reply.send({ userId: resolved.principal.userId, platformRole: resolved.principal.platformRole ?? null, tenantMemberships: resolved.principal.tenantMemberships });
   });
 
+  app.get("/v1/auth/sessions", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const sessions = await db.collection("sessions").find({ userId: resolved.principal.userId, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { projection: { createdAt: 1, expiresAt: 1 } }).sort({ createdAt: -1 }).limit(50).toArray();
+    return reply.send({ items: sessions.map((session) => ({ id: String(session._id), createdAt: session.createdAt, expiresAt: session.expiresAt, current: String(session._id) === String(resolved.sessionId) })) });
+  });
+
+  app.delete("/v1/auth/sessions/:sessionId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const { sessionId } = request.params as { sessionId: string };
+    if (!ObjectId.isValid(sessionId)) return reply.code(400).send({ error: "INVALID_SESSION_ID" });
+    const result = await db.collection("sessions").updateOne({ _id: new ObjectId(sessionId), userId: resolved.principal.userId, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "user_revoked" } });
+    if (!result.matchedCount) return reply.code(404).send({ error: "SESSION_NOT_FOUND" });
+    await writeAudit(db, request, resolved.principal.userId, "auth.session.revoked", "session", "success", sessionId);
+    return reply.code(204).send();
+  });
   app.post("/v1/auth/refresh", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
@@ -183,6 +200,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const now = new Date();
     await db.collection("users").updateOne({ _id: user._id }, { $set: { passwordHash: await hashPassword(parsed.data.newPassword), passwordChangedAt: now, updatedAt: now } });
     await db.collection("sessions").updateMany({ userId: resolved.principal.userId, _id: { $ne: resolved.sessionId }, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "password_changed" } });
+    await db.collection("sessions").updateOne({ _id: resolved.sessionId }, { $unset: { stepUpUntil: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.password.changed", "user", "success");
     return reply.send({ status: "password_changed", otherSessionsRevoked: true });
   });
