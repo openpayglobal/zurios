@@ -57,6 +57,7 @@ export function AdminData({ resource }: { resource: Resource }) {
     fetch(API_BASE + path, { headers: { Authorization: "Bearer " + token } })
       .then(async (response) => {
         const body = await response.json();
+        if (response.status === 401) { sessionStorage.removeItem("mebumip_access_token"); window.location.reload(); throw new Error("Session expired. Sign in again."); }
         if (!response.ok) throw new Error(response.status === 403 ? "Your platform role does not have permission to view this data." : "API request failed.");
         if (active) { setData(body as ApiData); setError(""); }
       }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Could not load data."); })
