@@ -111,5 +111,7 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const auditExport = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=100", headers });
   assert.equal(auditExport.statusCode, 200);
   assert.equal(auditExport.json().integrity.unsignedOrInvalid, 0);
+  assert.equal(auditExport.json().manifest.integrity.algorithm, "HMAC-SHA256");
+  assert.equal(String(auditExport.json().manifest.integrity.signature).length, 64);
   assert.equal(await db.collection("tenantInvitations").countDocuments({ acceptedAt: { $exists: false } }), 0);
 });
