@@ -42,6 +42,7 @@ export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
     const keyId = keyRing.activeKeyId;
     const iv = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", keyRing.keys[keyId]!, iv);
+    cipher.setAAD(Buffer.from("zuri-mebumip:mfa:v2:" + keyId));
     const encrypted = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
     return ["v2", keyId, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
   }
@@ -72,6 +73,7 @@ export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
     const body = Buffer.from(bodyText!, "base64url");
     if (iv.length !== 12 || tag.length !== 16 || body.length === 0) throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
     const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    if (parts.length === 5) decipher.setAAD(Buffer.from("zuri-mebumip:mfa:v2:" + parts[1]!));
     decipher.setAuthTag(tag);
     return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
   }
@@ -85,7 +87,11 @@ function configuredMfaEncryptionService() {
     const parsed = JSON.parse(config.MFA_ENCRYPTION_KEYRING) as Record<string, string>;
     for (const [keyId, key] of Object.entries(parsed)) keys[keyId] = Buffer.from(key, "hex");
   }
-  if (config.MFA_ENCRYPTION_KEY) keys.legacy = Buffer.from(config.MFA_ENCRYPTION_KEY, "hex");
+  if (config.MFA_ENCRYPTION_KEY) {
+    const environmentLegacyKey = Buffer.from(config.MFA_ENCRYPTION_KEY, "hex");
+    if (keys.legacy && !timingSafeEqual(keys.legacy, environmentLegacyKey)) throw new Error("MFA_LEGACY_KEY_CONFIGURATION_CONFLICT");
+    keys.legacy = environmentLegacyKey;
+  }
   const activeKeyId = config.MFA_ENCRYPTION_ACTIVE_KEY_ID ?? (config.MFA_ENCRYPTION_KEY ? "legacy" : "");
   return createMfaEncryptionService({
     keys,
