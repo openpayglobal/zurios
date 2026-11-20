@@ -40,6 +40,26 @@ test("Workflow approvals support assigned multi-approver tasks and requester sep
   assert.equal(run.status,"completed");
   assert.ok(await db.collection("audit_events").countDocuments({tenantId})>=4);
   assert.ok(await db.collection("outbox_events").countDocuments({tenantId})>=4);
+  await createWorkflowDefinition(db,{
+   tenantId,organizationId:"org-workflows-a",workflowId:"workflow-002",name:"Sequential procurement approval",
+   triggerType:"manual",steps:[
+    {stepId:"manager-review",stepType:"approval",assigneeUserIds:["approver-a"],requiredApprovals:1},
+    {stepId:"finance-review",stepType:"approval",assigneeUserIds:["approver-b"],requiredApprovals:1}
+   ],version:1,status:"active"
+  },"workflow-admin","workflow-definition-002");
+  await startWorkflowRun(db,{
+   tenantId,organizationId:"org-workflows-a",runId:"workflow-run-002",workflowId:"workflow-002",context:{purchaseOrderId:"PO-002"}
+  },"requester-user","workflow-run-start-002");
+  let sequentialTasks=await db.collection<any>("workflow_tasks").find({tenantId,runId:"workflow-run-002"}).sort({stepIndex:1}).toArray();
+  assert.deepEqual(sequentialTasks.map(task=>task.status),["pending","queued"]);
+  await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-002-manager-review",decision:"approved",reason:"Manager review completed and documented",expectedVersion:0},"approver-a","workflow-sequential-approval-1");
+  sequentialTasks=await db.collection<any>("workflow_tasks").find({tenantId,runId:"workflow-run-002"}).sort({stepIndex:1}).toArray();
+  assert.deepEqual(sequentialTasks.map(task=>task.status),["approved","pending"]);
+  const sequentialRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-002"});
+  assert.equal(sequentialRun.status,"running");
+  await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-002-finance-review",decision:"approved",reason:"Finance review completed and documented",expectedVersion:0},"approver-b","workflow-sequential-approval-2");
+  const completedSequentialRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-002"});
+  assert.equal(completedSequentialRun.status,"completed");
  }finally{
   await db.dropDatabase();await client.close();
  }
