@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Db } from "mongodb";
+type RateLimitCounter = { _id: string; count: number; expiresAt: Date };
 import { createHash } from "node:crypto";
 
 const POLICIES = [
@@ -28,13 +29,12 @@ export function registerDatabaseRateLimit(app: FastifyInstance, db: Db): void {
     const now = Date.now();
     const windowStart = Math.floor(now / policy.windowMs) * policy.windowMs;
     const key = clientKey(request, windowStart);
-    const counters = db.collection("rateLimitCounters");
-    await counters.updateOne(
+    const counters = db.collection<RateLimitCounter>("rateLimitCounters");
+    const counter = await counters.findOneAndUpdate(
       { _id: key },
       { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date(windowStart + policy.windowMs * 2) } },
-      { upsert: true },
+      { upsert: true, returnDocument: "after", projection: { count: 1 } },
     );
-    const counter = await counters.findOne({ _id: key }, { projection: { count: 1 } });
     const remaining = Math.max(0, policy.limit - (counter?.count ?? policy.limit));
     reply.header("x-ratelimit-limit", String(policy.limit));
     reply.header("x-ratelimit-remaining", String(remaining));
