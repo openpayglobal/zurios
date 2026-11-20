@@ -208,3 +208,8 @@ The MeBuMIP audit archive work now includes signed package preparation, a MAC do
 ## Latest complete verification — 2026-11-20
 
 On commit `d22b5a705d751595070533367a6b189677fca147`, repository CI run 44747048754 passed both OpenAPI 3.1 lint checks, route drift (32 paths, 20 idempotent mutations, 20 shared Zod request schemas), monorepo typecheck, all tests and build. Test suites reported 52 tests (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44747048522 passed API typecheck, 23 API tests (all passed), API build, web typecheck and web build. This is code verification only; production configuration, external Meta approvals and independent immutable archive storage remain open gates.
+
+
+## Latest access-request privacy gate verification — 2026-11-20
+
+Public access requests are disabled by default. The public auth configuration endpoint exposes only the enablement flag and approved HTTPS privacy notice URL. The browser hides the request action when disabled, and production configuration refuses to enable intake without a notice URL. Repository CI run 44748329176 passed OpenAPI lint, route drift, typecheck, tests and build (52 tests: 45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44748328927 passed all API/web checks and all 23 API tests.
