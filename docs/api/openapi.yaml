@@ -386,6 +386,16 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/public-config:
+    servers:
+      - url: /
+    get:
+      tags: [Identity]
+      operationId: getPublicAuthenticationConfiguration
+      summary: Read public sign-in and access-request availability
+      security: []
+      responses:
+        "200": {description: Public access-request availability and privacy notice URL}
   /auth/login:
     servers:
       - url: /
