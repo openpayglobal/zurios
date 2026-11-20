@@ -4,7 +4,7 @@ import {randomBytes,randomUUID} from "node:crypto";
 import {MongoClient} from "mongodb";
 import Fastify from "fastify";
 import {provisionTenant,setTenantStatus,createUser,createMembership,runCoreMigrations} from "@zuri/core-platform";
-import {issueInvitation,acceptInvitation,login,beginMfaEnrollment,confirmMfaEnrollment,verifyMfaLogin,disableMfa,refreshLogin,issuePasswordReset,resetPassword,logout} from "./auth-service.js";
+import {issueInvitation,acceptInvitation,login,beginMfaEnrollment,confirmMfaEnrollment,verifyMfaLogin,disableMfa,refreshLogin,issuePasswordReset,resetPassword,logout,selectWorkspace,switchWorkspace} from "./auth-service.js";
 import {totpCode} from "./auth-crypto.js";
 import {authRoutes} from "./auth-routes.js";
 const uri=process.env.MONGODB_TEST_URI;
@@ -22,7 +22,32 @@ test("invitation acceptance and password login use active tenant membership", {s
   const password=randomBytes(24).toString("base64url");
   await acceptInvitation(db,user.userId,invitation,password);
   await createMembership(db,tenant.tenantId,"test",{userId:user.userId});
+  const secondTenant=await provisionTenant(db,"test",{slug:"auth-test-second",legalName:"Second Auth Test Ltd",displayName:"Second Auth Workspace"});
+  await setTenantStatus(db,secondTenant.tenantId,"active","test");
+  const secondMembership=await createMembership(db,secondTenant.tenantId,"test",{userId:user.userId});
   const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64")};
+  const workspaceLogin=await login(db,cfg,{email:"AUTH@example.test",password,ipHash:"integration"});
+  assert.equal(workspaceLogin.mfaRequired,false);
+  if(workspaceLogin.mfaRequired||!("workspaceSelectionRequired" in workspaceLogin)||!workspaceLogin.workspaceSelectionRequired)throw new Error("Expected workspace selection");
+  assert.equal(workspaceLogin.workspaces.length,2);
+  assert.equal("accessToken" in workspaceLogin,false);
+  const secondChoice=workspaceLogin.workspaces.find(choice=>choice.tenantId===secondTenant.tenantId);
+  assert.ok(secondChoice);
+  const selected=await selectWorkspace(db,cfg,workspaceLogin.selectionToken,secondTenant.tenantId);
+  assert.ok(selected.accessToken);
+  const selectedSession=await db.collection("sessions").findOne({sessionId:selected.sessionId,tenantId:secondTenant.tenantId});
+  assert.ok(selectedSession);
+  await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,tenant.tenantId),/WORKSPACE_SELECTION_INVALID_OR_EXPIRED|WORKSPACE_SELECTION_REPLAYED/);
+  const switched=await switchWorkspace(db,cfg,{userId:user.userId,tenantId:secondTenant.tenantId,membershipId:secondMembership.membershipId,sessionId:selected.sessionId},tenant.tenantId);
+  assert.ok(switched.accessToken);
+  const priorWorkspaceSession=await db.collection("sessions").findOne({sessionId:selected.sessionId,tenantId:secondTenant.tenantId});
+  assert.ok(priorWorkspaceSession?.revokedAt);
+  const switchedSession=await db.collection("sessions").findOne({sessionId:switched.sessionId,tenantId:tenant.tenantId});
+  assert.ok(switchedSession);
+  await assert.rejects(()=>switchWorkspace(db,cfg,{userId:user.userId,tenantId:tenant.tenantId,membershipId:switchedSession.membershipId,sessionId:switched.sessionId},"tenant-not-authorized"),/WORKSPACE_ACCESS_DENIED/);
+  const currentWorkspaceSession=await db.collection("sessions").findOne({sessionId:switched.sessionId,tenantId:tenant.tenantId});
+  assert.equal(currentWorkspaceSession?.revokedAt,undefined);
+
   const result=await login(db,cfg,{email:"AUTH@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
   assert.equal(result.mfaRequired,false);
   if(result.mfaRequired)throw new Error("Unexpected MFA challenge");
@@ -33,6 +58,14 @@ test("invitation acceptance and password login use active tenant membership", {s
   const enrollment=await beginMfaEnrollment(db,user.userId,cfg);
   const recovery=await confirmMfaEnrollment(db,user.userId,totpCode(enrollment.secret),cfg);
   assert.equal(recovery.recoveryCodes.length,10);
+  const neutralMfaAttempt=await login(db,cfg,{email:"auth@example.test",password,ipHash:"integration"});
+  if(!neutralMfaAttempt.mfaRequired)throw new Error("Expected workspace-neutral MFA challenge");
+  const verifiedNeutralMfa=await verifyMfaLogin(db,cfg,neutralMfaAttempt.challengeToken,recovery.recoveryCodes[2]!);
+  if(!("workspaceSelectionRequired" in verifiedNeutralMfa)||!verifiedNeutralMfa.workspaceSelectionRequired)throw new Error("MFA must complete before workspace selection");
+  assert.equal(verifiedNeutralMfa.workspaces.length,2);
+  const selectedAfterMfa=await selectWorkspace(db,cfg,verifiedNeutralMfa.selectionToken,tenant.tenantId);
+  assert.ok(selectedAfterMfa.accessToken);
+
   const mfaAttempt=await login(db,cfg,{email:"auth@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
   if(!mfaAttempt.mfaRequired)throw new Error("Expected MFA challenge");
   const second=await verifyMfaLogin(db,cfg,mfaAttempt.challengeToken,recovery.recoveryCodes[0]!);
@@ -58,6 +91,17 @@ test("invitation acceptance and password login use active tenant membership", {s
   await logout(db,tenant.tenantId,afterReset.sessionId,user.userId);
   const loggedOut=await db.collection("sessions").findOne({tenantId:tenant.tenantId,sessionId:afterReset.sessionId});
   assert.ok(loggedOut?.revokedAt);
+
+  const noWorkspaceUser=await createUser(db,"test",{email:"no-workspace@example.test",displayName:"No Workspace User"});
+  const noWorkspaceInvitation=await issueInvitation(db,noWorkspaceUser.userId);
+  const noWorkspacePassword=randomBytes(24).toString("base64url");
+  await acceptInvitation(db,noWorkspaceUser.userId,noWorkspaceInvitation,noWorkspacePassword);
+  const noWorkspaceLogin=await login(db,cfg,{email:"no-workspace@example.test",password:noWorkspacePassword,ipHash:"integration"});
+  assert.equal(noWorkspaceLogin.mfaRequired,false);
+  if(noWorkspaceLogin.mfaRequired)throw new Error("Unexpected MFA challenge");
+  assert.equal(noWorkspaceLogin.workspaceSelectionRequired,false);
+  assert.equal(noWorkspaceLogin.workspaces.length,0);
+  assert.equal(noWorkspaceLogin.accessRequestAvailable,true);
 
   const app=Fastify();
   await app.register(authRoutes(db,cfg));
