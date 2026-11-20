@@ -12,6 +12,8 @@ const envSchema = z.object({
   TRUSTED_PROXY_CIDRS: z.string().optional(),
   PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+  MFA_ENCRYPTION_KEYRING: z.string().optional(),
+  MFA_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   AUDIT_SIGNING_KEY: z.string().min(32).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
   MAIL_FROM: z.string().email().optional(),
