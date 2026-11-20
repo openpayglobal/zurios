@@ -45,6 +45,8 @@ jobs:
         run: pnpm --package=@redocly/cli dlx redocly lint docs/api/mebumip-openapi.yaml
       - name: Check OpenAPI route drift
         run: pnpm --filter @zuri/api openapi:check
+      - name: Check product documentation mirrors
+        run: pnpm docs:check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
