@@ -49,6 +49,15 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     assert.equal((await db.collection<{ _id: string; status?: string }>("platformBootstrapLocks").findOne({ _id: "singleton" }))?.status, "completed");
 
     const winningEmail = bootstrapA.statusCode === 201 ? "owner-a@example.test" : "owner-b@example.test";
+    await db.collection("platformBootstrapLocks").deleteOne({ _id: "singleton" });
+    const resealedBootstrap = await app.inject({
+      method: "POST", url: "/v1/platform/bootstrap",
+      payload: bootstrapPayload("replacement-owner@example.test", `replacement-owner-${process.pid}`),
+    });
+    assert.equal(resealedBootstrap.statusCode, 409);
+    assert.equal((resealedBootstrap.json() as { error: string }).error, "PLATFORM_ALREADY_BOOTSTRAPPED");
+    assert.equal((await db.collection<{ _id: string; status?: string }>("platformBootstrapLocks").findOne({ _id: "singleton" }))?.status, "completed");
+    assert.equal(await db.collection("users").countDocuments({ platformRole: "platform_owner" }), 1);
     const invalidBootstrap = await app.inject({
       method: "POST",
       url: "/v1/platform/bootstrap",
