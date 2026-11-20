@@ -53,4 +53,4 @@ See [implementation roadmap](./IMPLEMENTATION-ROADMAP.md), [architecture](./ARCH
 
 ## Ecosystem documentation
 
-See the [ZURI ecosystem documentation index](../../docs/README.md) and [ZURI Ecosystem Overview](../../docs/ZURI-ECOSYSTEM-OVERVIEW.md) for cross-product principles, governance and the full programme map. This product README, roadmap, architecture and progress register remain the authoritative MeBuMIP-specific references.
+See the [ZURI ecosystem documentation index](../../README.md) and [ZURI Ecosystem Overview](../../ZURI-ECOSYSTEM-OVERVIEW.md) for cross-product principles, governance and the full programme map. This product README, roadmap, architecture and progress register remain the authoritative MeBuMIP-specific references.
