@@ -32,7 +32,7 @@ The active workspace is visually distinct. Avoid using a tenant ID or slug as th
 
 ## Access request
 
-The access request form is separate from login. It collects only the minimum information required to route a request and must not create a tenant, user, role, or membership automatically. The API should return a non-enumerating acknowledgement and route the request through an approved workflow. Workspace provisioning and membership assignment remain privileged, auditable operations.
+The access request form is separate from login. It collects only the minimum information required to route a platform-access request and must not create a tenant, user, role, or membership automatically. It does not enumerate all tenants or let an unauthenticated visitor select an arbitrary workspace. To join an existing workspace, an authorized workspace administrator must invite or assign the user's global identity; after the membership becomes active, the user signs in and chooses from their authorized workspace memberships. The API returns a non-enumerating acknowledgement and routes the request through an approved workflow. Workspace provisioning and membership assignment remain privileged, auditable operations.
 
 ## Interaction states
 
