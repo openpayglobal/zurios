@@ -213,11 +213,13 @@ export async function switchWorkspace(db:Db,config:AuthConfig,current:{userId:st
  ]);
  if(!tenant||!membership)throw new Error("WORKSPACE_ACCESS_DENIED");
  const next=await completeLogin(db,config,{userId:current.userId,tenantId:targetTenantId,membershipId:membership.membershipId},"auth.workspace.switched");
- try{
-  await revokeSession(db,current.tenantId,current.sessionId,current.userId);
- }catch(error){
+ const revoked=await c.sessions.updateOne(
+  {tenantId:current.tenantId,sessionId:current.sessionId,userId:current.userId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},
+  {$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:current.userId}}
+ );
+ if(!revoked.modifiedCount){
   await revokeSession(db,targetTenantId,next.sessionId,"security:workspace-switch-rollback");
-  throw error;
+  throw new Error("SESSION_INVALID");
  }
  return next;
 }
