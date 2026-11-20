@@ -32,6 +32,7 @@ export const provisionTenantSchema=z.object({
 });
 export const lifecycleRequestSchema=z.object({reason:reasonSchema});
 export const tenantLifecycleRequestSchema=z.object({action:z.enum(["tenant.activate","tenant.suspend","tenant.close"]),reason:reasonSchema});
+export const reviewAccessRequestSchema=z.object({status:z.enum(["reviewed","approved","declined"]),reason:z.string().trim().min(20).max(500)});
 export const ADMIN_BODY_CONTRACTS=[
  {method:"post",path:"/platform/admin/users/invitations",schemaName:"InviteUser",schema:inviteUserSchema},
  {method:"post",path:"/platform/admin/users/invitations/{membershipId}/resend",schemaName:"LifecycleRequest",schema:lifecycleRequestSchema},
@@ -45,5 +46,6 @@ export const ADMIN_BODY_CONTRACTS=[
  {method:"post",path:"/platform/admin/tenants",schemaName:"ProvisionTenant",schema:provisionTenantSchema},
  {method:"post",path:"/platform/admin/organizations/{organizationId}/lifecycle-requests",schemaName:"LifecycleRequest",schema:lifecycleRequestSchema},
  {method:"post",path:"/platform/admin/locations/{locationId}/lifecycle-requests",schemaName:"LifecycleRequest",schema:lifecycleRequestSchema},
- {method:"post",path:"/platform/admin/tenants/{tenantId}/lifecycle-requests",schemaName:"TenantLifecycleRequest",schema:tenantLifecycleRequestSchema}
+ {method:"post",path:"/platform/admin/tenants/{tenantId}/lifecycle-requests",schemaName:"TenantLifecycleRequest",schema:tenantLifecycleRequestSchema},
+ {method:"patch",path:"/platform/admin/access-requests/{requestId}",schemaName:"ReviewAccessRequest",schema:reviewAccessRequestSchema}
 ] as const;
