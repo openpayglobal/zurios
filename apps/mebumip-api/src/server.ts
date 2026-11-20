@@ -62,6 +62,10 @@ if (config.MONGODB_URI) {
     await mongo.connect();
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
+    const topology = await db.admin().command({ hello: 1 }) as { setName?: string; msg?: string };
+    if (config.NODE_ENV === "production" && !topology.setName && topology.msg !== "isdbgrid") {
+      throw new Error("MONGODB_REPLICA_SET_REQUIRED_FOR_TRANSACTIONAL_AUDIT");
+    }
     await ensureMeBuMIPIndexes(db);
     registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
