@@ -257,3 +257,10 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - API startup now checks MongoDB `hello` topology and refuses to mark the service ready in production unless connected to a replica set or sharded cluster. This is required for transactional audit sequence allocation, append and legacy backfill.
 - Local development can continue using a standalone MongoDB; the stricter topology requirement is production-only.
 - This startup guard and the latest archive-export documentation require a fresh CI run.
+
+
+**Production MongoDB topology verification — 2026-11-20:**
+
+- MeBuMIP verification **#389** passed on head `f90f0ccdaa4229c5d517650d912b88e1114e1538`: API typecheck, **17 tests passed / 0 failed / 0 skipped**, API build, web typecheck and web build.
+- Full monorepo CI **#1323** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
+- The production-only startup topology guard is now typechecked and built. CI exercises the replica-set path; production standalone rejection has not been tested against a live deployment.
