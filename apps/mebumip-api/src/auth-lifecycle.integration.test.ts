@@ -1,8 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
-import { MongoClient, ObjectId } from "mongodb";
-import { hashPassword } from "./passwords.js";
+import { MongoClient } from "mongodb";
 import { hashToken, newOpaqueToken } from "./security.js";
 
 process.env.NODE_ENV = "test";
