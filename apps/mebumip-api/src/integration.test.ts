@@ -186,6 +186,10 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(archiveBody.eventCount,auditEvents.length);
   const archivePreparationAudit=await db.collection("auditEvents").findOne({action:"audit.archive.package.prepared",targetId:archiveDownload.headers["x-audit-archive-object-key"]});
   assert.ok(archivePreparationAudit);
+  const invalidArchiveRange=await app.inject({method:"GET",url:"/v1/mac/audit-events/archive?fromSequence=0&toSequence=1",headers});
+  assert.equal(invalidArchiveRange.statusCode,400);
+  const archiveGap=await app.inject({method:"GET",url:"/v1/mac/audit-events/archive?fromSequence="+archiveFrom+"&toSequence="+(archiveTo+2),headers});
+  assert.equal(archiveGap.statusCode,409);
 
   const auditExport = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=100", headers });
   assert.equal(auditExport.statusCode, 200);
