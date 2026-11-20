@@ -4,6 +4,7 @@ import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { resolvePrincipal } from "./auth.js";
 import { createAuditEvent, hashToken, hasTenantPermission, TENANT_ROLES, type TenantRole } from "./security.js";
+import { sendTenantInvitationEmail } from "./mail.js";
 
 const invitationSchema = z.object({
   email: z.string().email().max(254),
@@ -66,13 +67,22 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
       tenantId, email, role: parsed.data.role, tokenHash: hashToken(token),
       invitedBy: resolved.principal.userId, createdAt: now, expiresAt,
     });
+    const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
+    if (!delivery.delivered) {
+      await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
+      await db.collection("auditEvents").insertOne(createAuditEvent({
+        actorUserId: resolved.principal.userId, action: "tenant.invitation.delivery_failed",
+        targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
+        outcome: "failure", correlationId: request.id,
+      }));
+      return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" });
+    }
     await db.collection("auditEvents").insertOne(createAuditEvent({
       actorUserId: resolved.principal.userId, action: "tenant.invitation.created",
       targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
       outcome: "success", correlationId: request.id,
     }));
-    // Token is returned once for delivery by a trusted mail adapter; never persisted in plaintext.
-    return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, deliveryRequired: true, invitationToken: token });
+    return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
   app.post("/v1/tenant-invitations/accept", async (request, reply) => {
