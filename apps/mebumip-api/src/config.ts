@@ -15,6 +15,8 @@ const envSchema = z.object({
   MFA_ENCRYPTION_KEYRING: z.string().max(16384).optional(),
   MFA_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   AUDIT_SIGNING_KEY: z.string().min(32).optional(),
+  AUDIT_SIGNING_KEYRING: z.string().max(16384).optional(),
+  AUDIT_SIGNING_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
   MAIL_FROM: z.string().email().optional(),
 });
@@ -53,7 +55,26 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => origin.includes("localhost") || origin.includes("127.0.0.1"))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must not include localhost" });
   }
-  if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY) {
+  let auditKeyring: Record<string, unknown> | undefined;
+  if (value.AUDIT_SIGNING_KEYRING) {
+    try {
+      const parsedRing: unknown = JSON.parse(value.AUDIT_SIGNING_KEYRING);
+      if (!parsedRing || typeof parsedRing !== "object" || Array.isArray(parsedRing)) throw new Error("Audit key ring must be a JSON object");
+      auditKeyring = parsedRing as Record<string, unknown>;
+      if (Object.keys(auditKeyring).length < 1 || Object.keys(auditKeyring).length > 20) throw new Error("Audit key ring must contain between 1 and 20 keys");
+      for (const [keyId, key] of Object.entries(auditKeyring)) {
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Each audit key-ring entry must have a valid identifier and 32-byte hex key");
+      }
+      if (!value.AUDIT_SIGNING_ACTIVE_KEY_ID || !Object.hasOwn(auditKeyring, value.AUDIT_SIGNING_ACTIVE_KEY_ID)) throw new Error("AUDIT_SIGNING_ACTIVE_KEY_ID must identify a key in AUDIT_SIGNING_KEYRING");
+      if (value.AUDIT_SIGNING_KEY && typeof auditKeyring.legacy === "string" && Buffer.from(value.AUDIT_SIGNING_KEY).toString("hex") !== auditKeyring.legacy.toLowerCase()) throw new Error("AUDIT_SIGNING_KEY conflicts with the legacy key-ring entry");
+      if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY && !Object.hasOwn(auditKeyring, "legacy")) throw new Error("Legacy audit key must be retained while historical events use the original signature format");
+    } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEYRING"], message: error instanceof Error ? error.message : "Invalid audit key ring" });
+    }
+  } else if (value.AUDIT_SIGNING_ACTIVE_KEY_ID) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_ACTIVE_KEY_ID"], message: "An active audit key ID requires AUDIT_SIGNING_KEYRING" });
+  }
+  if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY && !value.AUDIT_SIGNING_KEYRING) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });
   }
 }).safeParse(process.env);
