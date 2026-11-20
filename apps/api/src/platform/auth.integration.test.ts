@@ -120,6 +120,16 @@ test("invitation acceptance and password login use active tenant membership", {s
   assert.equal(noWorkspaceLogin.workspaces.length,0);
   assert.equal(noWorkspaceLogin.accessRequestAvailable,true);
 
+  await db.collection("platform_operator_grants").insertOne({grantId:"pog-"+randomUUID(),userId:noWorkspaceUser.userId,permissionKeys:["platform.tenants.read"],status:"active",reason:"Integration test platform-only access grant",createdBy:"test",createdAt:new Date(),updatedAt:new Date(),validFrom:new Date()});
+  const platformOnlyLogin=await login(db,cfg,{email:"no-workspace@example.test",password:noWorkspacePassword,ipHash:"integration"});
+  if(platformOnlyLogin.mfaRequired||!platformOnlyLogin.workspaceSelectionRequired)throw new Error("Platform-only user must receive a workspace selection");
+  assert.equal(platformOnlyLogin.workspaces.length,1);
+  assert.equal(platformOnlyLogin.workspaces[0]?.tenantId,"platform");
+  const platformOnlySession=await selectWorkspace(db,cfg,platformOnlyLogin.selectionToken,"platform");
+  assert.ok(platformOnlySession.accessToken);
+  const platformOnlyRefresh=await refreshLogin(db,cfg,"platform",platformOnlySession.sessionId,platformOnlySession.refreshToken);
+  assert.ok(platformOnlyRefresh.accessToken);
+
   const app=Fastify();
   await app.register(authRoutes(db,cfg));
   await app.register(adminRoutes(db,cfg));
