@@ -114,7 +114,7 @@ export function verifyAuditEvent(event: Record<string, unknown>, signingKey = pr
     ...(typeof event.tenantId === "string" ? { tenantId: event.tenantId } : {}),
     outcome: event.outcome as AuditEventInput["outcome"], correlationId: event.correlationId,
     occurredAt: event.occurredAt,
-    ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as AuditEventInput["metadata"] } : {}),
+    ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
   };
   const expected = createHmac("sha256", signingKey).update(auditPayload(payload)).digest();
   const actual = Buffer.from(integrity.signature, "hex");
