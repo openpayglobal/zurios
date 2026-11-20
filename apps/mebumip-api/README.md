@@ -57,6 +57,9 @@ Browser sessions are issued as `HttpOnly` session cookies with a separate sessio
 - `GET /v1/mad/overview`: authenticated platform metrics read; read-only aggregates only.
 - `GET /v1/mac/tenants`: platform tenant directory read.
 - `GET /v1/mac/admins`: platform administrator directory read.
+- `GET /v1/mac/admin-invitations` and `POST /v1/mac/admin-invitations`: list/create MFA-gated, email-delivered platform administrator invitations.
+- `POST /v1/mac/admin-invitations/accept` and `DELETE /v1/mac/admin-invitations/:invitationId`: existing-user acceptance and audited invitation revocation.
+- `POST /v1/auth/register-platform-admin`: one-time invited registration for a new platform administrator.
 - `GET /v1/mac/settings`: safe runtime configuration status; secret values are never returned.
 - `PATCH /v1/mac/admins/:userId`: platform-owner-only role/status updates for existing platform administrators; requires recent MFA step-up. The platform owner is immutable through this route. Suspending an administrator revokes their active sessions.
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
