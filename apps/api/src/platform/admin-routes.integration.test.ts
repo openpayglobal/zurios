@@ -69,6 +69,27 @@ test("administration workspace enforces invitation, two-person approval and brea
   const operatorA=await token("operator-a","membership-a","session-a");
   const operatorB=await token("operator-b","membership-b","session-b");
 
+  const noTenantAllow=await app.inject({method:"GET",url:"/platform/admin/overview",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(noTenantAllow.statusCode,403);
+  assert.equal(noTenantAllow.json().error,"ABAC_POLICY_NO_MATCHING_ALLOW");
+  const noPlatformAllow=await app.inject({method:"GET",url:"/platform/admin/tenants",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(noPlatformAllow.statusCode,403);
+  assert.equal(noPlatformAllow.json().error,"ABAC_POLICY_NO_MATCHING_ALLOW");
+  const noPlatformReject=await app.inject({method:"POST",url:"/platform/admin/approvals/missing/reject?scope=platform",headers:{authorization:"Bearer "+operatorA,"idempotency-key":"no-policy-platform-reject"},payload:{reason:"Verify that approval rejection requires an explicit platform policy."}});
+  assert.equal(noPlatformReject.statusCode,403);
+  assert.equal(noPlatformReject.json().error,"ABAC_POLICY_NO_MATCHING_ALLOW");
+  const tenantAllowDocuments=[] as any[];
+  for(const userId of ["operator-a","operator-b"]){
+   permissionKeys.forEach((action,index)=>tenantAllowDocuments.push({tenantId:"tenant-a",policyId:"tenant-allow-"+userId+"-"+index,key:"tenant-allow-"+userId+"-"+index,effect:"allow",priority:0,subject:{userId},resource:{},actions:[action],conditions:{},status:"active"}));
+  }
+  const platformPermissions=["platform.tenants.read","platform.tenants.provision","platform.tenants.lifecycle.request","platform.tenants.lifecycle.approve","platform.approvals.read","platform.approvals.approve"];
+  const platformAllowDocuments=[] as any[];
+  for(const userId of ["operator-a","operator-b"]){
+   platformPermissions.forEach((action,index)=>platformAllowDocuments.push({tenantId:"platform",policyId:"platform-allow-"+userId+"-"+index,key:"platform-allow-"+userId+"-"+index,effect:"allow",priority:0,subject:{userId},resource:{resourceType:"platform_admin"},actions:[action],conditions:{},status:"active"}));
+  }
+  tenantAllowDocuments.push({tenantId:"tenant-a",policyId:"emergency-route-allow",key:"emergency-route-allow",effect:"allow",priority:0,subject:{userId:"emergency-user"},resource:{},actions:["platform.sessions.revoke"],conditions:{},status:"active"});
+  await db.collection("policies").insertMany([...tenantAllowDocuments,...platformAllowDocuments]);
+
   const overview=await app.inject({method:"GET",url:"/platform/admin/overview",headers:{authorization:"Bearer "+operatorA}});
   assert.equal(overview.statusCode,200);
   assert.equal(overview.json().data.tenant.tenantId,"tenant-a");
@@ -81,6 +102,9 @@ test("administration workspace enforces invitation, two-person approval and brea
   });
   assert.equal(configUpdate.statusCode,200);
   assert.equal(configUpdate.json().data.value,"UGX");
+  const configuration=await app.inject({method:"GET",url:"/platform/admin/configuration",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(configuration.statusCode,200);
+  assert.ok(configuration.json().data.some((item:any)=>item.key==="defaultCurrency"&&item.value==="UGX"));
   const exportJob=await app.inject({
    method:"POST",url:"/platform/admin/audit-exports",
    headers:{authorization:"Bearer "+operatorA,"idempotency-key":"audit-export-request-0001"},
@@ -104,7 +128,12 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(invitation.statusCode,202);
   const invited=invitation.json().data;
   assert.equal(invited.status,"invited");
-  const inviteEvent=await db.collection("outbox_events").findOne({eventType:"identity.membership.invitation.requested",tenantId:"tenant-a"});
+  const userDirectory=await app.inject({method:"GET",url:"/platform/admin/users?status=invited",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(userDirectory.statusCode,200);
+  assert.ok(userDirectory.json().data.some((user:any)=>user.userId===invited.userId));
+  const resend=await app.inject({method:"POST",url:"/platform/admin/users/invitations/"+invited.membershipId+"/resend",headers:{authorization:"Bearer "+operatorA,"idempotency-key":"invite-member-resend-0001"},payload:{reason:"Resend the outstanding membership invitation after confirming the recipient address."}});
+  assert.equal(resend.statusCode,202);
+  const inviteEvent=await db.collection("outbox_events").findOne({eventType:"identity.membership.invitation.requested",tenantId:"tenant-a",aggregateId:invited.membershipId},{sort:{createdAt:-1}});
   assert.ok(inviteEvent);
   const rawToken=decryptInvitationToken(inviteEvent!.payload.encryptedInvitationToken as string,config.mfaEncryptionKey);
   assert.ok(rawToken.length>=40);
@@ -121,6 +150,15 @@ test("administration workspace enforces invitation, two-person approval and brea
   });
   assert.equal(approval.statusCode,201);
   const requestId=approval.json().data.requestId;
+  const approvalDirectory=await app.inject({method:"GET",url:"/platform/admin/approvals?status=pending",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(approvalDirectory.statusCode,200);
+  assert.ok(approvalDirectory.json().data.some((item:any)=>item.requestId===requestId));
+  const rejectionRequest=await app.inject({method:"POST",url:"/platform/admin/approvals",headers:{authorization:"Bearer "+operatorA,"idempotency-key":"approval-reject-request-0001"},payload:{action:"membership.suspend",targetType:"membership",targetId:"membership-b",payload:{},reason:"Request suspension pending review of a separate account."}});
+  assert.equal(rejectionRequest.statusCode,201);
+  const rejectionId=rejectionRequest.json().data.requestId;
+  const rejected=await app.inject({method:"POST",url:"/platform/admin/approvals/"+rejectionId+"/reject",headers:{authorization:"Bearer "+operatorB,"idempotency-key":"approval-reject-decision-0001"},payload:{reason:"Reject this request because the account remains required for operations."}});
+  assert.equal(rejected.statusCode,200);
+  assert.equal(rejected.json().data.status,"rejected");
   const selfApproval=await app.inject({
    method:"POST",url:"/platform/admin/approvals/"+requestId+"/approve",
    headers:{authorization:"Bearer "+operatorA,"idempotency-key":"approval-self-0001"},
@@ -185,6 +223,9 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(emergencyApproval.statusCode,200);
   const grant=await db.collection("break_glass_grants").findOne({tenantId:"tenant-a",userId:"emergency-user",status:"active"});
   assert.ok(grant);
+  const breakGlassDirectory=await app.inject({method:"GET",url:"/platform/admin/break-glass",headers:{authorization:"Bearer "+operatorA}});
+  assert.equal(breakGlassDirectory.statusCode,200);
+  assert.ok(breakGlassDirectory.json().data.some((item:any)=>item.grantId===grant!.grantId));
   const emergencyToken=await token("emergency-user","membership-emergency","session-emergency");
   const revokeSession=await app.inject({
    method:"POST",url:"/platform/sessions/session-emergency-revoke/revoke",
@@ -216,6 +257,8 @@ test("administration workspace enforces invitation, two-person approval and brea
   const newTenantId=provisionedTenant.json().data.tenantId;
   const ownerMembership=await db.collection("memberships").findOne({tenantId:newTenantId,status:"invited"});
   assert.ok(ownerMembership);
+  const ownerPolicy=await db.collection("policies").findOne({tenantId:newTenantId,key:"membership-role:"+ownerMembership!.membershipId});
+  assert.ok(ownerPolicy,"tenant provisioning must create the initial owner ABAC allow policy");
   const lifecycle=await app.inject({
    method:"POST",url:"/platform/admin/tenants/tenant-a/lifecycle-requests",
    headers:{authorization:"Bearer "+operatorA,"idempotency-key":"tenant-suspend-request-0001"},

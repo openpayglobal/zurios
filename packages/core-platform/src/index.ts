@@ -24,3 +24,4 @@ export * from "./outbox-service.js";
 export * from "./approval-service.js";
 export * from "./break-glass-service.js";
 export * from "./platform-operator-service.js";
+export * from "./webhook-delivery-service.js";

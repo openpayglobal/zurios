@@ -3,8 +3,6 @@ info:
   title: Zuri OS Platform API
   version: 1.0.0
   summary: Shared multi-tenant platform control-plane API
-  license:
-    name: No license specified
   description: |
     Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
     Tenant context is derived from the authenticated principal; callers cannot
@@ -39,6 +37,32 @@ tags:
     description: Governance, administration, approvals and operational controls
   - name: Identity
     description: Global identity and tenant membership lifecycle
+  - name: Inventory
+    description: Scoped warehouse, stock ledger, balance and reservation operations
+  - name: Point of Sale
+    description: Scoped POS terminals, cashier shifts, checkout, refunds and offline command intake
+  - name: ERP & Accounting
+    description: Organization-scoped purchasing, invoicing, fiscal periods and double-entry posting
+  - name: CRM
+    description: Organization-scoped customer accounts, contacts, leads, opportunities and activities
+  - name: Human Resources
+    description: Organization-scoped employee directory and segregated leave approvals
+  - name: Payroll
+    description: Externally calculated payroll drafts and maker-checker approval; no statutory engine or disbursement
+  - name: Payments
+    description: Provider-configured payment intents, verified event reconciliation and refund requests
+  - name: Commerce
+    description: Organization-scoped catalog and inventory-reservation-backed orders
+  - name: Assets & Maintenance
+    description: Asset register, straight-line depreciation inputs and maintenance work orders
+  - name: Project Management
+    description: Organization-scoped projects, tasks and approved timesheets
+  - name: Supply Chain
+    description: Organization-scoped carrier shipments, tracking and proof-of-delivery lifecycle
+  - name: Analytics
+    description: Organization-scoped, period-bounded operational reporting metrics
+  - name: Workflow Automation
+    description: Organization-scoped approval workflow definitions, runs and multi-approver tasks
 paths:
   /platform/tenant:
     get:
@@ -703,6 +727,1041 @@ paths:
         "201": {description: Platform lifecycle approval request created}
         "403": {$ref: "#/components/responses/Forbidden"}
 
+  /inventory/warehouses:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryWarehouses
+      summary: List active warehouses within assigned location scopes
+      responses:
+        "200": {description: Scoped warehouse list}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Inventory]
+      operationId: createInventoryWarehouse
+      summary: Register a warehouse within an assigned active location
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CreateWarehouse"}
+      responses:
+        "201": {description: Warehouse created}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /inventory/warehouses/{warehouseId}/balances:
+    get:
+      tags: [Inventory]
+      operationId: listInventoryStockBalances
+      summary: Read stock balances for an authorized warehouse
+      parameters:
+        - {name: warehouseId, in: path, required: true, schema: {type: string}}
+        - {name: sku, in: query, required: false, schema: {type: string}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 100}}
+      responses:
+        "200": {description: Stock balances}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Warehouse not found}
+  /inventory/stock-movements:
+    post:
+      tags: [Inventory]
+      operationId: recordInventoryStockMovement
+      summary: Record a receipt, issue, transfer or adjustment in the stock ledger
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/StockMovement"}
+      responses:
+        "201": {description: Stock movement recorded}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /inventory/reservations:
+    post:
+      tags: [Inventory]
+      operationId: reserveInventoryStock
+      summary: Reserve available stock for an order
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/StockReservation"}
+      responses:
+        "201": {description: Stock reserved}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /inventory/reservations/{reservationId}/commit:
+    post:
+      tags: [Inventory]
+      operationId: commitInventoryReservation
+      summary: Consume previously reserved stock
+      parameters:
+        - {name: reservationId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200": {description: Reservation committed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active reservation not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /inventory/reservations/{reservationId}/release:
+    post:
+      tags: [Inventory]
+      operationId: releaseInventoryReservation
+      summary: Release previously reserved stock
+      parameters:
+        - {name: reservationId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "200": {description: Reservation released}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active reservation not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/terminals:
+    post:
+      tags: [Point of Sale]
+      operationId: registerPosTerminal
+      summary: Register a POS terminal at an assigned active location
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosTerminal"}
+      responses:
+        "201": {description: POS terminal registered}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/shifts/open:
+    post:
+      tags: [Point of Sale]
+      operationId: openPosCashierShift
+      summary: Open a cashier shift on an assigned active terminal
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosShiftOpen"}
+      responses:
+        "201": {description: Cashier shift opened}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/shifts/{shiftId}/close:
+    post:
+      tags: [Point of Sale]
+      operationId: closePosCashierShift
+      summary: Close and reconcile a cashier shift
+      parameters:
+        - {name: shiftId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosShiftClose"}
+      responses:
+        "200": {description: Shift closed with cash variance}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Shift not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/sales/complete:
+    post:
+      tags: [Point of Sale]
+      operationId: completePosSale
+      summary: Complete a tender-reconciled POS sale
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosSale"}
+      responses:
+        "201": {description: Sale completed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/refunds:
+    post:
+      tags: [Point of Sale]
+      operationId: refundPosSale
+      summary: Complete a partial or full refund against a completed sale
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosRefund"}
+      responses:
+        "201": {description: Refund completed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /pos/offline-commands:
+    post:
+      tags: [Point of Sale]
+      operationId: acceptPosOfflineCommand
+      summary: Accept an idempotent sequenced offline terminal command
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PosOfflineCommand"}
+      responses:
+        "202": {description: Offline command accepted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/accounts:
+    get:
+      tags: [ERP & Accounting]
+      operationId: listErpAccounts
+      summary: List accounts within authorized organization scopes
+      responses:
+        "200": {description: Scoped chart of accounts}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [ERP & Accounting]
+      operationId: createErpAccount
+      summary: Create an account in an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpAccount"}
+      responses:
+        "201": {description: Account created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/fiscal-periods:
+    get:
+      tags: [ERP & Accounting]
+      operationId: listErpFiscalPeriods
+      summary: List fiscal periods within authorized organizations
+      responses:
+        "200": {description: Scoped fiscal periods}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [ERP & Accounting]
+      operationId: createErpFiscalPeriod
+      summary: Create a non-overlapping fiscal period for an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpFiscalPeriod"}
+      responses:
+        "201": {description: Fiscal period created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/purchase-orders:
+    post:
+      tags: [ERP & Accounting]
+      operationId: createErpPurchaseOrder
+      summary: Create a purchase order for an authorized warehouse
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpPurchaseOrder"}
+      responses:
+        "201": {description: Purchase order created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/purchase-orders/{purchaseOrderId}/receipts:
+    post:
+      tags: [ERP & Accounting]
+      operationId: receiveErpPurchaseOrder
+      summary: Receive approved purchase order quantities and post stock ledger receipts atomically
+      parameters:
+        - {name: purchaseOrderId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpPurchaseOrderReceipt"}
+      responses:
+        "201": {description: Goods receipt recorded and inventory ledger updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Approved purchase order or warehouse not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/invoices:
+    get:
+      tags: [ERP & Accounting]
+      operationId: listErpInvoices
+      summary: List invoices within authorized organization scopes
+      responses:
+        "200": {description: Scoped invoices}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [ERP & Accounting]
+      operationId: createErpInvoice
+      summary: Create a sales or purchase invoice for an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpInvoice"}
+      responses:
+        "201": {description: Invoice created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/invoices/{invoiceId}/payments:
+    post:
+      tags: [ERP & Accounting]
+      operationId: allocateErpInvoicePayment
+      summary: Allocate a received payment to an authorized invoice
+      parameters:
+        - {name: invoiceId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpInvoicePayment"}
+      responses:
+        "201": {description: Payment allocated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /erp/journal-entries/post:
+    post:
+      tags: [ERP & Accounting]
+      operationId: postErpJournalEntry
+      summary: Post a balanced journal entry into an open fiscal period
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ErpJournalEntry"}
+      responses:
+        "201": {description: Journal entry posted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/accounts:
+    get:
+      tags: [CRM]
+      operationId: listCrmAccounts
+      summary: List CRM accounts in authorized organizations
+      responses:
+        "200": {description: Scoped CRM accounts}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [CRM]
+      operationId: createCrmAccount
+      summary: Create a CRM account in an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmAccount"}
+      responses:
+        "201": {description: CRM account created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/contacts:
+    get:
+      tags: [CRM]
+      operationId: listCrmContacts
+      summary: List CRM contacts in authorized organizations
+      responses:
+        "200": {description: Scoped CRM contacts}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [CRM]
+      operationId: createCrmContact
+      summary: Create a contact with explicit consent evidence where required
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmContact"}
+      responses:
+        "201": {description: CRM contact created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/leads:
+    get:
+      tags: [CRM]
+      operationId: listCrmLeads
+      summary: List leads in authorized organizations
+      responses:
+        "200": {description: Scoped CRM leads}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [CRM]
+      operationId: createCrmLead
+      summary: Capture a lead with source and marketing consent status
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmLead"}
+      responses:
+        "201": {description: CRM lead created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/opportunities:
+    get:
+      tags: [CRM]
+      operationId: listCrmOpportunities
+      summary: List pipeline opportunities in authorized organizations
+      responses:
+        "200": {description: Scoped CRM opportunities}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [CRM]
+      operationId: createCrmOpportunity
+      summary: Create a pipeline opportunity with a versioned stage
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmOpportunity"}
+      responses:
+        "201": {description: CRM opportunity created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /crm/activities:
+    get:
+      tags: [CRM]
+      operationId: listCrmActivities
+      summary: List customer activities in authorized organizations
+      responses:
+        "200": {description: Scoped CRM activities}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [CRM]
+      operationId: recordCrmActivity
+      summary: Record an activity linked to an organization-owned CRM resource
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmActivity"}
+      responses:
+        "201": {description: CRM activity recorded}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Related CRM resource not found}
+  /crm/opportunities/{opportunityId}/stage:
+    patch:
+      tags: [CRM]
+      operationId: updateCrmOpportunityStage
+      summary: Move an opportunity through the sales pipeline using optimistic concurrency
+      parameters:
+        - {name: opportunityId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CrmOpportunityStageUpdate"}
+      responses:
+        "200": {description: Opportunity stage updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Opportunity not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/employees:
+    get:
+      tags: [Human Resources]
+      operationId: listHrEmployees
+      summary: List employee records in authorized organizations
+      responses:
+        "200": {description: Scoped employee directory}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Human Resources]
+      operationId: createHrEmployee
+      summary: Create an employee record in an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrEmployee"}
+      responses:
+        "201": {description: Employee created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/leave-requests:
+    get:
+      tags: [Human Resources]
+      operationId: listHrLeaveRequests
+      summary: List leave requests in authorized organizations
+      responses:
+        "200": {description: Scoped leave requests}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Human Resources]
+      operationId: createHrLeaveRequest
+      summary: Request leave for an active employee
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrLeaveRequest"}
+      responses:
+        "201": {description: Leave request created pending approval}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/leave-requests/{leaveRequestId}/approve:
+    post:
+      tags: [Human Resources]
+      operationId: approveHrLeaveRequest
+      summary: Approve a leave request with requester/approver separation
+      parameters:
+        - {name: leaveRequestId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrLeaveDecision"}
+      responses:
+        "200": {description: Leave request approved}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /hr/leave-requests/{leaveRequestId}/reject:
+    post:
+      tags: [Human Resources]
+      operationId: rejectHrLeaveRequest
+      summary: Reject a leave request with an auditable reason
+      parameters:
+        - {name: leaveRequestId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/HrLeaveDecision"}
+      responses:
+        "200": {description: Leave request rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /payroll/runs:
+    get:
+      tags: [Payroll]
+      operationId: listPayrollRuns
+      summary: List payroll runs in authorized organizations
+      responses:
+        "200": {description: Scoped payroll runs}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Payroll]
+      operationId: createPayrollRun
+      summary: Create a reconciled payroll draft from externally calculated amounts
+      description: This endpoint does not calculate statutory deductions or disburse funds. Jurisdiction rules and amounts must be supplied by a reviewed payroll calculation process.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PayrollRun"}
+      responses:
+        "201": {description: Payroll draft created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /payroll/runs/{payrollRunId}/approve:
+    post:
+      tags: [Payroll]
+      operationId: approvePayrollRun
+      summary: Approve a payroll draft with maker/checker separation
+      parameters:
+        - {name: payrollRunId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PayrollApproval"}
+      responses:
+        "200": {description: Payroll run approved}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /payments/intents:
+    get:
+      tags: [Payments]
+      operationId: listPaymentIntents
+      summary: List payment intents in authorized organizations
+      responses:
+        "200": {description: Scoped payment intents}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Payments]
+      operationId: createPaymentIntent
+      summary: Create a payment intent for a payable invoice through an active provider configuration
+      description: Creates an internal intent only. No money is moved until a provider adapter confirms a signed event.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PaymentIntent"}
+      responses:
+        "201": {description: Payment intent created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {description: Provider is not configured or reference is unsupported}
+  /payments/refund-requests:
+    post:
+      tags: [Payments]
+      operationId: requestPaymentRefund
+      summary: Request a refund against a captured payment
+      description: Creates an auditable refund request only. Provider-side refund execution and settlement confirmation require a configured provider adapter.
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PaymentRefundRequest"}
+      responses:
+        "202": {description: Refund request queued for review/provider processing}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /commerce/products:
+    get:
+      tags: [Commerce]
+      operationId: listCommerceProducts
+      summary: List active catalog products in authorized organizations
+      responses:
+        "200": {description: Scoped commerce catalog}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Commerce]
+      operationId: createCommerceProduct
+      summary: Create a catalog product in an assigned organization
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CommerceProduct"}
+      responses:
+        "201": {description: Catalog product created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /commerce/orders:
+    get:
+      tags: [Commerce]
+      operationId: listCommerceOrders
+      summary: List orders in authorized organizations
+      responses:
+        "200": {description: Scoped commerce orders}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Commerce]
+      operationId: placeCommerceOrder
+      summary: Place an order using an existing stock reservation and server-priced catalog products
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CommerceOrder"}
+      responses:
+        "201": {description: Commerce order placed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {description: Reservation or product unavailable}
+  /assets:
+    get:
+      tags: [Assets & Maintenance]
+      operationId: listAssets
+      summary: List assets in authorized organizations
+      responses:
+        "200": {description: Scoped asset register}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Assets & Maintenance]
+      operationId: createAsset
+      summary: Register an asset with acquisition and depreciation parameters
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Asset"}
+      responses:
+        "201": {description: Asset registered}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /assets/maintenance-work-orders:
+    get:
+      tags: [Assets & Maintenance]
+      operationId: listMaintenanceWorkOrders
+      summary: List maintenance work orders in authorized organizations
+      responses:
+        "200": {description: Scoped maintenance work orders}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Assets & Maintenance]
+      operationId: createMaintenanceWorkOrder
+      summary: Create a preventive or corrective maintenance work order
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MaintenanceWorkOrder"}
+      responses:
+        "201": {description: Maintenance work order created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active asset not found}
+  /assets/maintenance-work-orders/{workOrderId}/complete:
+    post:
+      tags: [Assets & Maintenance]
+      operationId: completeMaintenanceWorkOrder
+      summary: Complete a maintenance work order with version-checked actual cost
+      parameters:
+        - {name: workOrderId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MaintenanceCompletion"}
+      responses:
+        "200": {description: Work order completed}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Work order not found}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /projects:
+    get:
+      tags: [Project Management]
+      operationId: listProjects
+      summary: List projects in authorized organizations
+      responses:
+        "200": {description: Scoped projects}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Project Management]
+      operationId: createProject
+      summary: Create a project with budget and delivery dates
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Project"}
+      responses:
+        "201": {description: Project created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /projects/{projectId}/tasks:
+    post:
+      tags: [Project Management]
+      operationId: createProjectTask
+      summary: Create a task under an active project
+      parameters:
+        - {name: projectId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTask"}
+      responses:
+        "201": {description: Project task created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Active project not found}
+  /projects/{projectId}/time-entries:
+    get:
+      tags: [Project Management]
+      operationId: listProjectTimeEntries
+      summary: List project time entries in authorized organizations
+      parameters:
+        - {name: projectId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Scoped project time entries}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Project Management]
+      operationId: submitProjectTimeEntry
+      summary: Submit employee time against an organization-owned project task
+      parameters:
+        - {name: projectId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTimeEntry"}
+      responses:
+        "201": {description: Time entry submitted}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Employee or task not found}
+  /projects/time-entries/{timeEntryId}/approve:
+    post:
+      tags: [Project Management]
+      operationId: approveProjectTimeEntry
+      summary: Approve submitted time with requester/approver separation
+      parameters:
+        - {name: timeEntryId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTimeEntryDecision"}
+      responses:
+        "200": {description: Time entry approved}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /projects/time-entries/{timeEntryId}/reject:
+    post:
+      tags: [Project Management]
+      operationId: rejectProjectTimeEntry
+      summary: Reject submitted time with an auditable reason
+      parameters:
+        - {name: timeEntryId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ProjectTimeEntryDecision"}
+      responses:
+        "200": {description: Time entry rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /shipments:
+    get:
+      tags: [Supply Chain]
+      operationId: listShipments
+      summary: List shipments in authorized organizations
+      responses:
+        "200": {description: Organization-scoped shipment records}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Supply Chain]
+      operationId: createShipment
+      summary: Create a planned shipment between active organization locations
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Shipment"}
+      responses:
+        "201": {description: Shipment created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Organization or shipment locations are invalid}
+  /shipments/{shipmentId}/status:
+    post:
+      tags: [Supply Chain]
+      operationId: updateShipmentStatus
+      summary: Advance a shipment through its guarded lifecycle
+      parameters:
+        - {name: shipmentId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ShipmentStatusUpdate"}
+      responses:
+        "200": {description: Shipment status updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Shipment not found}
+        "409": {description: Version conflict or invalid status transition}
+  /analytics/operational.csv:
+    get:
+      tags: [Analytics]
+      operationId: exportOperationalAnalyticsCsv
+      summary: Export organization-scoped operational metrics as CSV
+      parameters:
+        - {name: organizationId, in: query, required: true, schema: {type: string}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+      responses:
+        "200":
+          description: CSV export of the allowlisted operational metrics
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            text/csv:
+              schema: {type: string}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Invalid reporting period or inactive organization}
+  /analytics/operational:
+    get:
+      tags: [Analytics]
+      operationId: getOperationalAnalytics
+      summary: Read organization-scoped operational metrics for a bounded reporting period
+      parameters:
+        - {name: organizationId, in: query, required: true, schema: {type: string}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+      responses:
+        "200":
+          description: Operational metrics scoped to the authorized organization and period
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenantId, organizationId, period, generatedAt, metrics]
+                properties:
+                  tenantId: {type: string}
+                  organizationId: {type: string}
+                  period: {type: object, properties: {from: {type: string, format: date-time}, to: {type: string, format: date-time}}}
+                  generatedAt: {type: string, format: date-time}
+                  metrics: {type: object, additionalProperties: {type: integer, minimum: 0}}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Invalid reporting period or inactive organization}
+  /workflows:
+    get:
+      tags: [Workflow Automation]
+      operationId: listWorkflowDefinitions
+      summary: List workflow definitions in authorized organizations
+      responses:
+        "200": {description: Scoped workflow definitions}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Workflow Automation]
+      operationId: createWorkflowDefinition
+      summary: Create an approval workflow definition
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowDefinition"}
+      responses:
+        "201": {description: Workflow definition created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /workflow-runs:
+    get:
+      tags: [Workflow Automation]
+      operationId: listWorkflowRuns
+      summary: List workflow runs in authorized organizations
+      responses:
+        "200": {description: Scoped workflow runs}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /workflows/{workflowId}/runs:
+    post:
+      tags: [Workflow Automation]
+      operationId: startWorkflowRun
+      summary: Start a run of an active workflow definition
+      parameters:
+        - {name: workflowId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowRunStart"}
+      responses:
+        "201": {description: Workflow run started}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Active workflow not found}
+  /workflow-tasks:
+    get:
+      tags: [Workflow Automation]
+      operationId: listWorkflowTasks
+      summary: List workflow approval tasks in authorized organizations
+      responses:
+        "200": {description: Scoped workflow tasks}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /workflow-tasks/{taskId}/approve:
+    post:
+      tags: [Workflow Automation]
+      operationId: approveWorkflowTask
+      summary: Approve an assigned workflow task, including multi-approver steps
+      parameters:
+        - {name: taskId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowTaskDecision"}
+      responses:
+        "200": {description: Workflow task approval recorded}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /workflow-tasks/{taskId}/reject:
+    post:
+      tags: [Workflow Automation]
+      operationId: rejectWorkflowTask
+      summary: Reject an assigned workflow task with a recorded reason
+      parameters:
+        - {name: taskId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WorkflowTaskDecision"}
+      responses:
+        "200": {description: Workflow task rejected}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
 components:
   parameters:
     IdempotencyKey:
@@ -743,6 +1802,618 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
   schemas:
+    CreateWarehouse:
+      type: object
+      required: [warehouseId, code, name, locationId, status]
+      properties:
+        warehouseId: {type: string, minLength: 1}
+        code: {type: string, minLength: 1, maxLength: 32}
+        name: {type: string, minLength: 2, maxLength: 160}
+        locationId: {type: string, minLength: 1}
+        status: {type: string, enum: [active, inactive]}
+    StockMovement:
+      type: object
+      required: [idempotencyKey, movementId, movementType, sku, warehouseId, quantityMilli, referenceType, referenceId, occurredAt]
+      properties:
+        idempotencyKey: {type: string, minLength: 8, maxLength: 200}
+        movementId: {type: string, minLength: 1}
+        movementType: {type: string, enum: [receipt, issue, transfer, adjustment]}
+        sku: {type: string, minLength: 1, maxLength: 100}
+        warehouseId: {type: string, minLength: 1}
+        destinationWarehouseId: {type: string}
+        quantityMilli: {type: integer, minimum: 1}
+        unitCostMinor: {type: integer, minimum: 0}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        referenceType: {type: string, minLength: 1}
+        referenceId: {type: string, minLength: 1}
+        reason: {type: string, minLength: 3, maxLength: 500}
+        adjustmentDirection: {type: string, enum: [increase, decrease]}
+        occurredAt: {type: string, format: date-time}
+    StockReservation:
+      type: object
+      required: [idempotencyKey, reservationId, orderId, warehouseId, lines, status, expiresAt]
+      properties:
+        idempotencyKey: {type: string, minLength: 8, maxLength: 200}
+        reservationId: {type: string, minLength: 1}
+        orderId: {type: string, minLength: 1}
+        warehouseId: {type: string, minLength: 1}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, quantityMilli]
+            properties:
+              sku: {type: string, minLength: 1}
+              quantityMilli: {type: integer, minimum: 1}
+        status: {type: string, enum: [reserved]}
+        expiresAt: {type: string, format: date-time}
+    PosTerminal:
+      type: object
+      required: [terminalId, code, locationId, deviceId, status]
+      properties:
+        terminalId: {type: string, minLength: 1}
+        code: {type: string, minLength: 1, maxLength: 32}
+        locationId: {type: string, minLength: 1}
+        deviceId: {type: string, minLength: 1}
+        status: {type: string, enum: [active, inactive, maintenance]}
+    PosShiftOpen:
+      type: object
+      required: [shiftId, terminalId, cashierId, currency, openedAt, openingFloatMinor, status]
+      properties:
+        shiftId: {type: string, minLength: 1}
+        terminalId: {type: string, minLength: 1}
+        cashierId: {type: string, minLength: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        openedAt: {type: string, format: date-time}
+        openingFloatMinor: {type: integer, minimum: 0}
+        status: {type: string, enum: [open]}
+    PosShiftClose:
+      type: object
+      required: [expectedCashMinor, countedCashMinor]
+      properties:
+        expectedCashMinor: {type: integer, minimum: 0}
+        countedCashMinor: {type: integer, minimum: 0}
+    PosSale:
+      type: object
+      required: [saleId, terminalId, cashierId, currency, lines, subtotalMinor, taxMinor, totalMinor, status, completedAt]
+      properties:
+        saleId: {type: string, minLength: 1}
+        reservationId: {type: string}
+        terminalId: {type: string, minLength: 1}
+        cashierId: {type: string, minLength: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, description, quantityMilli, unitPriceMinor, taxRateBps]
+            properties:
+              sku: {type: string}
+              description: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
+              unitPriceMinor: {type: integer, minimum: 0}
+              discountMinor: {type: integer, minimum: 0, default: 0}
+              taxRateBps: {type: integer, minimum: 0, maximum: 10000}
+        subtotalMinor: {type: integer, minimum: 0}
+        taxMinor: {type: integer, minimum: 0}
+        totalMinor: {type: integer, minimum: 1}
+        tenders:
+          type: array
+          items:
+            type: object
+            required: [tenderId, method, amountMinor, currency, status]
+            properties:
+              tenderId: {type: string}
+              method: {type: string, enum: [cash, card, mobile_money, store_credit, voucher]}
+              amountMinor: {type: integer, minimum: 1}
+              currency: {type: string}
+              status: {type: string, enum: [pending, authorized, captured, failed, refunded]}
+              providerReference: {type: string}
+        status: {type: string, enum: [completed]}
+        completedAt: {type: string, format: date-time}
+    PosRefund:
+      type: object
+      required: [refundId, saleId, originalSaleTotalMinor, amountMinor, currency, reason, status]
+      properties:
+        refundId: {type: string}
+        saleId: {type: string}
+        originalSaleTotalMinor: {type: integer, minimum: 1}
+        amountMinor: {type: integer, minimum: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        reason: {type: string, minLength: 3, maxLength: 500}
+        status: {type: string, enum: [completed]}
+        completedAt: {type: string, format: date-time}
+    PosOfflineCommand:
+      type: object
+      required: [terminalId, commandId, sequence, commandType, payload, issuedAt]
+      properties:
+        terminalId: {type: string}
+        commandId: {type: string, minLength: 8}
+        sequence: {type: integer, minimum: 1}
+        commandType: {type: string, minLength: 1, maxLength: 80}
+        payload: {type: object, additionalProperties: true}
+        issuedAt: {type: string, format: date-time}
+    ErpAccount:
+      type: object
+      required: [organizationId, accountCode, name, accountType, normalBalance]
+      properties:
+        organizationId: {type: string, minLength: 1}
+        accountCode: {type: string, minLength: 1, maxLength: 32}
+        name: {type: string, minLength: 2, maxLength: 160}
+        accountType: {type: string, enum: [asset, liability, equity, income, expense]}
+        normalBalance: {type: string, enum: [debit, credit]}
+        parentAccountCode: {type: string}
+        requiresCostCenter: {type: boolean, default: false}
+        status: {type: string, enum: [active, inactive], default: active}
+    ErpFiscalPeriod:
+      type: object
+      required: [organizationId, periodId, periodCode, startsAt, endsAt, status]
+      properties:
+        organizationId: {type: string, minLength: 1}
+        periodId: {type: string}
+        periodCode: {type: string, maxLength: 32}
+        startsAt: {type: string, format: date-time}
+        endsAt: {type: string, format: date-time}
+        status: {type: string, enum: [open, closed]}
+    ErpPurchaseOrder:
+      type: object
+      required: [orderNumber, supplierId, warehouseId, currency, orderedAt, lines, totalMinor, status]
+      properties:
+        orderNumber: {type: string, maxLength: 64}
+        supplierId: {type: string}
+        warehouseId: {type: string}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        orderedAt: {type: string, format: date-time}
+        expectedAt: {type: string, format: date-time}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, description, quantityMilli, unitPriceMinor, taxRateBps]
+            properties:
+              sku: {type: string}
+              description: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
+              unitPriceMinor: {type: integer, minimum: 0}
+              taxRateBps: {type: integer, minimum: 0, maximum: 10000}
+        totalMinor: {type: integer, minimum: 1}
+        status: {type: string, enum: [draft, submitted, approved, partially_received, received, cancelled]}
+    ErpPurchaseOrderReceipt:
+      type: object
+      required: [organizationId, receiptId, receivedAt, lines]
+      properties:
+        organizationId: {type: string}
+        receiptId: {type: string}
+        receivedAt: {type: string, format: date-time}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, quantityMilli]
+            properties:
+              sku: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
+    ErpInvoice:
+      type: object
+      required: [organizationId, invoiceId, invoiceNumber, invoiceType, partyId, currency, issuedAt, dueAt, lines, subtotalMinor, taxMinor, totalMinor, status]
+      properties:
+        organizationId: {type: string}
+        invoiceId: {type: string}
+        invoiceNumber: {type: string, maxLength: 64}
+        invoiceType: {type: string, enum: [sales, purchase]}
+        partyId: {type: string}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        issuedAt: {type: string, format: date-time}
+        dueAt: {type: string, format: date-time}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [description, quantityMilli, unitPriceMinor, taxRateBps]
+            properties:
+              description: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
+              unitPriceMinor: {type: integer, minimum: 0}
+              discountMinor: {type: integer, minimum: 0, default: 0}
+              taxRateBps: {type: integer, minimum: 0, maximum: 10000}
+        subtotalMinor: {type: integer, minimum: 0}
+        taxMinor: {type: integer, minimum: 0}
+        totalMinor: {type: integer, minimum: 1}
+        status: {type: string, enum: [draft, issued, partially_paid, paid, void]}
+    ErpInvoicePayment:
+      type: object
+      required: [paymentId, amountMinor, currency]
+      properties:
+        paymentId: {type: string}
+        amountMinor: {type: integer, minimum: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+    ErpJournalEntry:
+      type: object
+      required: [entryNumber, fiscalPeriodId, sourceType, sourceId, currency, lines, status, postedAt]
+      properties:
+        entryNumber: {type: string, maxLength: 64}
+        fiscalPeriodId: {type: string}
+        sourceType: {type: string}
+        sourceId: {type: string}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        lines:
+          type: array
+          minItems: 2
+          items:
+            type: object
+            required: [accountCode, debitMinor, creditMinor, currency]
+            properties:
+              accountCode: {type: string}
+              debitMinor: {type: integer, minimum: 0}
+              creditMinor: {type: integer, minimum: 0}
+              currency: {type: string}
+              memo: {type: string}
+        status: {type: string, enum: [posted]}
+        postedAt: {type: string, format: date-time}
+    CrmAccount:
+      type: object
+      required: [organizationId, accountId, name, accountType]
+      properties:
+        organizationId: {type: string}
+        accountId: {type: string}
+        name: {type: string, minLength: 2, maxLength: 160}
+        accountType: {type: string, enum: [prospect, customer, partner]}
+        industry: {type: string}
+        website: {type: string, format: uri}
+        ownerUserId: {type: string}
+        status: {type: string, enum: [active, inactive], default: active}
+    CrmContact:
+      type: object
+      required: [organizationId, contactId, firstName, lastName]
+      properties:
+        organizationId: {type: string}
+        contactId: {type: string}
+        accountId: {type: string}
+        firstName: {type: string, maxLength: 80}
+        lastName: {type: string, maxLength: 80}
+        email: {type: string, format: email}
+        phoneE164: {type: string}
+        jobTitle: {type: string}
+        marketingConsent: {type: string, enum: [granted, denied, unknown], default: unknown}
+        consentCapturedAt: {type: string, format: date-time}
+        consentSource: {type: string}
+        status: {type: string, enum: [active, inactive], default: active}
+    CrmLead:
+      type: object
+      required: [organizationId, leadId, firstName, lastName, source]
+      properties:
+        organizationId: {type: string}
+        leadId: {type: string}
+        firstName: {type: string}
+        lastName: {type: string}
+        email: {type: string, format: email}
+        phoneE164: {type: string}
+        companyName: {type: string}
+        source: {type: string, enum: [website, referral, campaign, partner, walk_in, import, other]}
+        status: {type: string, enum: [new, qualified, converted, disqualified], default: new}
+        assignedTo: {type: string}
+        marketingConsent: {type: string, enum: [granted, denied, unknown], default: unknown}
+        consentCapturedAt: {type: string, format: date-time}
+        consentSource: {type: string}
+    CrmOpportunity:
+      type: object
+      required: [organizationId, opportunityId, name, stage, amountMinor, currency, expectedCloseAt, ownerUserId]
+      properties:
+        organizationId: {type: string}
+        opportunityId: {type: string}
+        accountId: {type: string}
+        contactId: {type: string}
+        name: {type: string}
+        stage: {type: string, enum: [prospecting, qualification, proposal, negotiation, won, lost]}
+        amountMinor: {type: integer, minimum: 0}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        expectedCloseAt: {type: string, format: date-time}
+        ownerUserId: {type: string}
+        version: {type: integer, minimum: 0, default: 0}
+    CrmActivity:
+      type: object
+      required: [organizationId, activityId, relatedType, relatedId, activityType, subject, occurredAt, status]
+      properties:
+        organizationId: {type: string}
+        activityId: {type: string}
+        relatedType: {type: string, enum: [account, contact, lead, opportunity]}
+        relatedId: {type: string}
+        activityType: {type: string, enum: [call, email, meeting, task, note]}
+        subject: {type: string}
+        occurredAt: {type: string, format: date-time}
+        status: {type: string, enum: [planned, completed, cancelled]}
+        description: {type: string, maxLength: 4000}
+    CrmOpportunityStageUpdate:
+      type: object
+      required: [organizationId, stage, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        stage: {type: string, enum: [prospecting, qualification, proposal, negotiation, won, lost]}
+        expectedVersion: {type: integer, minimum: 0}
+    HrEmployee:
+      type: object
+      required: [organizationId, employeeId, employeeNumber, firstName, lastName, workEmail, departmentId, positionTitle, employmentType, startDate]
+      properties:
+        organizationId: {type: string}
+        employeeId: {type: string}
+        employeeNumber: {type: string, maxLength: 40}
+        userId: {type: string}
+        firstName: {type: string, maxLength: 80}
+        lastName: {type: string, maxLength: 80}
+        workEmail: {type: string, format: email}
+        departmentId: {type: string}
+        positionTitle: {type: string, maxLength: 120}
+        managerEmployeeId: {type: string}
+        employmentType: {type: string, enum: [permanent, contract, temporary, intern]}
+        status: {type: string, enum: [active, on_leave, suspended, terminated], default: active}
+        startDate: {type: string, format: date-time}
+        endDate: {type: string, format: date-time}
+    HrLeaveRequest:
+      type: object
+      required: [organizationId, leaveRequestId, employeeId, leaveType, startsAt, endsAt, days]
+      properties:
+        organizationId: {type: string}
+        leaveRequestId: {type: string}
+        employeeId: {type: string}
+        leaveType: {type: string, enum: [annual, sick, personal, parental, unpaid]}
+        startsAt: {type: string, format: date-time}
+        endsAt: {type: string, format: date-time}
+        days: {type: number, exclusiveMinimum: 0, maximum: 366}
+        reason: {type: string, maxLength: 1000}
+    HrLeaveDecision:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 10, maxLength: 1000}
+        expectedVersion: {type: integer, minimum: 0}
+    PayrollRun:
+      type: object
+      required: [organizationId, payrollRunId, periodStart, periodEnd, jurisdiction, currency, calculationProvider, rulesetVersion, calculatedAt, lines, totalGrossMinor, totalStatutoryDeductionsMinor, totalVoluntaryDeductionsMinor, totalEmployerContributionsMinor, totalNetMinor]
+      properties:
+        organizationId: {type: string}
+        payrollRunId: {type: string}
+        periodStart: {type: string, format: date-time}
+        periodEnd: {type: string, format: date-time}
+        jurisdiction: {type: string, pattern: "^[A-Z]{2}$"}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        calculationProvider: {type: string}
+        rulesetVersion: {type: string}
+        calculatedAt: {type: string, format: date-time}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [employeeId, grossMinor, statutoryDeductionMinor, voluntaryDeductionMinor, employerContributionMinor, netMinor]
+            properties:
+              employeeId: {type: string}
+              grossMinor: {type: integer, minimum: 0}
+              statutoryDeductionMinor: {type: integer, minimum: 0}
+              voluntaryDeductionMinor: {type: integer, minimum: 0}
+              employerContributionMinor: {type: integer, minimum: 0}
+              netMinor: {type: integer, minimum: 0}
+        totalGrossMinor: {type: integer, minimum: 0}
+        totalStatutoryDeductionsMinor: {type: integer, minimum: 0}
+        totalVoluntaryDeductionsMinor: {type: integer, minimum: 0}
+        totalEmployerContributionsMinor: {type: integer, minimum: 0}
+        totalNetMinor: {type: integer, minimum: 0}
+        status: {type: string, enum: [draft]}
+    PayrollApproval:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 20, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 0}
+    PaymentIntent:
+      type: object
+      required: [organizationId, paymentId, providerId, referenceType, referenceId, amountMinor, currency]
+      properties:
+        organizationId: {type: string}
+        paymentId: {type: string}
+        providerId: {type: string}
+        referenceType: {type: string, enum: [invoice]}
+        referenceId: {type: string}
+        amountMinor: {type: integer, minimum: 1}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        status: {type: string, enum: [pending]}
+    PaymentRefundRequest:
+      type: object
+      required: [organizationId, refundId, paymentId, amountMinor, reason]
+      properties:
+        organizationId: {type: string}
+        refundId: {type: string}
+        paymentId: {type: string}
+        amountMinor: {type: integer, minimum: 1}
+        reason: {type: string, minLength: 3, maxLength: 1000}
+        status: {type: string, enum: [pending]}
+    CommerceProduct:
+      type: object
+      required: [organizationId, productId, sku, name, currency, unitPriceMinor, taxRateBps]
+      properties:
+        organizationId: {type: string}
+        productId: {type: string}
+        sku: {type: string, maxLength: 100}
+        name: {type: string, minLength: 2, maxLength: 180}
+        description: {type: string, maxLength: 2000}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        unitPriceMinor: {type: integer, minimum: 0}
+        taxRateBps: {type: integer, minimum: 0, maximum: 10000}
+        status: {type: string, enum: [active, inactive], default: active}
+    CommerceOrder:
+      type: object
+      required: [organizationId, orderId, customerId, warehouseId, reservationId, lines]
+      properties:
+        organizationId: {type: string}
+        orderId: {type: string}
+        customerId: {type: string}
+        warehouseId: {type: string}
+        reservationId: {type: string}
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [sku, quantityMilli]
+            properties:
+              sku: {type: string}
+              quantityMilli: {type: integer, minimum: 1}
+        status: {type: string, enum: [placed]}
+    Asset:
+      type: object
+      required: [organizationId, assetId, assetTag, name, category, acquiredAt, acquisitionCostMinor, residualValueMinor, usefulLifeMonths, currency, depreciationMethod]
+      properties:
+        organizationId: {type: string}
+        assetId: {type: string}
+        assetTag: {type: string, maxLength: 64}
+        name: {type: string, minLength: 2, maxLength: 180}
+        category: {type: string}
+        acquiredAt: {type: string, format: date-time}
+        acquisitionCostMinor: {type: integer, minimum: 0}
+        residualValueMinor: {type: integer, minimum: 0}
+        usefulLifeMonths: {type: integer, minimum: 1, maximum: 1200}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        depreciationMethod: {type: string, enum: [straight_line]}
+        status: {type: string, enum: [active, disposed, written_off], default: active}
+    MaintenanceWorkOrder:
+      type: object
+      required: [organizationId, workOrderId, assetId, workType, priority, description, scheduledAt]
+      properties:
+        organizationId: {type: string}
+        workOrderId: {type: string}
+        assetId: {type: string}
+        workType: {type: string, enum: [preventive, corrective]}
+        priority: {type: string, enum: [low, normal, high, critical]}
+        description: {type: string, minLength: 5, maxLength: 2000}
+        scheduledAt: {type: string, format: date-time}
+        assignedToUserId: {type: string}
+        estimatedCostMinor: {type: integer, minimum: 0, default: 0}
+        status: {type: string, enum: [open]}
+    MaintenanceCompletion:
+      type: object
+      required: [organizationId, actualCostMinor, completionNotes, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        actualCostMinor: {type: integer, minimum: 0}
+        completionNotes: {type: string, minLength: 5, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 0}
+    Project:
+      type: object
+      required: [organizationId, projectId, projectCode, name, managerUserId, startsAt, budgetMinor, currency]
+      properties:
+        organizationId: {type: string}
+        projectId: {type: string}
+        projectCode: {type: string, maxLength: 40}
+        name: {type: string, minLength: 2, maxLength: 180}
+        description: {type: string, maxLength: 3000}
+        customerId: {type: string}
+        managerUserId: {type: string}
+        startsAt: {type: string, format: date-time}
+        dueAt: {type: string, format: date-time}
+        budgetMinor: {type: integer, minimum: 0}
+        currency: {type: string, pattern: "^[A-Z]{3}$"}
+        status: {type: string, enum: [active, on_hold, completed, cancelled]}
+    ProjectTask:
+      type: object
+      required: [organizationId, taskId, name, priority, estimatedMinutes]
+      properties:
+        organizationId: {type: string}
+        taskId: {type: string}
+        name: {type: string}
+        description: {type: string}
+        assignedToUserId: {type: string}
+        priority: {type: string, enum: [low, normal, high, critical]}
+        estimatedMinutes: {type: integer, minimum: 0}
+        dueAt: {type: string, format: date-time}
+        status: {type: string, enum: [backlog]}
+    ProjectTimeEntry:
+      type: object
+      required: [organizationId, timeEntryId, taskId, employeeId, workDate, minutes, billable, description]
+      properties:
+        organizationId: {type: string}
+        timeEntryId: {type: string}
+        taskId: {type: string}
+        employeeId: {type: string}
+        workDate: {type: string, format: date-time}
+        minutes: {type: integer, minimum: 1, maximum: 1440}
+        billable: {type: boolean}
+        description: {type: string, maxLength: 2000}
+    ProjectTimeEntryDecision:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 10, maxLength: 1000}
+        expectedVersion: {type: integer, minimum: 0}
+    Shipment:
+      type: object
+      required: [organizationId, shipmentId, referenceType, referenceId, carrierId, trackingNumber, originLocationId, destinationLocationId, expectedDeliveryAt]
+      properties:
+        organizationId: {type: string}
+        shipmentId: {type: string}
+        referenceType: {type: string, enum: [purchase_order, commerce_order, inventory_transfer]}
+        referenceId: {type: string}
+        carrierId: {type: string}
+        trackingNumber: {type: string, maxLength: 160}
+        originLocationId: {type: string}
+        destinationLocationId: {type: string}
+        expectedDeliveryAt: {type: string, format: date-time}
+        status: {type: string, enum: [planned]}
+        version: {type: integer, minimum: 0}
+    ShipmentStatusUpdate:
+      type: object
+      required: [organizationId, status, reason, occurredAt, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        status: {type: string, enum: [dispatched, in_transit, delayed, delivered, cancelled]}
+        reason: {type: string, minLength: 5, maxLength: 1000}
+        occurredAt: {type: string, format: date-time}
+        expectedVersion: {type: integer, minimum: 0}
+        proofOfDeliveryRef: {type: string, maxLength: 500}
+    WorkflowDefinition:
+      type: object
+      required: [organizationId, workflowId, name, triggerType, steps]
+      properties:
+        organizationId: {type: string}
+        workflowId: {type: string}
+        name: {type: string, minLength: 2, maxLength: 160}
+        description: {type: string, maxLength: 2000}
+        triggerType: {type: string, enum: [manual, event, schedule]}
+        version: {type: integer, minimum: 1, default: 1}
+        status: {type: string, enum: [draft, active, inactive], default: draft}
+        steps:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [stepId, stepType]
+            properties:
+              stepId: {type: string}
+              stepType: {type: string, enum: [approval]}
+              assigneeUserIds:
+                type: array
+                items: {type: string}
+              requiredApprovals: {type: integer, minimum: 1, default: 1}
+    WorkflowRunStart:
+      type: object
+      required: [organizationId, runId]
+      properties:
+        organizationId: {type: string}
+        runId: {type: string}
+        context: {type: object, additionalProperties: true}
+    WorkflowTaskDecision:
+      type: object
+      required: [organizationId, reason, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        reason: {type: string, minLength: 10, maxLength: 2000}
+        expectedVersion: {type: integer, minimum: 0}
     Error:
       type: object
       required: [error]

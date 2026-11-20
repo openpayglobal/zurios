@@ -1,6 +1,7 @@
 import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
+import {queueWebhookDeliveries} from "./webhook-delivery-service.js";
 
 export type PlatformEventEnvelope={
  eventId:string;tenantId:string;eventType:string;schemaVersion:1;aggregateType:string;aggregateId?:string;
@@ -80,14 +81,23 @@ function waitForNextPoll(milliseconds:number,signal:AbortSignal):Promise<void>{
 }
 export async function runOutboxWorker(
  db:Db,publisher:OutboxPublisher,signal:AbortSignal,options?:{
-  workerId?:string;batchSize?:number;leaseMs?:number;maxAttempts?:number;pollIntervalMs?:number
+  workerId?:string;batchSize?:number;leaseMs?:number;maxAttempts?:number;pollIntervalMs?:number;onError?:(error:unknown)=>void
  }
 ):Promise<void>{
  const workerId=options?.workerId??`outbox-worker-${randomUUID()}`;
  const pollIntervalMs=Math.max(250,options?.pollIntervalMs??2_000);
+ let consecutiveFailures=0;
  while(!signal.aborted){
-  const result=await dispatchOutboxBatch(db,publisher,{...options,workerId});
-  if(result.claimed===0)await waitForNextPoll(pollIntervalMs,signal);
+  try{
+   const result=await dispatchOutboxBatch(db,publisher,{...options,workerId});
+   consecutiveFailures=0;
+   if(result.claimed===0)await waitForNextPoll(pollIntervalMs,signal);
+  }catch(error){
+   consecutiveFailures++;
+   try{options?.onError?.(error);}catch{/* error reporting must not terminate delivery */}
+   const backoff=Math.min(60_000,pollIntervalMs*2**Math.min(consecutiveFailures,5));
+   await waitForNextPoll(backoff,signal);
+  }
  }
 }
 
@@ -126,6 +136,7 @@ export async function publishOutboxToMongoEventBus(db:Db,event:OutboxEventDocume
  await db.collection<PlatformEventEnvelope>("platform_events").updateOne(
   {eventId:envelope.eventId},{$setOnInsert:envelope},{upsert:true}
  );
+ await queueWebhookDeliveries(db,envelope);
 }
 export function createMongoEventBusPublisher(db:Db):OutboxPublisher{
  return async event=>publishOutboxToMongoEventBus(db,event);

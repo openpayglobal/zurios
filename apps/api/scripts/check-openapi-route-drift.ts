@@ -2,12 +2,12 @@ import {readFileSync} from "node:fs";
 import {PLATFORM_BODY_CONTRACTS} from "../src/platform/platform-schemas.js";
 import {ADMIN_BODY_CONTRACTS} from "../src/platform/admin-schemas.js";
 
-const routeSource=readFileSync("src/platform/platform-routes.ts","utf8")+"\\n"+readFileSync("src/platform/admin-routes.ts","utf8");
+const routeSource=readFileSync("src/platform/platform-routes.ts","utf8")+"\\n"+readFileSync("src/platform/admin-routes.ts","utf8")+"\\n"+readFileSync("src/platform/domain-routes.ts","utf8");
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
 const routeDefinitions=[...routeSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
 const routePaths=new Set(routeDefinitions.map(([, ,path])=>path.replace(/:([A-Za-z0-9_]+)/g,"{$1}")));
 const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)[0]??"";
-const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path).filter(path=>path.startsWith("/platform/")));
+const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path).filter(path=>path.startsWith("/platform/")||path.startsWith("/inventory/")||path.startsWith("/pos/")||path.startsWith("/erp/")||path.startsWith("/crm/")||path.startsWith("/hr/")||path.startsWith("/payroll/")||path.startsWith("/payments/")||path.startsWith("/commerce/")||(path==="/assets"||path.startsWith("/assets/"))||(path==="/projects"||path.startsWith("/projects/"))||(path==="/workflows"||path.startsWith("/workflows/"))||path==="/workflow-runs"||path==="/workflow-tasks"||path.startsWith("/workflow-tasks/")||(path==="/analytics/operational"||path==="/analytics/operational.csv")||(path==="/shipments"||path.startsWith("/shipments/"))));
 const missingFromContract=[...routePaths].filter(path=>!contractPaths.has(path));
 const undocumentedRoutes=[...contractPaths].filter(path=>!routePaths.has(path));
 const mutatingRoutes=routeDefinitions.filter(([,method,path])=>method!=="get"&&!(method==="post"&&path.endsWith("/simulate"))).length;
@@ -39,8 +39,9 @@ for(const bodyContract of allBodyContracts){
  if(!reference)failures.push(`Missing OpenAPI requestBody reference for ${bodyContract.method.toUpperCase()} ${bodyContract.path}`);
  else if(reference[1]!==bodyContract.schemaName)failures.push(`Request schema mismatch for ${bodyContract.path}: expected ${bodyContract.schemaName}, found ${reference[1]}`);
  const schemaBlock=componentSchemaBlock(bodyContract.schemaName);
- const propertiesSection=schemaBlock.split("      properties:\n")[1]??"";
- const properties=[...propertiesSection.matchAll(/^        ([A-Za-z0-9_]+):/gm)].map(([,name])=>name);
+ // Match only direct children of the schema's properties map. Parsing the entire
+ // schema block avoids truncating fields after nested object properties.
+ const properties=[...schemaBlock.matchAll(/^ {8}([A-Za-z0-9_]+):/gm)].map(([,name])=>name);
  const requiredMatch=schemaBlock.match(/^      required:\s*\[([^\]]*)\]/m);
  const required=(requiredMatch?.[1]??"").split(",").map(value=>value.trim()).filter(Boolean);
  const zodShape=bodyContract.schema.shape as Record<string,{isOptional:()=>boolean}>;
