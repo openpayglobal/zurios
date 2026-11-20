@@ -24,6 +24,7 @@ test("Shipment lifecycle enforces organization locations, ordered status transit
   assert.deepEqual(created.body,{shipmentId:"shipment-001",status:"planned",version:0});
   const replay=await createShipment(db,shipment,"logistics-user","shipment-create-001");assert.deepEqual(replay.body,created.body);
   await assert.rejects(()=>createShipment(db,{...shipment,shipmentId:"shipment-cross-org",destinationLocationId:"foreign"},"logistics-user","shipment-create-002"),/SHIPMENT_LOCATION_SCOPE_INVALID/);
+  await assert.rejects(()=>createShipment(db,{...shipment,shipmentId:"shipment-missing-reference",referenceId:"PO-MISSING"},"logistics-user","shipment-create-003"),/SHIPMENT_REFERENCE_NOT_FOUND/);
   const dispatched=await updateShipmentStatus(db,{tenantId,organizationId:"org-a",shipmentId:"shipment-001",status:"dispatched",reason:"Carrier collected the sealed consignment",occurredAt:"2026-11-20T10:00:00.000Z",expectedVersion:0},"logistics-user","shipment-dispatch-001");
   assert.equal((dispatched.body as any).version,1);
   const transit=await updateShipmentStatus(db,{tenantId,organizationId:"org-a",shipmentId:"shipment-001",status:"in_transit",reason:"Carrier confirmed departure from origin",occurredAt:"2026-11-20T11:00:00.000Z",expectedVersion:1},"logistics-user","shipment-transit-001");
