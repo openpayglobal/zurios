@@ -74,6 +74,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const parsed = bootstrapSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
     if (!config.PLATFORM_BOOTSTRAP_TOKEN || !safeSecretEqual(parsed.data.bootstrapToken, config.PLATFORM_BOOTSTRAP_TOKEN)) {
+      await writeAudit(db, request, "anonymous", "platform.bootstrap.denied", "platform", "denied");
       return reply.code(403).send({ error: "BOOTSTRAP_NOT_AUTHORIZED" });
     }
     const owners = await db.collection("users").countDocuments({ platformRole: "platform_owner" });
