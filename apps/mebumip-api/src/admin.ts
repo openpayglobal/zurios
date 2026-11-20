@@ -99,7 +99,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       secureCookies: config.NODE_ENV === "production", trustedProxyConfigured: Boolean(config.TRUSTED_PROXY_CIDRS),
       trustedProxyCount: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").filter((value) => value.trim()).length : 0,
       corsOrigins, emailDeliveryConfigured: Boolean(config.RESEND_API_KEY && config.MAIL_FROM), emailProvider: config.RESEND_API_KEY ? "resend" : "not_configured",
-      auditSigningConfigured: Boolean(config.AUDIT_SIGNING_KEY), mfaEncryptionConfigured: Boolean(config.MFA_ENCRYPTION_KEY),
+      auditSigningConfigured: Boolean(config.AUDIT_SIGNING_KEY || config.AUDIT_SIGNING_KEYRING), auditSigningKeyRingConfigured: Boolean(config.AUDIT_SIGNING_KEYRING), auditSigningActiveKeyId: config.AUDIT_SIGNING_ACTIVE_KEY_ID ?? (config.AUDIT_SIGNING_KEY ? "legacy" : null), mfaEncryptionConfigured: Boolean(config.MFA_ENCRYPTION_KEY || config.MFA_ENCRYPTION_KEYRING), mfaEncryptionKeyRingConfigured: Boolean(config.MFA_ENCRYPTION_KEYRING), mfaEncryptionActiveKeyId: config.MFA_ENCRYPTION_ACTIVE_KEY_ID ?? (config.MFA_ENCRYPTION_KEY ? "legacy" : null),
     }, mode: "read_only_runtime_configuration", note: "Secret values are never returned. Runtime configuration changes are managed through the deployment secret manager." });
   });
   app.get("/v1/mac/tenants/:tenantId/members", async (request, reply) => {
