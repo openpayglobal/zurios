@@ -30,7 +30,7 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
   }
-  if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => /localhost|127\\.0\\.0\\.1/.test(origin))) {
+  if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => origin.includes("localhost") || origin.includes("127.0.0.1"))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must not include localhost" });
   }
   if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY) {
