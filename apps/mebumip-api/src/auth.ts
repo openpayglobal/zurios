@@ -5,6 +5,7 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { decryptMfaSecret, encryptMfaSecret, generateTotpSecret, verifyTotp } from "./mfa.js";
 
 const bootstrapSchema = z.object({
   bootstrapToken: z.string().min(32),
@@ -25,7 +26,7 @@ function safeSecretEqual(candidate: string, expected: string): boolean {
   return timingSafeEqual(left, right);
 }
 
-export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise<{ principal: Principal; sessionId: ObjectId } | null> {
+export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise<{ principal: Principal; sessionId: ObjectId; stepUpUntil?: Date } | null> {
   const authorization = request.headers.authorization;
   if (!authorization?.startsWith("Bearer ")) return null;
   const token = authorization.slice(7);
@@ -53,6 +54,7 @@ export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise
       tenantMemberships,
     },
     sessionId: session._id as ObjectId,
+    ...(session.stepUpUntil instanceof Date ? { stepUpUntil: session.stepUpUntil } : {}),
   };
 }
 
@@ -148,6 +150,78 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
     return reply.send({ userId: resolved.principal.userId, platformRole: resolved.principal.platformRole ?? null, tenantMemberships: resolved.principal.tenantMemberships });
+  });
+
+  app.post("/v1/auth/refresh", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const token = newOpaqueToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
+    await db.collection("sessions").updateOne(
+      { _id: resolved.sessionId, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, rotatedAt: now } },
+    );
+    await db.collection("sessions").insertOne({ userId: resolved.principal.userId, tokenHash: hashToken(token), createdAt: now, expiresAt });
+    await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
+    return reply.send({ accessToken: token, tokenType: "Bearer", expiresAt: expiresAt.toISOString() });
+  });
+
+  app.post("/v1/auth/password/change", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const parsed = z.object({ currentPassword: z.string().min(1).max(256), newPassword: z.string().min(12).max(256) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
+    if (!user || typeof user.passwordHash !== "string" || !(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) {
+      return reply.code(403).send({ error: "CURRENT_PASSWORD_INVALID" });
+    }
+    const now = new Date();
+    await db.collection("users").updateOne({ _id: user._id }, { $set: { passwordHash: await hashPassword(parsed.data.newPassword), passwordChangedAt: now, updatedAt: now } });
+    await db.collection("sessions").updateMany({ userId: resolved.principal.userId, _id: { $ne: resolved.sessionId }, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "password_changed" } });
+    await writeAudit(db, request, resolved.principal.userId, "auth.password.changed", "user", "success");
+    return reply.send({ status: "password_changed", otherSessionsRevoked: true });
+  });
+
+  app.post("/v1/auth/mfa/setup", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    if (!config.MFA_ENCRYPTION_KEY) return reply.code(503).send({ error: "MFA_NOT_CONFIGURED" });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
+    if (!user) return unauthorized(reply);
+    if (user.mfaEnabled === true) return reply.code(409).send({ error: "MFA_ALREADY_ENABLED" });
+    const secret = generateTotpSecret();
+    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaPendingSecret: encryptMfaSecret(secret), mfaSetupAt: new Date() } });
+    const issuer = "Zuri%20MeBuMIP";
+    const label = encodeURIComponent(String(user.normalizedEmail));
+    return reply.send({ secret, otpauthUrl: `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`, note: "Add this secret to an authenticator app, then confirm with /v1/auth/mfa/enable. The secret is shown only once." });
+  });
+
+  app.post("/v1/auth/mfa/enable", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const parsed = z.object({ code: z.string().regex(/^\\d{6}$/) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
+    if (!user || typeof user.mfaPendingSecret !== "string") return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED" });
+    if (!verifyTotp(decryptMfaSecret(user.mfaPendingSecret), parsed.data.code)) return reply.code(400).send({ error: "MFA_CODE_INVALID" });
+    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret }, $unset: { mfaPendingSecret: "" } });
+    await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enabled", "user", "success");
+    return reply.send({ status: "mfa_enabled" });
+  });
+
+  app.post("/v1/auth/step-up", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const parsed = z.object({ code: z.string().regex(/^\\d{6}$/) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
+    if (!user || typeof user.mfaSecretEncrypted !== "string") return reply.code(403).send({ error: "MFA_REQUIRED" });
+    if (!verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code)) return reply.code(403).send({ error: "MFA_CODE_INVALID" });
+    const stepUpUntil = new Date(Date.now() + 5 * 60_000);
+    await db.collection("sessions").updateOne({ _id: resolved.sessionId }, { $set: { stepUpUntil } });
+    await writeAudit(db, request, resolved.principal.userId, "auth.step_up.completed", "session", "success", String(resolved.sessionId));
+    return reply.send({ status: "verified", stepUpUntil: stepUpUntil.toISOString() });
   });
 
   app.post("/v1/auth/logout", async (request, reply) => {
