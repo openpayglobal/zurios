@@ -10,7 +10,9 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.
 - `RESEND_API_KEY` and `MAIL_FROM`: trusted email provider credentials and verified sender address; both are mandatory in production. Invitation tokens are delivered by email and are never returned by the API. The test environment uses an in-memory sink only.
 - `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
-- `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).\n- `SESSION_COOKIE_SAME_SITE`: `strict`, `lax` (default) or `none`; `none` requires Secure cookies.\n- `SESSION_COOKIE_DOMAIN`: optional cookie domain for a shared first-party deployment.
+- `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
+- `SESSION_COOKIE_SAME_SITE`: `strict`, `lax` (default) or `none`; `none` requires Secure cookies.
+- `SESSION_COOKIE_DOMAIN`: optional cookie domain for a shared first-party deployment.
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
 The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
