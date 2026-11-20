@@ -261,3 +261,10 @@ The route-drift checker was corrected to identify the outer schema properties bl
 ### Current boundaries
 
 No live Meta app credentials, business portfolio, Tech Provider verification, App Review/Advanced Access approval, webhook subscription or customer Meta connection is configured or claimed. The Meta readiness specification in `docs/integrations/` informs future phases but does not change their approved status. Phase 1 remains in progress and the programme is not production-ready.
+
+
+**Latest full-repository verification (2026-11-20):** CI passed on commit `b65cda422aaa18158cc00bf8774b7bf54d65870e` (run 44745084612). OpenAPI 3.1 validation, route drift (32 paths, 20 idempotent mutations, 20 shared Zod request schemas), monorepo typecheck, all tests and build passed. Test suites reported 49 tests: 42 passed, 7 skipped, 0 failed. MeBuMIP Phase 1 verification also passed on the same commit (run 44745084508): API typecheck, API tests, API build, web typecheck and web build all passed.
+
+**Audit key-ring verification (2026-11-20):** MeBuMIP now supports HMAC-SHA256-v2 with active key IDs for new events and export manifests, retained legacy verification, tamper-resistant key-ID binding and export-manifest verification. The security suite covers the versioned signing path. The successful MeBuMIP Phase 1 run above includes these changes. No production audit key ring has been configured or rotated.
+
+**Documentation correction (2026-11-20):** the Phase 1 security runbook key settings table now has one actual row per setting; the earlier escaped newline rendering defect is corrected. The global documentation index includes the Meta Platform Integration Readiness standard and the Key Management/Audit Archiving standard.
