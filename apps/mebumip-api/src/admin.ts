@@ -4,6 +4,7 @@ import { z } from "zod";
 import { appendAuditEvent, hashToken, newOpaqueToken, signAuditExport } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
+import { buildAuditArchivePackage } from "./audit-archive.js";
 import { config, corsOrigins } from "./config.js";
 import { sendPlatformAdminInvitationEmail, sendTenantInvitationEmail } from "./mail.js";
 
@@ -300,6 +301,29 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     let sequenceGaps = 0;
     for (let index = 1; index < sequenced.length; index += 1) if (Number(sequenced[index]!.sequence) !== Number(sequenced[index - 1]!.sequence) + 1) sequenceGaps += 1;
     return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, sequenceGaps, integrity: process.env.AUDIT_SIGNING_KEY ? "hmac_sha256_sequenced" : "signing_key_not_configured", scope: "latest_500_events", note: "Sequence gaps can indicate missing or failed writes and require investigation; signatures do not replace restricted database roles or independent immutable archives." });
+  });
+
+  app.get("/v1/mac/audit-events/archive", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const query = request.query as { fromSequence?: string; toSequence?: string };
+    const fromSequence = Number(query.fromSequence), toSequence = Number(query.toSequence);
+    if (!Number.isSafeInteger(fromSequence) || !Number.isSafeInteger(toSequence) || fromSequence < 1 || toSequence < fromSequence) return reply.code(400).send({ error: "INVALID_AUDIT_ARCHIVE_SEQUENCE_RANGE" });
+    const events = await db.collection("auditEvents").find({ sequence: { $gte: fromSequence, $lte: toSequence } }).sort({ sequence: 1 }).limit(1001).toArray();
+    try {
+      const archive = buildAuditArchivePackage(events as Array<Record<string, unknown>>, fromSequence, toSequence);
+      reply.header("Cache-Control", "no-store");
+      reply.header("X-Audit-Archive-SHA256", archive.sha256);
+      reply.header("X-Audit-Archive-Object-Key", archive.objectKey);
+      reply.header("X-Audit-Archive-Status", "prepared-not-archived");
+      reply.header("Content-Disposition", `attachment; filename="mebumip-audit-${fromSequence}-${toSequence}.json"`);
+      return reply.type("application/json").send(archive.content);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "AUDIT_ARCHIVE_PREPARATION_FAILED";
+      const status = code === "AUDIT_ARCHIVE_MANIFEST_UNSIGNED" ? 503 : code.startsWith("AUDIT_ARCHIVE") ? 409 : 400;
+      return reply.code(status).send({ error: code });
+    }
   });
 
   app.get("/v1/mac/audit-events/export", async (request, reply) => {
