@@ -407,7 +407,7 @@ paths:
                 password: {type: string, minLength: 1, maxLength: 128}
                 tenantSlug: {type: string, minLength: 2, maxLength: 64, description: Temporary compatibility selector for trusted legacy clients}
       responses:
-        "200": {description: MFA challenge, workspace selection capability, no-workspace response or tenant-bound session}
+        "200": {description: "MFA challenge, workspace selection capability, no-workspace response or tenant-bound session"}
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "429": {description: Authentication rate limit exceeded}
