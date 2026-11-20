@@ -215,3 +215,11 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - The passing suite includes dry-run/no-write audit backfill, successful migration and chain verification, idempotent no-op, mixed-history refusal, concurrent audit appends and tamper detection.
 - The MAC audit workspace now surfaces chain validity and counts of legacy unchained events. The verifier does not claim old events are verified until backfilled.
 - This verifies code and disposable CI data only. No production audit backfill, WORM archive configuration, database role change, secret provisioning or deployment was performed.
+
+
+**Latest audit backfill/keyring verification — 2026-11-20:**
+
+- MeBuMIP verification **#362** passed on commit `5a2dbe5efb471bc606904474f403f846274d663e`: API typecheck, **17 tests passed / 0 failed / 0 skipped**, API build, web typecheck and web build.
+- Full monorepo CI **#1310** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, monorepo typecheck, tests and build.
+- This confirms the backfill CLI, keyring support, MAC audit integrity display and latest documentation compile and pass the dedicated and monorepo CI suites.
+- Production audit backfill, WORM archive provisioning, restricted DB roles and external archive verification remain unperformed.
