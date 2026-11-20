@@ -118,3 +118,8 @@ Meta API versions must be explicit and centrally configured; never rely on unver
 ## 8. Change history
 
 - 2026-11-20: Initial engineering standard based on OWASP, NIST, AWS and Meta primary documentation. MeBuMIP versioned MFA ciphertext and dry-run-first migration tooling introduced; production key migration and independent WORM archive remain unexecuted.
+
+
+## Provider selection
+
+See the [Immutable Audit Archive Provider Comparison](./AUDIT-ARCHIVE-PROVIDER-COMPARISON.md) for current official documentation and trade-offs across Amazon S3 Object Lock, Azure Blob immutable storage and Google Cloud Storage Bucket Lock. The provider comparison is a research note, not a selection or compliance certification.
