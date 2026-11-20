@@ -26,7 +26,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("locations").createIndex({tenantId:1,locationId:1},{unique:true}),
   db.collection("locations").createIndex({tenantId:1,organizationId:1,code:1},{unique:true}),
   db.collection("memberships").createIndex({tenantId:1,membershipId:1},{unique:true}),
-  db.collection("memberships").createIndex({tenantId:1,userId:1},{unique:true,partialFilterExpression:{status:{$in:["invited","active","suspended"]}}}),
+  db.collection("memberships").createIndex({tenantId:1,userId:1},{unique:true,partialFilterExpression:{status:{$in:["invited","active","suspended"]}}}),\n  db.collection("memberships").createIndex({userId:1,status:1}),
   db.collection("roles").createIndex({tenantId:1,roleId:1},{unique:true}),
   db.collection("roles").createIndex({tenantId:1,key:1},{unique:true}),
   db.collection("policies").createIndex({tenantId:1,key:1},{unique:true}),
@@ -59,7 +59,7 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),
   db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),
-  db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
+  db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0}),\n  db.collection("workspace_selection_challenges").createIndex({selectionId:1},{unique:true}),\n  db.collection("workspace_selection_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
 }
 export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
