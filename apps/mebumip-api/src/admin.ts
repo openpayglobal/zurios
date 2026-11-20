@@ -313,6 +313,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const events = await db.collection("auditEvents").find({ sequence: { $gte: fromSequence, $lte: toSequence } }).sort({ sequence: 1 }).limit(1001).toArray();
     try {
       const archive = buildAuditArchivePackage(events as Array<Record<string, unknown>>, fromSequence, toSequence);
+      await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "audit.archive.package.prepared", targetType: "audit_archive", targetId: archive.objectKey, outcome: "success", correlationId: request.id, metadata: { fromSequence, toSequence, eventCount: archive.eventCount, sha256: archive.sha256 } });
       reply.header("Cache-Control", "no-store");
       reply.header("X-Audit-Archive-SHA256", archive.sha256);
       reply.header("X-Audit-Archive-Object-Key", archive.objectKey);
