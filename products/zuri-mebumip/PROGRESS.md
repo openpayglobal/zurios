@@ -288,3 +288,6 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **External architecture reference check (2026-11-20):** attempted to inspect the previously referenced `infoedutechos/ODEI-Multi-Ecos` GitHub repository. The public GitHub API returned 404 and public search returned no result, so its contents could not be verified or incorporated. No architecture or requirements have been inferred from its name. If this repository is private or the URL has changed, repository access or an exported copy is needed before its specific requirements can be reconciled with the ecosystem docs.
+
+
+**Access-request privacy governance (2026-11-20):** added a Draft privacy and retention requirements document under `docs/compliance/`, indexed it in the ecosystem docs hub, and updated the public request form to state purpose limitation, non-provisioning behavior and the requirement for an approved public privacy notice before production enablement. No retention period or jurisdiction-specific lawful basis has been invented; those remain owner/legal review gates.
