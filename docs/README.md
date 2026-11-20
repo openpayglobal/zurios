@@ -24,6 +24,10 @@ This directory is the authoritative home for approved project specifications and
 - [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
 - [MeBuMIP product documentation](../products/zuri-mebumip/README.md) — approved objectives, roadmap, architecture, progress and operational gates.
 
+## Implementation alignment
+
+The identity-first sign-in and multi-workspace selection flow is specified across the architecture, UX, API and database documents above. Implementation and test status must be read from the corresponding pull request checks and product progress register.
+
 ## Document control
 
 Each authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions, and change history.
