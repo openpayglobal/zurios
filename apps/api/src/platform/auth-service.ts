@@ -19,22 +19,23 @@ async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;t
  return new SignJWT({purpose:"mfa",challengeId,...(claims.tenantId?{tenantId:claims.tenantId}:{}),...(claims.membershipId?{membershipId:claims.membershipId}:{})})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime("5m").sign(key(config));
 }
-async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string},auditAction="auth.login"){
+async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string},auditAction:string|null="auth.login"){
  const session=await createSession(db,claims.tenantId,claims.userId,claims.membershipId,config.sessionTtlSeconds);
  const permissions=await permissionsForMembership(db,claims.tenantId,claims.membershipId);
  const accessToken=await issueAccessToken(config,{...claims,sessionId:session.sessionId,permissions});
- await appendAuditEvent(db,{tenantId:claims.tenantId,actor:{userId:claims.userId},action:auditAction,resourceType:"session",resourceId:session.sessionId,outcome:"success",metadata:{method:"password+mfa-if-enabled"}});
+ if(auditAction)await appendAuditEvent(db,{tenantId:claims.tenantId,actor:{userId:claims.userId},action:auditAction,resourceType:"session",resourceId:session.sessionId,outcome:"success",metadata:{method:"password+mfa-if-enabled"}});
  return {accessToken,refreshToken:session.refreshToken,sessionId:session.sessionId,expiresAt:session.expiresAt,tokenType:"Bearer" as const};
 }
-async function completePlatformLogin(db:Db,config:AuthConfig,userId:string,auditAction="auth.platform.login"){
+async function completePlatformLogin(db:Db,config:AuthConfig,userId:string,auditAction:string|null="auth.platform.login"){
  const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"});
  if(!user)throw new Error("ACTIVE_USER_REQUIRED");
  const platformPermissions=await platformPermissionsForUser(db,userId,now);
  if(!platformPermissions.length)throw new Error("PLATFORM_ACCESS_REQUIRED");
+ if(!Number.isSafeInteger(config.sessionTtlSeconds)||config.sessionTtlSeconds<60||config.sessionTtlSeconds>90*24*60*60)throw new Error("INVALID_SESSION_TTL");
  const refreshToken=randomBytes(48).toString("base64url"),sessionId=randomUUID(),expiresAt=new Date(now.getTime()+config.sessionTtlSeconds*1000);
  await c.sessions.insertOne({tenantId:"platform",sessionId,userId,membershipId:"platform",refreshTokenHash:createHash("sha256").update(refreshToken).digest("hex"),refreshTokenHistory:[],tokenFamilyId:randomUUID(),expiresAt,lastUsedAt:now,createdAt:now,updatedAt:now,createdBy:userId,updatedBy:userId});
  const accessToken=await issueAccessToken(config,{userId,tenantId:"platform",membershipId:"platform",sessionId,permissions:[]});
- await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:auditAction,resourceType:"session",resourceId:sessionId,outcome:"success",metadata:{context:"platform"}});
+ if(auditAction)await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:auditAction,resourceType:"session",resourceId:sessionId,outcome:"success",metadata:{context:"platform"}});
  return {accessToken,refreshToken,sessionId,expiresAt,tokenType:"Bearer" as const};
 }
 async function listWorkspaceChoices(db:Db,userId:string){
@@ -251,12 +252,12 @@ export async function switchWorkspace(db:Db,config:AuthConfig,current:{userId:st
  let next;
  if(targetTenantId==="platform"){
   if(!(await platformPermissionsForUser(db,current.userId)).length)throw new Error("WORKSPACE_ACCESS_DENIED");
-  next=await completePlatformLogin(db,config,current.userId,"auth.workspace.switched");
+  next=await completePlatformLogin(db,config,current.userId,null);
  }else{
   const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId:targetTenantId,status:"active"}),c.memberships.findOne({tenantId:targetTenantId,userId:current.userId,status:"active"})]);
   if(!tenant||!activeMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
   membership=activeMembership;
-  next=await completeLogin(db,config,{userId:current.userId,tenantId:targetTenantId,membershipId:membership.membershipId},"auth.workspace.switched");
+  next=await completeLogin(db,config,{userId:current.userId,tenantId:targetTenantId,membershipId:membership.membershipId},null);
  }
  const revoked=await c.sessions.updateOne(
   {tenantId:current.tenantId,sessionId:current.sessionId,userId:current.userId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},
@@ -266,6 +267,8 @@ export async function switchWorkspace(db:Db,config:AuthConfig,current:{userId:st
   await revokeSession(db,targetTenantId,next.sessionId,"security:workspace-switch-rollback");
   throw new Error("SESSION_INVALID");
  }
+ try{await appendAuditEvent(db,{tenantId:targetTenantId,actor:{userId:current.userId},action:"auth.workspace.switched",resourceType:"session",resourceId:next.sessionId,outcome:"success",metadata:{previousTenantId:current.tenantId}});}
+ catch(error){await revokeSession(db,targetTenantId,next.sessionId,"security:workspace-switch-audit-failed");throw error;}
  return next;
 }
 
@@ -292,7 +295,7 @@ export async function requestWorkspaceAccess(db:Db,input:{email:string;displayNa
    ...(input.requestNote?.trim()?{requestNote:input.requestNote.trim()}:{}),
    status:"pending",source:"public-web",requestedAt:now,updatedAt:now
   });
-  await appendAuditEvent(db,{tenantId:"platform",actor:{userId:"anonymous"},action:"identity.access.requested",resourceType:"access_request",resourceId:requestId,outcome:"success",metadata:{channel:"public-request"}});
+  await appendAuditEvent(db,{tenantId:"platform",actor:{service:"public-access-request"},action:"identity.access.requested",resourceType:"access_request",resourceId:requestId,outcome:"success",metadata:{channel:"public-request"}});
  }
  return {accepted:true as const,message:"Your request has been received. If further action is appropriate, the Zuri OS team will contact you using the address provided."};
 }
