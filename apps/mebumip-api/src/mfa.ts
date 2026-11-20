@@ -34,6 +34,7 @@ export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyRing.activeKeyId) || !keyRing.keys[keyRing.activeKeyId]) {
     throw new Error("MFA_ACTIVE_ENCRYPTION_KEY_NOT_AVAILABLE");
   }
+  if (keyRing.legacyKey && keyRing.legacyKey.length !== 32) throw new Error("INVALID_MFA_LEGACY_ENCRYPTION_KEY");
   for (const [keyId, key] of Object.entries(keyRing.keys)) {
     if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || key.length !== 32) throw new Error("INVALID_MFA_ENCRYPTION_KEY_RING");
   }
