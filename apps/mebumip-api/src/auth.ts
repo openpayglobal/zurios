@@ -213,7 +213,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!user) return unauthorized(reply);
     if (user.mfaEnabled === true) return reply.code(409).send({ error: "MFA_ALREADY_ENABLED" });
     const secret = generateTotpSecret();
-    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaPendingSecret: encryptMfaSecret(secret), mfaSetupAt: new Date() } });
+    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaPendingSecret: encryptMfaSecret(secret), mfaSetupAt: new Date(), mfaSetupExpiresAt: new Date(Date.now() + 15 * 60_000) } });
     const issuer = "Zuri%20MeBuMIP";
     const label = encodeURIComponent(String(user.normalizedEmail));
     return reply.send({ secret, otpauthUrl: `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`, note: "Add this secret to an authenticator app, then confirm with /v1/auth/mfa/enable. The secret is shown only once." });
@@ -225,9 +225,9 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
-    if (!user || typeof user.mfaPendingSecret !== "string") return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED" });
+    if (!user || typeof user.mfaPendingSecret !== "string" || !(user.mfaSetupExpiresAt instanceof Date) || user.mfaSetupExpiresAt.getTime() <= Date.now()) return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED_OR_EXPIRED" });
     if (!verifyTotp(decryptMfaSecret(user.mfaPendingSecret), parsed.data.code)) return reply.code(400).send({ error: "MFA_CODE_INVALID" });
-    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret }, $unset: { mfaPendingSecret: "" } });
+    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret }, $unset: { mfaPendingSecret: "", mfaSetupExpiresAt: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enabled", "user", "success");
     return reply.send({ status: "mfa_enabled" });
   });
