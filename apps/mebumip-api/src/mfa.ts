@@ -31,7 +31,7 @@ export interface MfaEncryptionKeyRing {
 }
 
 export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
-  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyRing.activeKeyId) || !keyRing.keys[keyRing.activeKeyId]) {
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyRing.activeKeyId) || !Object.hasOwn(keyRing.keys, keyRing.activeKeyId) || !keyRing.keys[keyRing.activeKeyId]) {
     throw new Error("MFA_ACTIVE_ENCRYPTION_KEY_NOT_AVAILABLE");
   }
   if (keyRing.legacyKey && keyRing.legacyKey.length !== 32) throw new Error("INVALID_MFA_LEGACY_ENCRYPTION_KEY");
@@ -57,7 +57,7 @@ export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
 
     if (parts.length === 5 && parts[0] === "v2") {
       const keyId = parts[1]!;
-      key = keyRing.keys[keyId];
+      key = Object.hasOwn(keyRing.keys, keyId) ? keyRing.keys[keyId] : undefined;
       if (!key) throw new Error("MFA_ENCRYPTION_KEY_ID_NOT_AVAILABLE");
       [, , ivText, tagText, bodyText] = parts;
     } else if (parts.length === 3) {
@@ -83,7 +83,7 @@ export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
 }
 
 function configuredMfaEncryptionService() {
-  const keys: Record<string, Buffer> = {};
+  const keys = Object.create(null) as Record<string, Buffer>;
   if (config.MFA_ENCRYPTION_KEYRING) {
     const parsed = JSON.parse(config.MFA_ENCRYPTION_KEYRING) as Record<string, string>;
     for (const [keyId, key] of Object.entries(parsed)) keys[keyId] = Buffer.from(key, "hex");
