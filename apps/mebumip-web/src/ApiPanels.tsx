@@ -274,7 +274,8 @@ export function AdminData({ resource }: { resource: Resource }) {
       const blob = await response.blob(), objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a"); link.href = objectUrl; link.download = "mebumip-audit-" + fromSequence + "-" + toSequence + ".json"; link.click(); URL.revokeObjectURL(objectUrl);
       const digest = response.headers.get("X-Audit-Archive-SHA256") ?? "unavailable";
-      setAuditResult("Prepared signed archive package for sequences " + fromSequence + "–" + toSequence + " (SHA-256 " + digest + "). It has not yet been written to independent immutable storage.");
+      const objectKey = response.headers.get("X-Audit-Archive-Object-Key") ?? "unavailable";
+      setAuditResult("Prepared signed archive package for sequences " + fromSequence + "–" + toSequence + " (SHA-256 " + digest + "; object key " + objectKey + "). It has not yet been written to independent immutable storage.");
     } catch (cause) { setAuditResult(cause instanceof Error ? cause.message : "Archive package preparation failed."); }
     finally { setAuditAction(""); }
   }
