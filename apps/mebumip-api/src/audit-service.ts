@@ -283,3 +283,127 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
     await session.endSession();
   }
 }
+
+export interface AuditArchiveBundle {
+  manifest: {
+    version: 1;
+    generatedAt: string;
+    eventCount: number;
+    firstSequence: number;
+    lastSequence: number;
+    firstHash: string;
+    lastHash: string;
+    manifestHash: string;
+    signature: string;
+    signatureKeyId: string;
+  };
+  events: SequencedAuditEvent[];
+}
+
+function archiveManifestPayload(manifest: Omit<AuditArchiveBundle["manifest"], "manifestHash" | "signature" | "signatureKeyId">): string {
+  return JSON.stringify({
+    version: manifest.version,
+    generatedAt: manifest.generatedAt,
+    eventCount: manifest.eventCount,
+    firstSequence: manifest.firstSequence,
+    lastSequence: manifest.lastSequence,
+    firstHash: manifest.firstHash,
+    lastHash: manifest.lastHash,
+  });
+}
+
+export async function exportAuditArchive(db: Db): Promise<AuditArchiveBundle> {
+  const verification = await verifyAuditChain(db);
+  if (!verification.valid) throw new Error("AUDIT_CHAIN_NOT_COMPLETE_FOR_ARCHIVE");
+  const events = await db.collection<SequencedAuditEvent>("auditEvents")
+    .find({ sequence: { $exists: true } })
+    .sort({ sequence: 1 })
+    .toArray();
+  const generatedAt = new Date().toISOString();
+  const first = events[0];
+  const last = events[events.length - 1];
+  const unsigned = {
+    version: 1 as const,
+    generatedAt,
+    eventCount: events.length,
+    firstSequence: first ? Number(first.sequence) : 0,
+    lastSequence: last ? Number(last.sequence) : 0,
+    firstHash: first ? String(first.eventHash) : GENESIS_HASH,
+    lastHash: last ? String(last.eventHash) : GENESIS_HASH,
+  };
+  const manifestHash = digest(archiveManifestPayload(unsigned));
+  const signed = sign(manifestHash);
+  return {
+    manifest: { ...unsigned, manifestHash, signature: signed.signature, signatureKeyId: signed.signatureKeyId },
+    events,
+  };
+}
+
+export function verifyAuditArchiveBundle(value: unknown): {
+  valid: boolean;
+  checked: number;
+  firstInvalidSequence: number | null;
+  reason: string | null;
+} {
+  if (!value || typeof value !== "object") return { valid: false, checked: 0, firstInvalidSequence: null, reason: "ARCHIVE_INVALID_SHAPE" };
+  const bundle = value as Partial<AuditArchiveBundle>;
+  const manifest = bundle.manifest;
+  const events = bundle.events;
+  if (!manifest || manifest.version !== 1 || !Array.isArray(events)) {
+    return { valid: false, checked: 0, firstInvalidSequence: null, reason: "ARCHIVE_INVALID_SHAPE" };
+  }
+  const unsigned = {
+    version: manifest.version,
+    generatedAt: manifest.generatedAt,
+    eventCount: manifest.eventCount,
+    firstSequence: manifest.firstSequence,
+    lastSequence: manifest.lastSequence,
+    firstHash: manifest.firstHash,
+    lastHash: manifest.lastHash,
+  };
+  const manifestHash = digest(archiveManifestPayload(unsigned));
+  if (
+    !equalHex(manifest.manifestHash, manifestHash) ||
+    !verifySignature(manifestHash, manifest.signature, manifest.signatureKeyId) ||
+    manifest.eventCount !== events.length
+  ) return { valid: false, checked: 0, firstInvalidSequence: null, reason: "ARCHIVE_MANIFEST_INVALID" };
+
+  let expectedSequence = 1;
+  let previousHash = GENESIS_HASH;
+  for (const event of events) {
+    const occurredAt = event.occurredAt instanceof Date ? event.occurredAt : new Date(String(event.occurredAt));
+    if (Number.isNaN(occurredAt.getTime())) {
+      return { valid: false, checked: expectedSequence - 1, firstInvalidSequence: Number(event.sequence), reason: "ARCHIVE_EVENT_TIMESTAMP_INVALID" };
+    }
+    const payload = canonicalPayload({
+      actorUserId: String(event.actorUserId),
+      action: String(event.action),
+      targetType: String(event.targetType),
+      ...(typeof event.targetId === "string" ? { targetId: event.targetId } : {}),
+      ...(typeof event.tenantId === "string" ? { tenantId: event.tenantId } : {}),
+      outcome: event.outcome as AuditEventInput["outcome"],
+      correlationId: String(event.correlationId),
+      ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
+      sequence: Number(event.sequence),
+      previousHash: String(event.previousHash),
+      occurredAt,
+    });
+    const eventHash = digest(payload);
+    if (
+      Number(event.sequence) !== expectedSequence ||
+      event.previousHash !== previousHash ||
+      !equalHex(event.eventHash, eventHash) ||
+      !verifySignature(eventHash, event.signature, event.signatureKeyId)
+    ) return { valid: false, checked: expectedSequence - 1, firstInvalidSequence: Number(event.sequence), reason: "ARCHIVE_EVENT_CHAIN_INVALID" };
+    previousHash = String(event.eventHash);
+    expectedSequence += 1;
+  }
+  const first = events[0];
+  const last = events[events.length - 1];
+  const manifestMatches = manifest.firstSequence === (first ? Number(first.sequence) : 0) &&
+    manifest.lastSequence === (last ? Number(last.sequence) : 0) &&
+    manifest.firstHash === (first ? String(first.eventHash) : GENESIS_HASH) &&
+    manifest.lastHash === (last ? String(last.eventHash) : GENESIS_HASH);
+  if (!manifestMatches) return { valid: false, checked: events.length, firstInvalidSequence: null, reason: "ARCHIVE_MANIFEST_RANGE_MISMATCH" };
+  return { valid: true, checked: events.length, firstInvalidSequence: null, reason: null };
+}
