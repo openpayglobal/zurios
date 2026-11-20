@@ -9,6 +9,7 @@ import {decryptMfaSecret,encryptMfaSecret,generateRecoveryCodes,generateTotpSecr
 export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
 const key=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
 const normalizeEmail=(email:string)=>email.trim().toLowerCase();
+const activeMembershipWindow=(now:Date)=>({$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]});
 async function issueAccessToken(config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string;sessionId:string;permissions:string[]}){
  return new SignJWT({tenantId:claims.tenantId,membershipId:claims.membershipId,sessionId:claims.sessionId,permissions:claims.permissions})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime(`${config.accessTokenTtlSeconds}s`).sign(key(config));
@@ -43,9 +44,9 @@ async function completePlatformLogin(db:Db,config:AuthConfig,userId:string,audit
  }catch(error){await revokeSession(db,"platform",sessionId,"security:platform-login-finalization-failed");throw error;}
 }
 async function listWorkspaceChoices(db:Db,userId:string){
- const c=coreCollections(db);
+ const c=coreCollections(db),now=new Date();
  const [memberships,platformPermissions]=await Promise.all([
-  c.memberships.find({userId,status:"active"}).toArray(),
+  c.memberships.find({userId,status:"active",...activeMembershipWindow(now)}).toArray(),
   platformPermissionsForUser(db,userId)
  ]);
  const tenantIds=[...new Set(memberships.map(m=>m.tenantId))];
@@ -103,7 +104,7 @@ export async function login(db:Db,config:AuthConfig,input:{email:string;password
  if(input.tenantSlug){
   const tenant=await c.tenants.findOne({slug:input.tenantSlug,status:"active"});
   if(!tenant)throw new Error("INVALID_CREDENTIALS");
-  const membership=await c.memberships.findOne({tenantId:tenant.tenantId,userId:user.userId,status:"active"});
+  const membership=await c.memberships.findOne({tenantId:tenant.tenantId,userId:user.userId,status:"active",...activeMembershipWindow(now)});
   if(!membership)throw new Error("INVALID_CREDENTIALS");
   if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
   return {mfaRequired:false as const,...await completeLogin(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
@@ -129,7 +130,7 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
   if(!result.modifiedCount)throw new Error("INVALID_MFA_CODE");
  }
  if(hasTenant){
-  const membership=await c.memberships.findOne({tenantId:tenantId!,membershipId:membershipId!,userId:user.userId,status:"active"});
+  const membership=await c.memberships.findOne({tenantId:tenantId!,membershipId:membershipId!,userId:user.userId,status:"active",...activeMembershipWindow(new Date())});
   if(!membership)throw new Error("ACTIVE_MEMBERSHIP_REQUIRED");
  }
  const challengeFilter={challengeId:claims.challengeId,userId:user.userId,usedAt:{$exists:false},expiresAt:{$gt:new Date()},...(hasTenant?{tenantId:tenantId!,membershipId:membershipId!}:{tenantId:{$exists:false},membershipId:{$exists:false}})};
@@ -248,7 +249,7 @@ export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:str
  if(tenantId==="platform"){
   if(!(await platformPermissionsForUser(db,userId)).length)throw new Error("WORKSPACE_ACCESS_DENIED");
  }else{
-  const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId,status:"active"}),c.memberships.findOne({tenantId,userId,status:"active"})]);
+  const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId,status:"active"}),c.memberships.findOne({tenantId,userId,status:"active",...activeMembershipWindow(now)})]);
   if(!tenant||!activeMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
   membership=activeMembership;
  }
@@ -261,14 +262,14 @@ export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:str
 }
 
 export async function switchWorkspace(db:Db,config:AuthConfig,current:{userId:string;tenantId:string;membershipId:string;sessionId:string},targetTenantId:string){
- const c=coreCollections(db);
+ const c=coreCollections(db),now=new Date();
  let membership:any;
  let next;
  if(targetTenantId==="platform"){
   if(!(await platformPermissionsForUser(db,current.userId)).length)throw new Error("WORKSPACE_ACCESS_DENIED");
   next=await completePlatformLogin(db,config,current.userId,null);
  }else{
-  const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId:targetTenantId,status:"active"}),c.memberships.findOne({tenantId:targetTenantId,userId:current.userId,status:"active"})]);
+  const [tenant,activeMembership]=await Promise.all([c.tenants.findOne({tenantId:targetTenantId,status:"active"}),c.memberships.findOne({tenantId:targetTenantId,userId:current.userId,status:"active",...activeMembershipWindow(now)})]);
   if(!tenant||!activeMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
   membership=activeMembership;
   next=await completeLogin(db,config,{userId:current.userId,tenantId:targetTenantId,membershipId:membership.membershipId},null);
