@@ -200,7 +200,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
   app.post("/v1/auth/mfa/enable", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
-    const parsed = z.object({ code: z.string().regex(/^\\d{6}$/) }).safeParse(request.body);
+    const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
     if (!user || typeof user.mfaPendingSecret !== "string") return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED" });
@@ -213,7 +213,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
   app.post("/v1/auth/step-up", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
-    const parsed = z.object({ code: z.string().regex(/^\\d{6}$/) }).safeParse(request.body);
+    const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
     if (!user || typeof user.mfaSecretEncrypted !== "string") return reply.code(403).send({ error: "MFA_REQUIRED" });
