@@ -136,6 +136,10 @@ The first usable MVP includes:
 - FR-CORE-006: Record security-sensitive and business-critical actions in audit events.
 - FR-CORE-007: Support configurable localization, time zones, currencies and jurisdiction profiles.
 - FR-CORE-008: Provide health/readiness and operational status endpoints without exposing secrets.
+- FR-CORE-009: Support one global human identity with multiple independent tenant/workspace memberships.
+- FR-CORE-010: Authenticate identity before workspace selection; issue sessions bound to the selected tenant and membership.
+- FR-CORE-011: Allow workspace switching only after server-side membership revalidation; never create or grant membership as a side effect of switching.
+- FR-CORE-012: Provide a safe no-membership state that routes users to approved invitation/access-request processes without revealing other tenants.
 
 ### FR-INV — Inventory
 - FR-INV-001: Maintain products, variants, units, categories and identifiers.
