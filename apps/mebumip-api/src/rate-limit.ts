@@ -10,11 +10,13 @@ const POLICIES = [
   { match: (path: string) => path.startsWith("/v1/"), limit: 180, windowMs: 60_000 },
 ] as const;
 
+export function createRateLimitKey(ip: string, path: string, windowStart: number): string {
+  const digest = createHash("sha256").update(ip || "unknown").digest("hex").slice(0, 32);
+  return createHash("sha256").update(path + ":" + digest + ":" + windowStart).digest("hex");
+}
 function clientKey(request: FastifyRequest, windowStart: number): string {
   const path = request.routeOptions.url ?? request.url.split("?")[0] ?? "/";
-  const ip = request.ip || "unknown";
-  const digest = createHash("sha256").update(ip).digest("hex").slice(0, 32);
-  return createHash("sha256").update(path + ":" + digest + ":" + windowStart).digest("hex");
+  return createRateLimitKey(request.ip || "unknown", path, windowStart);
 }
 
 export function registerDatabaseRateLimit(app: FastifyInstance, db: Db): void {
