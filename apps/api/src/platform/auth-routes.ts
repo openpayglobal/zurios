@@ -31,6 +31,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/auth/access-requests",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
+   if(process.env.ACCESS_REQUESTS_ENABLED!=="true")return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
    try{
     const body=accessRequestSchema.parse(request.body),ipHash=createHash("sha256").update(request.ip).digest("hex");
     const result=await requestWorkspaceAccess(db,{email:body.email,displayName:body.displayName,organizationName:body.organizationName,...(body.requestNote?{requestNote:body.requestNote}:{}),ipHash});
