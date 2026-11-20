@@ -1,10 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCipheriv } from "node:crypto";
-import { createMfaEncryptionService } from "./mfa.js";
 
 process.env.MFA_ENCRYPTION_KEY = "a".repeat(64);
-const { decryptMfaSecret, encryptMfaSecret, generateTotpSecret, generateTotpCode, verifyTotp, generateMfaRecoveryCodes, normalizeMfaRecoveryCode } = await import("./mfa.js");
+const { createMfaEncryptionService, decryptMfaSecret, encryptMfaSecret, generateTotpSecret, generateTotpCode, verifyTotp, generateMfaRecoveryCodes, normalizeMfaRecoveryCode } = await import("./mfa.js");
 
 test("TOTP secrets are random and encrypted at rest with versioned ciphertext", () => {
   const secret = generateTotpSecret();
