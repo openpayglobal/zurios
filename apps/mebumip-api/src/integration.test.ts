@@ -36,6 +36,18 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const login = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "owner@example.test", password: "Integration-Owner-Password-2026!" } });
   assert.equal(login.statusCode, 200);
   const token = login.json().accessToken as string;
+  const setCookies = login.headers["set-cookie"];
+  assert.ok(setCookies);
+  const cookieParts = (Array.isArray(setCookies) ? setCookies : [setCookies]).map((value) => value.split(";")[0]!).filter((value) => value.startsWith("mebumip_session=") || value.startsWith("mebumip_csrf="));
+  const cookieHeader = cookieParts.join("; ");
+  const csrfCookie = cookieParts.find((value) => value.startsWith("mebumip_csrf="))?.split("=").slice(1).join("=");
+  assert.ok(csrfCookie);
+  const cookieMe = await app.inject({ method: "GET", url: "/v1/auth/me", headers: { cookie: cookieHeader } });
+  assert.equal(cookieMe.statusCode, 200);
+  const cookieCsrfDenied = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader }, payload: { code: "000000" } });
+  assert.equal(cookieCsrfDenied.statusCode, 401);
+  const cookieCsrfAllowed = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader, "x-csrf-token": decodeURIComponent(csrfCookie.split("=").slice(1).join("=")) }, payload: { code: "000000" } });
+  assert.notEqual(cookieCsrfAllowed.statusCode, 401);
   const headers = { authorization: "Bearer " + token };
   const me = await app.inject({ method: "GET", url: "/v1/auth/me", headers });
   assert.equal(me.statusCode, 200);
