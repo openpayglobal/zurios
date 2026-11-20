@@ -90,3 +90,17 @@ AUDIT_CHAIN_BACKFILL_APPLY=true pnpm --filter @zuri/mebumip-api audit:backfill
 ```
 
 The apply supports up to 5,000 legacy events in one transaction and refuses to run when legacy and already-sequenced events are mixed. That conflict means new chain writes have already started before historical backfill; stop and prepare a separately reviewed reconciliation plan rather than forcing the migration. Always inspect the final `verifyAuditChain` result. No production backfill is run by CI or automatically at API startup.
+
+
+## Signed audit archive export
+
+After the audit chain verifies cleanly and all legacy events are backfilled, export a signed bundle to a new file:
+
+```sh
+AUDIT_ARCHIVE_OUTPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive
+AUDIT_ARCHIVE_FILE=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify
+```
+
+The exporter refuses an invalid or incomplete chain, writes with restrictive file permissions and does not overwrite an existing file. The manifest is HMAC-signed and includes sequence range, event count and chain boundary hashes; every event retains its own signature and key identifier. Offline verification requires the current and previous audit signing keyring.
+
+**This creates a verifiable export, not WORM storage.** Operations must upload the verified bundle to an independently administered object-lock store (for example, an S3 bucket with versioning and Object Lock Compliance retention), enforce retention/deletion restrictions, test restore and retain signing keys. No cloud archive provider, credentials or production bucket has been configured by this change.
