@@ -98,7 +98,7 @@ function configuredMfaEncryptionService() {
 export function getMfaEncryptionKeyId(encoded: string): string {
   const parts = encoded.split(".");
   if (parts.length === 5 && parts[0] === "v2" && /^[a-zA-Z0-9_-]{1,64}$/.test(parts[1] ?? "")) return parts[1]!;
-  if (parts.length === 3) return "legacy";
+  if (parts.length === 3) return "legacy-unversioned";
   throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
 }
 
