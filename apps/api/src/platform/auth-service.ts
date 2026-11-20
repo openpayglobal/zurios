@@ -65,7 +65,12 @@ async function enforceLoginRateLimit(db:Db,email:string,ipHash:string){
  const row=await collection.findOne({key:keyValue});
  if((row?.count??0)>10)throw new Error("AUTH_RATE_LIMITED");
 }
-export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:string;ipHash?:string}){
+type TenantLoginResult = {mfaRequired:true;challengeToken:string}|({mfaRequired:false}&Awaited<ReturnType<typeof completeLogin>>);
+type WorkspaceLoginResult = {mfaRequired:true;challengeToken:string}|Awaited<ReturnType<typeof issueWorkspaceSelection>>;
+export function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug:string;ipHash?:string}):Promise<TenantLoginResult>;
+export function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:undefined;ipHash?:string}):Promise<WorkspaceLoginResult>;
+export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:string;ipHash?:string}):Promise<TenantLoginResult|WorkspaceLoginResult>{
+email:string;password:string;tenantSlug?:string;ipHash?:string}){
  const email=normalizeEmail(input.email);await enforceLoginRateLimit(db,email,input.ipHash??"unknown");
  const c=coreCollections(db),user=await c.users.findOne({emailNormalized:email}),now=new Date();
  if(user?.lockedUntil&&user.lockedUntil>now)throw new Error("INVALID_CREDENTIALS");
@@ -87,10 +92,13 @@ export async function login(db:Db,config:AuthConfig,input:{email:string;password
  if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId})};
  return await issueWorkspaceSelection(db,user.userId);
 }
-export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:string,code:string){
+}
+export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:string,code:string):Promise<Awaited<ReturnType<typeof completeLogin>>|Awaited<ReturnType<typeof issueWorkspaceSelection>>>{
  const verified=await jwtVerify(challengeToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});
  const claims=verified.payload;
- const hasTenant=typeof claims.tenantId==="string"&&typeof claims.membershipId==="string";
+ const tenantId=typeof claims.tenantId==="string"?claims.tenantId:undefined;
+ const membershipId=typeof claims.membershipId==="string"?claims.membershipId:undefined;
+ const hasTenant=Boolean(tenantId&&membershipId);
  if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.challengeId!=="string"||((typeof claims.tenantId==="string")!==(typeof claims.membershipId==="string")))throw new Error("INVALID_MFA_CHALLENGE");
  const c=coreCollections(db),user=await c.users.findOne({userId:claims.sub,status:"active",mfaEnabled:true});
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_NOT_CONFIGURED");
@@ -103,14 +111,14 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
   if(!result.modifiedCount)throw new Error("INVALID_MFA_CODE");
  }
  if(hasTenant){
-  const membership=await c.memberships.findOne({tenantId:claims.tenantId,membershipId:claims.membershipId,userId:user.userId,status:"active"});
+  const membership=await c.memberships.findOne({tenantId:tenantId!,membershipId:membershipId!,userId:user.userId,status:"active"});
   if(!membership)throw new Error("ACTIVE_MEMBERSHIP_REQUIRED");
  }
- const challengeFilter={challengeId:claims.challengeId,userId:user.userId,usedAt:{$exists:false},expiresAt:{$gt:new Date()},...(hasTenant?{tenantId:claims.tenantId,membershipId:claims.membershipId}:{tenantId:{$exists:false},membershipId:{$exists:false}})};
+ const challengeFilter={challengeId:claims.challengeId,userId:user.userId,usedAt:{$exists:false},expiresAt:{$gt:new Date()},...(hasTenant?{tenantId:tenantId!,membershipId:membershipId!}:{tenantId:{$exists:false},membershipId:{$exists:false}})};
  const consumed=await db.collection("auth_challenges").updateOne(challengeFilter,{$set:{usedAt:new Date()}});
  if(!consumed.modifiedCount)throw new Error("MFA_CHALLENGE_ALREADY_USED");
  if(!hasTenant)return issueWorkspaceSelection(db,user.userId);
- return completeLogin(db,config,{userId:user.userId,tenantId:claims.tenantId as string,membershipId:claims.membershipId as string});
+ return completeLogin(db,config,{userId:user.userId,tenantId:tenantId!,membershipId:membershipId!});
 }
 export async function beginMfaEnrollment(db:Db,userId:string,config:AuthConfig){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active"});if(!user)throw new Error("ACTIVE_USER_REQUIRED");
