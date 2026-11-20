@@ -14,6 +14,7 @@ const envSchema = z.object({
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
   MAIL_FROM: z.string().email().optional(),
+  AUDIT_SIGNING_KEY: z.string().min(32).optional(),
 });
 
 const parsed = envSchema.superRefine((value, context) => {
@@ -25,6 +26,9 @@ const parsed = envSchema.superRefine((value, context) => {
   }
   if (value.NODE_ENV === "production" && !value.MFA_ENCRYPTION_KEY) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEY"], message: "MFA_ENCRYPTION_KEY is required in production" });
+  }
+  if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });
   }
   if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => !origin.trim().startsWith("https://"))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS origins must all use HTTPS" });
