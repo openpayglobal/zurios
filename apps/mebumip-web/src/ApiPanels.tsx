@@ -120,6 +120,13 @@ export function AdminData({ resource }: { resource: Resource }) {
   const [adminInviteMessage, setAdminInviteMessage] = useState("");
   const [adminInviteBusy, setAdminInviteBusy] = useState(false);
   const [pendingAdminInvitations, setPendingAdminInvitations] = useState<Array<Record<string, unknown>>>([]);
+  const [selectedTenantId, setSelectedTenantId] = useState("");
+  const [tenantMembers, setTenantMembers] = useState<Array<Record<string, unknown>>>([]);
+  const [tenantInvitations, setTenantInvitations] = useState<Array<Record<string, unknown>>>([]);
+  const [tenantInviteEmail, setTenantInviteEmail] = useState("");
+  const [tenantInviteRole, setTenantInviteRole] = useState("viewer");
+  const [tenantMessage, setTenantMessage] = useState("");
+  const [tenantBusy, setTenantBusy] = useState("");
   useEffect(() => {
     let active = true;
     const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : resource === "sessions" ? "/v1/auth/sessions" : resource === "settings" ? "/v1/mac/settings" : "/v1/mac/audit-events?limit=50";
@@ -134,6 +141,14 @@ export function AdminData({ resource }: { resource: Resource }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [resource]);
+  useEffect(() => {
+    if (resource !== "tenants" || !selectedTenantId) return;
+    let active = true;
+    fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" })
+      .then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Could not load tenant membership."); if (active) { setTenantMembers(body.members ?? []); setTenantInvitations(body.invitations ?? []); } })
+      .catch((cause) => { if (active) setTenantMessage(cause instanceof Error ? cause.message : "Could not load tenant membership."); });
+    return () => { active = false; };
+  }, [resource, selectedTenantId]);
 
   if (loading) return <div className="api-data"><p>Loading live platform data…</p></div>;
   if (error) return <div className="api-data"><p>{error}</p></div>;
@@ -189,8 +204,52 @@ export function AdminData({ resource }: { resource: Resource }) {
     {pendingAdminInvitations.length > 0 && <div className="api-data"><h4>Pending administrator invitations</h4>{pendingAdminInvitations.map((item) => <p key={String(item.id)}>{String(item.email)} · {String(item.role)} · expires {new Date(String(item.expiresAt)).toLocaleString()} <button type="button" onClick={() => void revokePlatformAdminInvitation(String(item.id))}>Revoke</button></p>)}</div>}
     {stepUpMessage && <p role="status">{stepUpMessage}</p>}
     {items.length === 0 ? <p>No platform administrators found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Administrator</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item, index) => { const id = String(item.id ?? ""); const protectedOwner = item.status === "protected"; return <tr key={id || index}><td>{String(item.displayName ?? item.email ?? "")}<small>{String(item.email ?? "")}</small></td><td>{String(item.role ?? "")}</td><td>{String(item.status ?? "")}</td><td>{protectedOwner ? "Protected owner" : <div className="api-admin-actions"><button type="button" disabled={adminBusy === id} onClick={() => void updatePlatformAdmin(id, { role: "platform_admin" })}>Make admin</button><button type="button" disabled={adminBusy === id} onClick={() => void updatePlatformAdmin(id, { status: item.status === "suspended" ? "active" : "suspended" })}>{item.status === "suspended" ? "Reactivate" : "Suspend"}</button></div>}</td></tr>; })}</tbody></table></div>}
-    <p>New administrator invitations and account creation remain pending. Every role or status change requires platform-owner authorization, MFA step-up and audit logging.</p></div>;
-  if (resource === "tenants") return <div className="api-data"><h3>Business directory · live API</h3>{items.length === 0 ? <p>No tenant records found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Business</th><th>Slug</th><th>Status</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.name ?? "")}</td><td>{String(item.slug ?? "")}</td><td>{String(item.status ?? "")}</td></tr>)}</tbody></table></div>}</div>;
+    <p>New administrator invitations, existing-user acceptance, new-user registration and revocation are connected. Role and status changes require platform-owner authorization, MFA step-up and audit logging.</p></div>;
+  if (resource === "tenants") return <div className="api-data"><h3>Business directory · live API</h3>{items.length === 0 ? <p>No tenant records found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Business</th><th>Slug</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.name ?? "")}</td><td>{String(item.slug ?? "")}</td><td>{String(item.status ?? "")}</td><td><button type="button" onClick={() => { setSelectedTenantId(String(item.id)); setTenantMessage(""); }}>Manage members</button></td></tr>)}</tbody></table></div>}
+    {selectedTenantId && <section><h3>Tenant membership and invitations</h3><p>Selected tenant: {String(items.find((item) => String(item.id) === selectedTenantId)?.name ?? selectedTenantId)}</p>
+      <form className="api-auth" onSubmit={verifyAdminStepUp}><div><strong>Privileged action verification</strong><small>Enter a current six-digit authenticator code before changing tenant membership.</small></div><input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="6-digit MFA code" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required/><button type="submit" disabled={stepUpBusy}>{stepUpBusy ? "Verifying…" : "Verify MFA"}</button></form>
+      <form className="api-auth" onSubmit={inviteTenantMember}><div><strong>Invite a business member</strong><small>Invitation expires after 72 hours and is delivered by email.</small></div><input type="email" placeholder="Member email" value={tenantInviteEmail} onChange={(event) => setTenantInviteEmail(event.target.value)} required/><select value={tenantInviteRole} onChange={(event) => setTenantInviteRole(event.target.value)}><option value="tenant_admin">Tenant administrator</option><option value="publisher">Publisher</option><option value="advertiser">Advertiser</option><option value="support_agent">Support agent</option><option value="viewer">Viewer</option></select><button type="submit" disabled={tenantBusy === "invite"}>{tenantBusy === "invite" ? "Sending…" : "Send invitation"}</button></form>
+      {tenantMessage && <p role="status">{tenantMessage}</p>}
+      <h4>Members</h4>{tenantMembers.length === 0 ? <p>No active or suspended members.</p> : <div className="api-table-wrap"><table><thead><tr><th>Member</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>{tenantMembers.map((member) => { const id = String(member.userId); const owner = member.role === "tenant_owner"; return <tr key={String(member.id)}><td>{String(member.displayName || member.email || id)}<small>{String(member.email || "")}</small></td><td>{String(member.role)}</td><td>{String(member.status)}</td><td>{owner ? "Protected owner" : <div className="api-admin-actions"><select value={String(member.role)} onChange={(event) => void updateTenantMember(id, { role: event.target.value })}><option value="tenant_admin">Tenant admin</option><option value="publisher">Publisher</option><option value="advertiser">Advertiser</option><option value="support_agent">Support agent</option><option value="viewer">Viewer</option></select><button type="button" disabled={tenantBusy === id} onClick={() => void updateTenantMember(id, { status: member.status === "suspended" ? "active" : "suspended" })}>{member.status === "suspended" ? "Reactivate" : "Suspend"}</button><button type="button" disabled={tenantBusy === id} onClick={() => void removeTenantMember(id)}>Remove</button></div>}</td></tr>; })}</tbody></table></div>}
+      <h4>Pending invitations</h4>{tenantInvitations.length === 0 ? <p>No pending invitations.</p> : tenantInvitations.map((invite) => <p key={String(invite.id)}>{String(invite.email)} · {String(invite.role)} · expires {new Date(String(invite.expiresAt)).toLocaleString()} <button type="button" onClick={() => void revokeTenantInvitation(String(invite.id))}>Revoke</button></p>)}
+    </section>}</div>;
+  async function inviteTenantMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!selectedTenantId) return;
+    setTenantBusy("invite"); setTenantMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/invitations", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ email: tenantInviteEmail, role: tenantInviteRole }) });
+      const body = await response.json(); if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before inviting members." : body.error ?? "Invitation failed.");
+      setTenantInviteEmail(""); setTenantMessage("Invitation emailed to " + body.email + ".");
+      const latest = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" }); if (latest.ok) { const result = await latest.json(); setTenantMembers(result.members ?? []); setTenantInvitations(result.invitations ?? []); }
+    } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Invitation failed."); } finally { setTenantBusy(""); }
+  }
+
+  async function updateTenantMember(userId: string, changes: { role?: string; status?: string }) {
+    if (!selectedTenantId) return; setTenantBusy(userId); setTenantMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members/" + encodeURIComponent(userId), { method: "PATCH", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const body = response.status === 204 ? {} : await response.json(); if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before changing membership." : body.error ?? "Membership update failed.");
+      setTenantMembers((current) => current.map((member) => String(member.userId) === userId ? { ...member, ...changes } : member)); setTenantMessage("Membership updated and audited.");
+    } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Membership update failed."); } finally { setTenantBusy(""); }
+  }
+
+  async function removeTenantMember(userId: string) {
+    if (!selectedTenantId) return; setTenantBusy(userId); setTenantMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members/" + encodeURIComponent(userId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      if (!response.ok) throw new Error(response.status === 404 ? "Membership not found or protected." : "Membership removal failed.");
+      setTenantMembers((current) => current.filter((member) => String(member.userId) !== userId)); setTenantMessage("Membership removed and audited.");
+    } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Membership removal failed."); } finally { setTenantBusy(""); }
+  }
+
+  async function revokeTenantInvitation(invitationId: string) {
+    if (!selectedTenantId) return; setTenantBusy(invitationId); setTenantMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/invitations/" + encodeURIComponent(invitationId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      if (!response.ok) throw new Error("Invitation revocation failed.");
+      setTenantInvitations((current) => current.filter((invite) => String(invite.id) !== invitationId)); setTenantMessage("Invitation revoked and audited.");
+    } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Invitation revocation failed."); } finally { setTenantBusy(""); }
+  }
   async function revokeSession(sessionId: string) {
     try {
       const response = await fetch(API_BASE + "/v1/auth/sessions/" + encodeURIComponent(sessionId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
