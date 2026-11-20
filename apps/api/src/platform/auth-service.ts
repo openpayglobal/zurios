@@ -21,10 +21,12 @@ async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;t
 }
 async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string},auditAction:string|null="auth.login"){
  const session=await createSession(db,claims.tenantId,claims.userId,claims.membershipId,config.sessionTtlSeconds);
- const permissions=await permissionsForMembership(db,claims.tenantId,claims.membershipId);
- const accessToken=await issueAccessToken(config,{...claims,sessionId:session.sessionId,permissions});
- if(auditAction)await appendAuditEvent(db,{tenantId:claims.tenantId,actor:{userId:claims.userId},action:auditAction,resourceType:"session",resourceId:session.sessionId,outcome:"success",metadata:{method:"password+mfa-if-enabled"}});
- return {accessToken,refreshToken:session.refreshToken,sessionId:session.sessionId,expiresAt:session.expiresAt,tokenType:"Bearer" as const};
+ try{
+  const permissions=await permissionsForMembership(db,claims.tenantId,claims.membershipId);
+  const accessToken=await issueAccessToken(config,{...claims,sessionId:session.sessionId,permissions});
+  if(auditAction)await appendAuditEvent(db,{tenantId:claims.tenantId,actor:{userId:claims.userId},action:auditAction,resourceType:"session",resourceId:session.sessionId,outcome:"success",metadata:{method:"password+mfa-if-enabled"}});
+  return {accessToken,refreshToken:session.refreshToken,sessionId:session.sessionId,expiresAt:session.expiresAt,tokenType:"Bearer" as const};
+ }catch(error){await revokeSession(db,claims.tenantId,session.sessionId,"security:login-finalization-failed");throw error;}
 }
 async function completePlatformLogin(db:Db,config:AuthConfig,userId:string,auditAction:string|null="auth.platform.login"){
  const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"});
@@ -34,9 +36,11 @@ async function completePlatformLogin(db:Db,config:AuthConfig,userId:string,audit
  if(!Number.isSafeInteger(config.sessionTtlSeconds)||config.sessionTtlSeconds<60||config.sessionTtlSeconds>90*24*60*60)throw new Error("INVALID_SESSION_TTL");
  const refreshToken=randomBytes(48).toString("base64url"),sessionId=randomUUID(),expiresAt=new Date(now.getTime()+config.sessionTtlSeconds*1000);
  await c.sessions.insertOne({tenantId:"platform",sessionId,userId,membershipId:"platform",refreshTokenHash:createHash("sha256").update(refreshToken).digest("hex"),refreshTokenHistory:[],tokenFamilyId:randomUUID(),expiresAt,lastUsedAt:now,createdAt:now,updatedAt:now,createdBy:userId,updatedBy:userId});
- const accessToken=await issueAccessToken(config,{userId,tenantId:"platform",membershipId:"platform",sessionId,permissions:[]});
- if(auditAction)await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:auditAction,resourceType:"session",resourceId:sessionId,outcome:"success",metadata:{context:"platform"}});
- return {accessToken,refreshToken,sessionId,expiresAt,tokenType:"Bearer" as const};
+ try{
+  const accessToken=await issueAccessToken(config,{userId,tenantId:"platform",membershipId:"platform",sessionId,permissions:[]});
+  if(auditAction)await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:auditAction,resourceType:"session",resourceId:sessionId,outcome:"success",metadata:{context:"platform"}});
+  return {accessToken,refreshToken,sessionId,expiresAt,tokenType:"Bearer" as const};
+ }catch(error){await revokeSession(db,"platform",sessionId,"security:platform-login-finalization-failed");throw error;}
 }
 async function listWorkspaceChoices(db:Db,userId:string){
  const c=coreCollections(db);
@@ -210,12 +214,22 @@ export async function refreshLogin(db:Db,config:AuthConfig,tenantId:string,sessi
   if(!user||!permissions.length){await revokeSession(db,"platform",sessionId,"security:platform-access-revoked");throw new Error("PLATFORM_ACCESS_REVOKED");}
   const presentedHash=createHash("sha256").update(refreshToken).digest("hex");
   if(session.refreshTokenHash!==presentedHash){
-   if(session.refreshTokenHistory?.includes(presentedHash))await c.sessions.updateMany({tenantId:"platform",tokenFamilyId:session.tokenFamilyId,revokedAt:{$exists:false}},{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:"security:refresh-replay"}});
+   if(session.refreshTokenHistory?.includes(presentedHash)){
+    await c.sessions.updateMany({tenantId:"platform",tokenFamilyId:session.tokenFamilyId,revokedAt:{$exists:false}},{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:"security:refresh-replay"}});
+    throw new Error("REFRESH_TOKEN_REUSE_DETECTED");
+   }
    throw new Error("SESSION_INVALID");
   }
   const nextRefreshToken=randomBytes(48).toString("base64url"),nextHash=createHash("sha256").update(nextRefreshToken).digest("hex");
   const rotated=await c.sessions.updateOne({tenantId:"platform",sessionId,refreshTokenHash:presentedHash,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{refreshTokenHash:nextHash,lastUsedAt:new Date(),updatedAt:new Date()},$addToSet:{refreshTokenHistory:presentedHash}});
-  if(!rotated.modifiedCount)throw new Error("SESSION_INVALID");
+  if(!rotated.modifiedCount){
+   const latest=await c.sessions.findOne({tenantId:"platform",sessionId});
+   if(latest?.refreshTokenHistory?.includes(presentedHash)){
+    await c.sessions.updateMany({tenantId:"platform",tokenFamilyId:session.tokenFamilyId,revokedAt:{$exists:false}},{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:"security:refresh-race"}});
+    throw new Error("REFRESH_TOKEN_REUSE_DETECTED");
+   }
+   throw new Error("SESSION_INVALID");
+  }
   const accessToken=await issueAccessToken(config,{userId:session.userId,tenantId:"platform",membershipId:"platform",sessionId,permissions:[]});
   return {accessToken,refreshToken:nextRefreshToken,sessionId,tokenType:"Bearer" as const};
  }
