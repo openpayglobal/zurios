@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTenantAccess, createAuditEvent, hasPlatformPermission, hasTenantPermission, hashToken, newOpaqueToken } from "./security.js";
+import { assertTenantAccess, createAuditEvent, verifyAuditEvent, hasPlatformPermission, hasTenantPermission, hashToken, newOpaqueToken } from "./security.js";
 import type { Principal } from "./security.js";
 
 const principal: Principal = {
@@ -36,4 +36,12 @@ test("audit event has timestamp and does not accept request secrets as a field",
   const event = createAuditEvent({ actorUserId: "u1", action: "tenant.member.invited", targetType: "membership", outcome: "success", correlationId: "c1" });
   assert.ok(event.occurredAt instanceof Date);
   assert.equal("accessToken" in event, false);
+});
+
+test("audit events are HMAC signed and tampering is detected", () => {
+  process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-with-adequate-entropy";
+  const event = createAuditEvent({ actorUserId: "u1", action: "tenant.member.invited", targetType: "membership", outcome: "success", correlationId: "c1" });
+  assert.equal(verifyAuditEvent(event), true);
+  assert.equal(verifyAuditEvent({ ...event, action: "tenant.member.deleted" }), false);
+  assert.equal(verifyAuditEvent(event, "a-different-signing-key"), false);
 });
