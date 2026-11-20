@@ -94,8 +94,12 @@ export default function App(){
  },[session,refreshAccessToken,clearSession]);
 
  const loadPrincipal=useCallback(async()=>{
-  try{const result=await api<{principal:Principal}>("/auth/me");setPrincipal(result.principal);}
-  catch(e){setError(e instanceof Error?e.message:"Unable to load identity.");}
+  try{
+   const result=await api<{principal:Principal}>("/auth/me");
+   setPrincipal(result.principal);
+   const workspaceResult=await api<{workspaces:WorkspaceOption[]}>("/auth/workspaces");
+   setAvailableWorkspaces(workspaceResult.workspaces);
+  }catch(e){setError(e instanceof Error?e.message:"Unable to load identity.");}
  },[api]);
  useEffect(()=>{if(session&&!principal)void loadPrincipal();},[session,principal,loadPrincipal]);
 
@@ -124,10 +128,11 @@ export default function App(){
  const login=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password,tenantSlug})});
+   const response=await fetch(API_BASE+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
    const result=await response.json();
    if(!response.ok)throw new Error(result.error??"Sign-in failed.");
    if(result.mfaRequired){setChallengeToken(result.challengeToken);setNotice("Enter the current authenticator code to finish signing in.");}
+   else if(result.workspaceSelectionRequired){setWorkspaceOptions(result.workspaces??[]);setWorkspaceSelectionToken(result.selectionToken??"");}
    else saveSession(result as Session);
   }catch(e){setError(e instanceof Error?e.message:"Sign-in failed.");}
   finally{setBusy(false);}
@@ -137,7 +142,9 @@ export default function App(){
   try{
    const response=await fetch(API_BASE+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA verification failed.");
-   saveSession(result as Session);setChallengeToken("");setMfaCode("");
+   if(result.workspaceSelectionRequired){setWorkspaceOptions(result.workspaces??[]);setWorkspaceSelectionToken(result.selectionToken??"");}
+   else saveSession(result as Session);
+   setChallengeToken("");setMfaCode("");
   }catch(e){setError(e instanceof Error?e.message:"MFA verification failed.");}
   finally{setBusy(false);}
  };
