@@ -8,12 +8,16 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
-- `AUDIT_SIGNING_KEY`: at least 32 characters; required in production. HMAC-SHA256 signs newly created audit events, each with a monotonically allocated sequence number. The verification endpoint detects sequence gaps and the export endpoint includes a signed manifest. Keep it in a secret manager and back it up separately from MongoDB.
+- `AUDIT_SIGNING_KEY`: legacy HMAC-SHA256 verification key; retain while historical events depend on it.
+- `AUDIT_SIGNING_KEYRING`: optional JSON map of key IDs to 32-byte hex keys. A `legacy` entry may contain the original legacy key bytes encoded as even-length hex.
+- `AUDIT_SIGNING_ACTIVE_KEY_ID`: selects a non-legacy 32-byte key for new HMAC-SHA256-v2 event signatures and export manifests. Keep all historical keys available for verification and back them up separately from MongoDB.
 - `RESEND_API_KEY` and `MAIL_FROM`: required in production for invitation and password-recovery delivery. The sender address must belong to a verified sending domain in Resend. Never commit these values.
 - `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
 - `SESSION_COOKIE_SAME_SITE`: `Strict`, `Lax` (default) or `None`; `None` is appropriate only for cross-site HTTPS deployments.
 - `TRUSTED_PROXY_CIDRS`: optional comma-separated proxy IPs/CIDRs. Set only to known reverse proxies so IP-based rate limits do not trust spoofed forwarded headers.
 - `CORS_ORIGINS`: comma-separated exact web origins.
+
+The current API contract is documented in [docs/api/mebumip-openapi.yaml](../../docs/api/mebumip-openapi.yaml). Signed audit archive packages can be prepared through `GET /v1/mac/audit-events/archive?fromSequence=N&toSequence=M`; this verifies every event signature and contiguous sequence, then downloads a content-addressed package. It is **prepared, not independently archived**. A concrete immutable-storage provider, retention policy and legal-hold mode still require approval and configuration.
 
 The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Configure `CORS_ORIGINS` to the exact frontend origins. Production must terminate TLS, use secure cookies, and configure only trusted proxy CIDRs when deployed behind a reverse proxy. Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
 
@@ -48,7 +52,8 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/password/recovery`: requests a generic, non-enumerating email recovery message.
 - `POST /v1/auth/password/reset`: consumes a hashed, 30-minute, one-time reset token and revokes all sessions.
 - `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
-- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.\n- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
+- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.
+- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
 Browser sessions are issued as `HttpOnly` session cookies with a separate session-bound CSRF cookie; state-changing cookie-authenticated requests must send `x-csrf-token`. Cookies use `SameSite=Lax`, `Secure` in production, and a bounded max age. The API retains bearer-token compatibility for trusted non-browser clients; production login does not return the bearer token in JSON. Only a SHA-256 session token hash is persisted. Passwords use salted scrypt hashes.
 
