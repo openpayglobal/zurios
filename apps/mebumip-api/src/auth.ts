@@ -81,7 +81,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     // partial unique owner index remains the final database-level invariant.
     const now = new Date();
     const lockToken = newOpaqueToken();
-    const locks = db.collection("platformBootstrapLocks");
+    const locks = db.collection<{ _id: string; lockToken?: string; leaseExpiresAt?: Date; status?: string; acquiredAt?: Date; completedAt?: Date }>("platformBootstrapLocks");
     try {
       await locks.insertOne({
         _id: "singleton",
