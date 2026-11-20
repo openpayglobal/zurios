@@ -51,6 +51,6 @@ export async function ingestCarrierTrackingEvent(db:Db,input:unknown,signature:s
    shipmentId:event.shipmentId,organizationId:event.organizationId,status:event.status,
    occurredAt:event.occurredAt,version:shipment.version+1,carrierId:event.carrierId,providerEventId:event.providerEventId
   }});
-  return {statusCode:200,body:{shipmentId:event.shipmentId,providerEventId:event.providerEventId,status:event.status,version:event.expectedShipmentVersion+1}};
+  return {statusCode:200,body:{shipmentId:event.shipmentId,providerEventId:event.providerEventId,status:event.status,version:shipment.version+1}};
  });
 }
