@@ -69,7 +69,7 @@ type TenantLoginResult = {mfaRequired:true;challengeToken:string}|({mfaRequired:
 type WorkspaceLoginResult = {mfaRequired:true;challengeToken:string}|Awaited<ReturnType<typeof issueWorkspaceSelection>>;
 export function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug:string;ipHash?:string}):Promise<TenantLoginResult>;
 export function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:undefined;ipHash?:string}):Promise<WorkspaceLoginResult>;
-export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:string;ipHash?:string}):Promise<TenantLoginResult|WorkspaceLoginResult>{
+export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:string|undefined;ipHash?:string}):Promise<TenantLoginResult|WorkspaceLoginResult>{
  const email=normalizeEmail(input.email);await enforceLoginRateLimit(db,email,input.ipHash??"unknown");
  const c=coreCollections(db),user=await c.users.findOne({emailNormalized:email}),now=new Date();
  if(user?.lockedUntil&&user.lockedUntil>now)throw new Error("INVALID_CREDENTIALS");
