@@ -23,7 +23,7 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 | Integrations | [integrations/](./integrations/) | Provider readiness, API version governance, permissions, webhooks, data handling and external-service lifecycle; includes the Meta Platform Integration Readiness standard |
 | APIs and events | [api/](./api/) | API standards, OpenAPI documents, event contracts, webhooks and SDK guidance; includes [Zuri OS Platform API](./api/openapi.yaml) and [MeBuMIP API](./api/mebumip-openapi.yaml) |
 | Security | security/ | Threat model, identity, authorization, secrets, audit and incident response |
-| Compliance | compliance/ | Privacy, retention, jurisdictional requirements and evidence registers |
+| Compliance | [compliance/](./compliance/) | Privacy, retention, jurisdictional requirements and evidence registers; includes the [Public Access Request Privacy and Retention draft](./compliance/ACCESS-REQUEST-PRIVACY-AND-RETENTION.md) |
 | Operations | operations/ | Deployment, observability, backup, disaster recovery, support and runbooks |
 | Decisions | decisions/ | Cross-cutting approved decisions; architecture ADRs may live under architecture/decisions/ |
 | MeBuMIP product | [products/zuri-mebumip/](../products/zuri-mebumip/README.md) | Detailed product-specific documentation |
