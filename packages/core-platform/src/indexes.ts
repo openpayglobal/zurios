@@ -39,6 +39,6 @@ export async function ensureIdentitySelectionIndexes(db:Db):Promise<void>{
 
 export async function ensureAuditArchiveReceiptIndexes(db:Db):Promise<void>{
  await db.collection("auditArchiveReceipts").createIndex({objectKey:1},{unique:true});
- await db.collection("auditArchiveReceipts").createIndex({fromSequence:1,toSequence:1},{unique:true});
+ await db.collection("auditArchiveReceipts").createIndex({fromSequence:1,toSequence:1});
  await db.collection("auditArchiveReceipts").createIndex({archivedAt:-1});
 }
