@@ -64,3 +64,17 @@ Do not distinguish unknown email from wrong password. Do not return a list of wo
 ## Compatibility
 
 A temporary optional tenantSlug may be accepted for existing trusted clients during migration, but the public browser flow must not require it. Remove the compatibility path only after clients and integration tests migrate. Keep API contract and OpenAPI specification synchronized.
+
+
+## Implemented API contract checkpoint — 2026-11-20
+
+- `POST /auth/login`: email/password; optional `tenantSlug` remains for trusted legacy clients only. Public clients omit it.
+- `POST /auth/mfa/verify`: validates the MFA challenge before returning workspace choices or a tenant-bound session.
+- `POST /auth/workspace/select`: consumes a single-use `selectionToken` and selected `tenantId`.
+- `GET /auth/workspaces`: lists active memberships plus the platform context when the user has active platform grants.
+- `POST /auth/workspace/switch`: creates a new tenant/platform-bound session and revokes the prior session after successful issuance.
+- `POST /auth/access-requests`: public, rate-limited, non-enumerating access request intake; no automatic provisioning.
+- `GET /platform/admin/access-requests`: platform permission `platform.tenants.read`.
+- `PATCH /platform/admin/access-requests/{requestId}`: platform permission `platform.tenants.provision`, idempotency key and reason required. Decisions do not provision access.
+
+Platform-only sessions use the reserved `platform` context and are authenticated against active platform operator grants. They do not create tenant memberships and must not be accepted by tenant-scoped resource handlers.
