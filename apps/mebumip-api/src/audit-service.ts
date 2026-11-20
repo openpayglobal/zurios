@@ -11,11 +11,23 @@ type SequencedAuditEvent = Document & {
   previousHash: string;
   eventHash: string;
   signature: string;
+  signatureKeyId: string;
   occurredAt: Date;
 };
 
-function signingKey(): string {
-  return config.AUDIT_SIGNING_KEY ?? DEVELOPMENT_SIGNING_KEY;
+function currentSigningKeyId(): string {
+  return config.AUDIT_SIGNING_KEY ? config.AUDIT_SIGNING_KEY_ID : "dev";
+}
+
+function keyFor(keyId: string): string | null {
+  if (config.AUDIT_SIGNING_KEY && keyId === config.AUDIT_SIGNING_KEY_ID) return config.AUDIT_SIGNING_KEY;
+  if (!config.AUDIT_SIGNING_KEY && config.NODE_ENV !== "production" && keyId === "dev") return DEVELOPMENT_SIGNING_KEY;
+  try {
+    const previous = JSON.parse(config.AUDIT_SIGNING_PREVIOUS_KEYS) as Record<string, string>;
+    return typeof previous[keyId] === "string" ? previous[keyId]! : null;
+  } catch {
+    return null;
+  }
 }
 
 function canonicalPayload(event: AuditEventInput & { sequence: number; previousHash: string; occurredAt: Date }): string {
@@ -41,8 +53,19 @@ function digest(payload: string): string {
   return createHash("sha256").update(payload).digest("hex");
 }
 
-function sign(eventHash: string): string {
-  return createHmac("sha256", signingKey()).update(eventHash).digest("hex");
+function sign(eventHash: string): { signature: string; signatureKeyId: string } {
+  const signatureKeyId = currentSigningKeyId();
+  const key = keyFor(signatureKeyId);
+  if (!key) throw new Error("AUDIT_SIGNING_KEY_UNAVAILABLE");
+  return { signature: createHmac("sha256", key).update(eventHash).digest("hex"), signatureKeyId };
+}
+
+function verifySignature(eventHash: string, signature: unknown, signatureKeyId: unknown): boolean {
+  if (typeof signatureKeyId !== "string") return false;
+  const key = keyFor(signatureKeyId);
+  if (!key) return false;
+  const expected = createHmac("sha256", key).update(eventHash).digest("hex");
+  return equalHex(signature, expected);
 }
 
 function equalHex(left: unknown, right: string): boolean {
@@ -79,12 +102,14 @@ export async function appendAuditEvent(db: Db, input: AuditEventInput): Promise<
         occurredAt: base.occurredAt,
       });
       const eventHash = digest(payload);
+      const signed = sign(eventHash);
       await events.insertOne({
         ...base,
         sequence,
         previousHash,
         eventHash,
-        signature: sign(eventHash),
+        signature: signed.signature,
+        signatureKeyId: signed.signatureKeyId,
       } as SequencedAuditEvent, { session });
     });
   } finally {
@@ -130,7 +155,7 @@ export async function verifyAuditChain(db: Db): Promise<{
       sequence !== expectedSequence ||
       event.previousHash !== previousHash ||
       !equalHex(event.eventHash, calculatedHash) ||
-      !equalHex(event.signature, sign(calculatedHash))
+      !verifySignature(calculatedHash, event.signature, event.signatureKeyId)
     ) {
       firstInvalidSequence = sequence;
       break;
@@ -237,9 +262,10 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         };
         const payload = canonicalPayload({ ...input, sequence, previousHash, occurredAt });
         const eventHash = digest(payload);
+        const signed = sign(eventHash);
         const result = await events.updateOne(
           { _id: legacyEvent._id, sequence: { $exists: false } },
-          { $set: { sequence, previousHash, eventHash, signature: sign(eventHash), occurredAt } },
+          { $set: { sequence, previousHash, eventHash, signature: signed.signature, signatureKeyId: signed.signatureKeyId, occurredAt } },
           { session },
         );
         if (result.modifiedCount !== 1) throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
