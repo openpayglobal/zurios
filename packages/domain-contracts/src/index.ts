@@ -586,3 +586,10 @@ export const WorkflowTaskDecisionSchema=z.object({
  expectedVersion:z.number().int().nonnegative()
 });
 export type WorkflowTaskDecision=z.infer<typeof WorkflowTaskDecisionSchema>;
+
+
+export const AnalyticsQuerySchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),
+ from:z.string().datetime(),to:z.string().datetime()
+}).refine(query=>query.to>=query.from,{message:"Analytics end date must not precede start date",path:["to"]});
+export type AnalyticsQuery=z.infer<typeof AnalyticsQuerySchema>;
