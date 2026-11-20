@@ -13,7 +13,10 @@ export async function createLocation(db:Db,tenantId:string,actorId:string,input:
 
 export async function setLocationStatus(db:Db,tenantId:string,locationId:string,status:"active"|"inactive",actorId:string,session?:ClientSession){
  const c=coreCollections(db),now=new Date();
- if(status==="inactive"){\n  const [children,memberships]=await Promise.all([c.locations.countDocuments({tenantId,parentLocationId:locationId,status:"active"},session?{session}:{}),c.memberships.countDocuments({tenantId,locationIds:locationId,status:"active"},session?{session}:{})]);\n  if(children||memberships)throw new Error("LOCATION_HAS_ACTIVE_DEPENDENCIES");\n }
+ if(status==="inactive"){
+  const [children,memberships]=await Promise.all([c.locations.countDocuments({tenantId,parentLocationId:locationId,status:"active"},session?{session}:{}),c.memberships.countDocuments({tenantId,locationIds:locationId,status:"active"},session?{session}:{})]);
+  if(children||memberships)throw new Error("LOCATION_HAS_ACTIVE_DEPENDENCIES");
+ }
  const result=await c.locations.updateOne({tenantId,locationId,status:{$ne:"inactive"}},{$set:{status,updatedAt:now,updatedBy:actorId}},session?{session}:{});
  if(!result.matchedCount)throw new Error("LOCATION_NOT_FOUND_OR_INACTIVE");
  return c.locations.findOne({tenantId,locationId},session?{session}:{});
