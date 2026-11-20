@@ -18,6 +18,7 @@ test("Shipment lifecycle enforces organization locations, ordered status transit
    {tenantId,organizationId:"org-a",locationId:"destination",status:"active"},
    {tenantId,organizationId:"org-b",locationId:"foreign",status:"active"}
   ]);
+  await db.collection("erp_purchase_orders").insertOne({tenantId,organizationId:"org-a",orderNumber:"PO-001",status:"approved"});
   const shipment={tenantId,organizationId:"org-a",shipmentId:"shipment-001",referenceType:"purchase_order" as const,referenceId:"PO-001",carrierId:"carrier-001",trackingNumber:"TRACK-001",originLocationId:"origin",destinationLocationId:"destination",expectedDeliveryAt:"2026-11-25T12:00:00.000Z",status:"planned" as const,version:0};
   const created=await createShipment(db,shipment,"logistics-user","shipment-create-001");
   assert.deepEqual(created.body,{shipmentId:"shipment-001",status:"planned",version:0});
