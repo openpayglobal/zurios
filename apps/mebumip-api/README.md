@@ -8,6 +8,7 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
+- `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
 - `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
@@ -59,6 +60,6 @@ MAC is the privileged control plane. MAD is a read-only monitoring surface. All 
 
 ## Current limitations — not production-ready
 
-This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and password recovery delivery (requires a configured mail provider), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
+This is an implementation foundation, not a complete identity/security programme. MFA recovery codes and factor reset are implemented and covered by both unit tests and the new MongoDB-backed route test. Before public launch, add trusted email delivery for invitations, email verification and password recovery (requires a selected/configured provider), session device metadata, stricter audit immutability/export controls, backup/restore verification and independent security review. The MongoDB-backed integration test covers tenant isolation, invitation acceptance/replay, audit persistence and MFA recovery/reset; broader auth lifecycle and exhaustive cross-tenant matrix coverage remain required. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
