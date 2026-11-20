@@ -8,6 +8,7 @@ import {issueInvitation,acceptInvitation,login,beginMfaEnrollment,confirmMfaEnro
 import {totpCode} from "./auth-crypto.js";
 import {authRoutes} from "./auth-routes.js";
 import {adminRoutes} from "./admin-routes.js";
+process.env.ACCESS_REQUESTS_ENABLED="true";
 const uri=process.env.MONGODB_TEST_URI;
 test("invitation acceptance and password login use active tenant membership", {skip:!uri}, async()=>{
  const client=new MongoClient(uri!);await client.connect();
