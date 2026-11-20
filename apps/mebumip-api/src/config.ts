@@ -63,9 +63,9 @@ const parsed = envSchema.superRefine((value, context) => {
       auditKeyring = parsedRing as Record<string, unknown>;
       if (Object.keys(auditKeyring).length < 1 || Object.keys(auditKeyring).length > 20) throw new Error("Audit key ring must contain between 1 and 20 keys");
       for (const [keyId, key] of Object.entries(auditKeyring)) {
-        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Each audit key-ring entry must have a valid identifier and 32-byte hex key");
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || (keyId === "legacy" ? !/^(?:[a-fA-F0-9]{2}){32,}$/.test(key) : !/^[a-fA-F0-9]{64}$/.test(key))) throw new Error("Audit key-ring entries must be valid hex keys; non-legacy keys must be 32 bytes");
       }
-      if (!value.AUDIT_SIGNING_ACTIVE_KEY_ID || !Object.hasOwn(auditKeyring, value.AUDIT_SIGNING_ACTIVE_KEY_ID)) throw new Error("AUDIT_SIGNING_ACTIVE_KEY_ID must identify a key in AUDIT_SIGNING_KEYRING");
+      if (!value.AUDIT_SIGNING_ACTIVE_KEY_ID || value.AUDIT_SIGNING_ACTIVE_KEY_ID === "legacy" || !Object.hasOwn(auditKeyring, value.AUDIT_SIGNING_ACTIVE_KEY_ID) || typeof auditKeyring[value.AUDIT_SIGNING_ACTIVE_KEY_ID] !== "string" || !/^[a-fA-F0-9]{64}$/.test(auditKeyring[value.AUDIT_SIGNING_ACTIVE_KEY_ID] as string)) throw new Error("AUDIT_SIGNING_ACTIVE_KEY_ID must identify a non-legacy 32-byte key in AUDIT_SIGNING_KEYRING");
       if (value.AUDIT_SIGNING_KEY && typeof auditKeyring.legacy === "string" && Buffer.from(value.AUDIT_SIGNING_KEY).toString("hex") !== auditKeyring.legacy.toLowerCase()) throw new Error("AUDIT_SIGNING_KEY conflicts with the legacy key-ring entry");
       if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY && !Object.hasOwn(auditKeyring, "legacy")) throw new Error("Legacy audit key must be retained while historical events use the original signature format");
     } catch (error) {
