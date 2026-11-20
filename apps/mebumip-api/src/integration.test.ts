@@ -166,5 +166,5 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const gapCheck = await app.inject({ method: "GET", url: "/v1/mac/audit-events/verify", headers });
   assert.equal(gapCheck.statusCode, 200);
   assert.ok(gapCheck.json().sequenceGaps >= 1);
-  assert.equal(await db.collection("tenantInvitations").countDocuments({ acceptedAt: { $exists: false } }), 0);
+  assert.equal(await db.collection("tenantInvitations").countDocuments({ acceptedAt: { $exists: false }, revokedAt: { $exists: false } }), 0);
 });
