@@ -438,7 +438,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   ]);
   const analytics=await app.inject({method:"GET",url:"/v1/analytics/operational?organizationId=org-a&from=2026-11-01T00%3A00%3A00.000Z&to=2026-11-30T23%3A59%3A59.999Z",headers});
   assert.equal(analytics.statusCode,200);
-  assert.equal(analytics.json().metrics.invoices,1);
+  assert.equal(analytics.json().metrics.invoices,2);\n  assert.equal(analytics.json().metrics.openInvoices,1);
   const analyticsDenied=await app.inject({method:"GET",url:"/v1/analytics/operational?organizationId=org-b&from=2026-11-01T00%3A00%3A00.000Z&to=2026-11-30T23%3A59%3A59.999Z",headers});
   assert.equal(analyticsDenied.statusCode,403);
   const workflow=await app.inject({
