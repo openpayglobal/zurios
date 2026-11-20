@@ -48,7 +48,7 @@ test("tenant-scoped Inventory, ERP and POS commands commit with idempotency and 
   assert.equal(balance.quantityOnHandMilli,2000);
   await assert.rejects(()=>recordStockMovement(db,{...receipt,idempotencyKey:"stock-issue-001",movementId:"movement-issue-001",movementType:"issue",quantityMilli:9000},actorId),/INSUFFICIENT_STOCK_ON_HAND/);
 
-  const reservation={tenantId,idempotencyKey:"stock-reserve-001",reservationId:"reservation-001",orderId:"order-001",warehouseId:"warehouse-a",lines:[{sku:"SKU-1",quantityMilli:3000}],status:"reserved",expiresAt:"2026-11-20T08:00:00.000Z"};
+  const reservation={tenantId,idempotencyKey:"stock-reserve-001",reservationId:"reservation-001",orderId:"order-001",warehouseId:"warehouse-a",lines:[{sku:"SKU-1",quantityMilli:3000}],status:"reserved",expiresAt:new Date(Date.now()+60_000).toISOString()};
   await reserveStock(db,reservation,actorId);
   balance=await db.collection<any>("inventory_stock_balances").findOne({tenantId,warehouseId:"warehouse-a",sku:"SKU-1"});
   assert.equal(balance.quantityAvailableMilli,5000);
@@ -73,7 +73,7 @@ test("tenant-scoped Inventory, ERP and POS commands commit with idempotency and 
   await openCashierShift(db,{tenantId,shiftId:"shift-1",terminalId:"terminal-1",cashierId:actorId,currency:"UGX",openedAt:"2026-11-19T08:00:00.000Z",openingFloatMinor:10000,status:"open"},actorId);
   await assert.rejects(()=>openCashierShift(db,{tenantId,shiftId:"shift-2",terminalId:"terminal-1",cashierId:"cashier-b",currency:"UGX",openedAt:"2026-11-19T08:01:00.000Z",openingFloatMinor:0,status:"open"},"cashier-b"),/POS_TERMINAL_SHIFT_ALREADY_OPEN/);
   await recordStockMovement(db,{...receipt,idempotencyKey:"pos-stock-001",movementId:"pos-stock-001",sku:"SKU-POS",quantityMilli:5000},actorId);
-  await reserveStock(db,{tenantId,idempotencyKey:"pos-reserve-001",reservationId:"pos-reservation-001",orderId:"sale-001",warehouseId:"warehouse-a",lines:[{sku:"SKU-POS",quantityMilli:1000}],status:"reserved",expiresAt:"2026-11-20T08:00:00.000Z"},actorId);
+  await reserveStock(db,{tenantId,idempotencyKey:"pos-reserve-001",reservationId:"pos-reservation-001",orderId:"sale-001",warehouseId:"warehouse-a",lines:[{sku:"SKU-POS",quantityMilli:1000}],status:"reserved",expiresAt:new Date(Date.now()+60_000).toISOString()},actorId);
   const sale={tenantId,idempotencyKey:"pos-sale-001",saleId:"sale-001",reservationId:"pos-reservation-001",terminalId:"terminal-1",cashierId:actorId,currency:"UGX",lines:[{sku:"SKU-POS",description:"Widget",quantityMilli:1000,unitPriceMinor:2000,discountMinor:0,taxRateBps:0}],subtotalMinor:2000,taxMinor:0,totalMinor:2000,tenders:[{tenderId:"tender-1",method:"cash",amountMinor:2000,currency:"UGX",status:"captured"}],status:"completed",completedAt:"2026-11-19T10:00:00.000Z"};
   await completePosSale(db,sale,actorId);
   const posBalance=await db.collection<any>("inventory_stock_balances").findOne({tenantId,warehouseId:"warehouse-a",sku:"SKU-POS"});
