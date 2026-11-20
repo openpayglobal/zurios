@@ -138,7 +138,7 @@ Exit gate: clean checkout installs reproducibly and all mandatory CI jobs pass.
 Implementation increments:
 1. Application bootstrap, configuration validation and health/readiness.
 2. MongoDB connection lifecycle, indexes and migrations.
-3. Identity, login, password security, sessions, refresh rotation, logout and recovery.
+3. Identity, login, password security, sessions, refresh rotation, logout and recovery. A single global user may hold multiple tenant memberships; authenticate identity before selecting a workspace and bind each session to the chosen membership. See [Identity and Multi-Workspace Architecture](../architecture/IDENTITY-AND-MULTI-WORKSPACE.md).
 4. MFA enrollment, verification and privileged-access requirements.
 5. Tenant, organization, workspace, branch and membership lifecycle.
 6. RBAC roles, permission catalog, ABAC policy evaluation and scope enforcement.
