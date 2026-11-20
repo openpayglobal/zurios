@@ -129,6 +129,9 @@ test("invitation acceptance and password login use active tenant membership", {s
   assert.ok(platformOnlySession.accessToken);
   const platformOnlyRefresh=await refreshLogin(db,cfg,"platform",platformOnlySession.sessionId,platformOnlySession.refreshToken);
   assert.ok(platformOnlyRefresh.accessToken);
+  await db.collection("platform_operator_grants").updateOne({userId:noWorkspaceUser.userId,status:"active"},{$set:{status:"revoked",updatedAt:new Date()}});
+  await assert.rejects(()=>refreshLogin(db,cfg,"platform",platformOnlyRefresh.sessionId,platformOnlyRefresh.refreshToken),/PLATFORM_ACCESS_REVOKED/);
+
 
   const app=Fastify();
   await app.register(authRoutes(db,cfg));
