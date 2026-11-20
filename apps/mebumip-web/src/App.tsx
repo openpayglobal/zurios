@@ -21,7 +21,7 @@ const objectives: Objective[] = [
 
 const phases: Array<[string, string, string, string]> = [
   ["0", "Product governance & Meta prerequisites", "In progress", "Meta portfolio creation deferred by owner"],
-  ["1", "Standalone foundation, MAC & MAD", "In progress", "Product workspace and administration shell"],
+  ["1", "Standalone foundation, MAC & MAD", "In progress", "Authentication, tenant membership, MFA and API wiring"],
   ["2", "Facebook & Instagram", "Not started", "Objective A"],
   ["3", "Advertising management", "Not started", "Objective B"],
   ["4", "WhatsApp Business Platform", "Not started", "Objective C"],
@@ -71,7 +71,7 @@ function App() {
             })}
           </div>
         ))}
-        <div className="sidebar-foot"><div className="secure-dot"/><span>Administration shell · Demo data</span></div>
+        <div className="sidebar-foot"><div className="secure-dot"/><span>API-connected · Development</span></div>
       </aside>
 
       <main className="main">
@@ -91,17 +91,11 @@ function App() {
           {section === "dashboard" && <>
             <AdminData resource="overview" />
             <div className="notice"><CircleAlert size={18}/><div><strong>Meta Business Portfolio not connected</strong><span>Live Meta integrations are intentionally deferred. The platform foundation can be developed and tested using mock adapters until the owner completes Meta setup.</span></div><span className="notice-tag">EXPECTED</span></div>
-            <div className="metrics">
-              <Metric icon={Building2} label="Registered businesses" value="0" detail="Tenant onboarding not enabled"/>
-              <Metric icon={Plug} label="Meta connections" value="0" detail="No live credentials configured"/>
-              <Metric icon={MessageCircle} label="WhatsApp accounts" value="0" detail="Phase 4"/>
-              <Metric icon={Activity} label="Programme phases" value="2 / 8" detail="Foundation work in progress"/>
-            </div>
             <div className="section-head"><div><h2>Five strategic objectives</h2><p>All objectives remain in scope; delivery is sequenced by phase.</p></div><button className="text-btn" onClick={() => setSection("objectives")}>View roadmap <ArrowUpRight size={15}/></button></div>
             <div className="objective-grid">{objectives.map((item) => <ObjectiveCard key={item.id} item={item}/>)}</div>
             <div className="bottom-grid">
               <div className="panel"><div className="panel-head"><div><h3>Implementation phases</h3><p>Controlled delivery programme</p></div><span className="tiny-tag">8 PHASES</span></div><div className="phase-list">{phases.slice(0,5).map((phase) => <div className="phase-row" key={phase[0]}><div className="phase-number">{phase[0]}</div><div className="phase-copy"><strong>{phase[1]}</strong><small>{phase[3]}</small></div><Status>{phase[2]}</Status></div>)}</div><button className="panel-link" onClick={() => setSection("objectives")}>See all phases <ArrowUpRight size={14}/></button></div>
-              <div className="panel"><div className="panel-head"><div><h3>Platform health</h3><p>Initial foundation environment</p></div><span className="health-pill"><i/> FOUNDATION</span></div><div className="health-row"><span><ShieldCheck size={16}/> Administration surfaces</span><strong>Shell established</strong></div><div className="health-row"><span><LockKeyhole size={16}/> Tenant authorization</span><strong>Pending implementation</strong></div><div className="health-row"><span><Radio size={16}/> Meta webhooks</span><strong>Not configured</strong></div><div className="health-row"><span><Globe2 size={16}/> External API</span><strong>Planned · Phase 6</strong></div><div className="health-note"><CheckCircle2 size={15}/> No live credentials are stored in this workspace.</div></div>
+              <div className="panel"><div className="panel-head"><div><h3>Platform health</h3><p>Initial foundation environment</p></div><span className="health-pill"><i/> FOUNDATION</span></div><div className="health-row"><span><ShieldCheck size={16}/> Administration surfaces</span><strong>Shell established</strong></div><div className="health-row"><span><LockKeyhole size={16}/> Tenant authorization</span><strong>Membership + MFA enforced</strong></div><div className="health-row"><span><Radio size={16}/> Meta webhooks</span><strong>Not configured</strong></div><div className="health-row"><span><Globe2 size={16}/> External API</span><strong>Planned · Phase 6</strong></div><div className="health-note"><CheckCircle2 size={15}/> No live credentials are stored in this workspace.</div></div>
             </div>
           </>}
 
