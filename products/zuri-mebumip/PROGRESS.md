@@ -271,3 +271,11 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Extended the MongoDB-backed authentication lifecycle test to assert login issues both session and CSRF cookies, cookie-only access to `/v1/auth/me`, denial of cookie-authenticated logout without the CSRF header, acceptance with a matching CSRF token and trusted Origin, and rejection after logout.
 - This covers the core browser-cookie/CSRF flow against the MongoDB-backed Fastify routes. Broader origin-matrix, SameSite=None cross-site browser testing, cookie-domain behavior and production browser testing remain outstanding.
 - This integration test is newer than the currently passing workflows and requires fresh CI.
+
+
+**Cookie/CSRF integration verification — 2026-11-20:**
+
+- MeBuMIP verification **#401** passed on head `8fa7541d27ff1900b2c148db50f40a4d362c6f29`: API typecheck, **17 tests passed / 0 failed / 0 skipped**, API build, web typecheck and web build.
+- Full monorepo CI **#1329** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
+- The MongoDB-backed authentication lifecycle test now exercises the complete basic cookie flow: login cookie issuance, cookie-only identity, missing-CSRF rejection, matching CSRF + trusted Origin logout, and post-logout rejection.
+- Cross-site browser behavior for `SameSite=None`, custom cookie domains and real production origins remains a deployment acceptance test.
