@@ -56,6 +56,8 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("tenant_config").createIndex({tenantId:1,key:1},{unique:true}),
   db.collection("audit_export_jobs").createIndex({jobId:1},{unique:true}),
   db.collection("audit_export_jobs").createIndex({tenantId:1,createdAt:-1}),
+  db.collection("access_requests").createIndex({requestId:1},{unique:true}),
+  db.collection("access_requests").createIndex({status:1,requestedAt:-1}),
   db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),
   db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),
