@@ -8,9 +8,9 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   process.env.MFA_ENCRYPTION_KEY = "b".repeat(64);
   process.env.AUDIT_SIGNING_KEY = "mebumip-integration-audit-signing-key";
 
-  const [{ default: Fastify }, { MongoClient, ObjectId }, { ensureMeBuMIPIndexes }, { registerAuthRoutes }, { registerTenantMemberRoutes }, { registerAdminRoutes }, { registerDatabaseRateLimit }, { generateTotpCode }, { verifyAuditEvent }] = await Promise.all([
+  const [{ default: Fastify }, { MongoClient, ObjectId }, { ensureMeBuMIPIndexes }, { registerAuthRoutes }, { registerTenantMemberRoutes }, { registerAdminRoutes }, { registerDatabaseRateLimit }, { generateTotpCode }, { verifyAuditEvent }, { getTestMailOutbox, clearTestMailOutbox }] = await Promise.all([
     import("fastify"), import("mongodb"), import("./database.js"), import("./auth.js"),
-    import("./tenant-members.js"), import("./admin.js"), import("./rate-limit.js"), import("./mfa.js"), import("./security.js"),
+    import("./tenant-members.js"), import("./admin.js"), import("./rate-limit.js"), import("./mfa.js"), import("./security.js"), import("./mail.js"),
   ]);
   const client = new MongoClient(process.env.MONGODB_URI!);
   await client.connect();
@@ -51,13 +51,31 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const replay = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers, payload: { recoveryCode } });
   assert.equal(replay.statusCode, 403);
 
+  clearTestMailOutbox();
   const invitation = await app.inject({ method: "POST", url: "/v1/tenants/" + String(tenant._id) + "/invitations", headers, payload: { email: "member@example.test", role: "viewer" } });
   assert.equal(invitation.statusCode, 201);
-  const invitationToken = invitation.json().invitationToken as string;
+  assert.equal("invitationToken" in invitation.json(), false);
+  const invitationEmail = getTestMailOutbox().at(-1);
+  assert.ok(invitationEmail);
+  const invitationToken = invitationEmail.text.match(/Invitation token: ([A-Za-z0-9_-]+)/)?.[1];
+  assert.ok(invitationToken);
   const registered = await app.inject({ method: "POST", url: "/v1/auth/register", payload: { token: invitationToken, email: "member@example.test", password: "Integration-Member-Password-2026!", displayName: "Invited Member" } });
   assert.equal(registered.statusCode, 201);
   const replayInvite = await app.inject({ method: "POST", url: "/v1/auth/register", payload: { token: invitationToken, email: "member@example.test", password: "Integration-Member-Password-2026!", displayName: "Invited Member" } });
   assert.equal(replayInvite.statusCode, 404);
+
+  const recoveryRequest = await app.inject({ method: "POST", url: "/v1/auth/password/recovery", payload: { email: "member@example.test" } });
+  assert.equal(recoveryRequest.statusCode, 202);
+  const recoveryEmail = getTestMailOutbox().at(-1);
+  assert.ok(recoveryEmail);
+  const resetToken = recoveryEmail.text.match(/Password reset token: ([A-Za-z0-9_-]+)/)?.[1];
+  assert.ok(resetToken);
+  const passwordReset = await app.inject({ method: "POST", url: "/v1/auth/password/reset", payload: { token: resetToken, newPassword: "Recovered-Member-Password-2026!" } });
+  assert.equal(passwordReset.statusCode, 200);
+  const resetReplay = await app.inject({ method: "POST", url: "/v1/auth/password/reset", payload: { token: resetToken, newPassword: "Recovered-Member-Password-2026!" } });
+  assert.equal(resetReplay.statusCode, 400);
+  const recoveredLogin = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: "member@example.test", password: "Recovered-Member-Password-2026!" } });
+  assert.equal(recoveredLogin.statusCode, 200);
 
   const foreignTenant = await db.collection("tenants").insertOne({ name: "Foreign Tenant", slug: "foreign-tenant", status: "active", createdAt: new Date() });
   const isolation = await app.inject({ method: "GET", url: "/v1/tenants/" + String(foreignTenant.insertedId) + "/members", headers });
