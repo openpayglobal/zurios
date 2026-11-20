@@ -41,8 +41,8 @@ function setSessionCookies(reply: FastifyReply, token: string): void {
   const secure = config.NODE_ENV === "production" ? "; Secure" : "";
   const maxAge = config.SESSION_TTL_HOURS * 60 * 60;
   reply.header("set-cookie", [
-    "mebumip_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + secure,
-    "mebumip_csrf=" + encodeURIComponent(csrfForSession(token)) + "; Path=/; SameSite=Lax; Max-Age=" + maxAge + secure,
+    "mebumip_session=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=" + config.SESSION_COOKIE_SAME_SITE + "; Max-Age=" + maxAge + secure,
+    "mebumip_csrf=" + encodeURIComponent(csrfForSession(token)) + "; Path=/; SameSite=" + config.SESSION_COOKIE_SAME_SITE + "; Max-Age=" + maxAge + secure,
   ]);
 }
 
