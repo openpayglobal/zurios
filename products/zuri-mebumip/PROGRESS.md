@@ -131,3 +131,16 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Sequenced audit and signed export follow-through (2026-11-20):** all platform, authentication and tenant-membership audit writes now pass through a shared append service that allocates monotonically increasing sequence numbers in MongoDB and signs each event with HMAC-SHA256. A unique sparse sequence index prevents duplicate sequence values. The MAC verification endpoint reports sequence gaps as well as invalid/unsigned records; paginated exports include a signed manifest over event IDs, sequence values and event signatures. The MAC audit screen now downloads the export JSON. This detects tampering and missing sequence records in the verified window but does not make MongoDB immutable; independent WORM/object-lock archive storage, restricted DB roles, backup retention and full-history verification remain required.
+
+
+## Latest implementation checkpoint — 2026-11-20
+
+- **Email:** Resend adapter, tenant invitation email, non-enumerating password recovery, one-time 30-minute reset token, session revocation on reset, fail-closed invitation delivery and test mail sink implemented. Live delivery is **blocked only on deployment configuration**: verified sender domain, `RESEND_API_KEY`, and `MAIL_FROM` in a secret manager.
+- **MFA:** one-time recovery codes, atomic consumption, password-plus-recovery factor reset and session revocation implemented; route behavior covered in MongoDB integration tests.
+- **Audit:** HMAC-SHA256 event signatures, MongoDB monotonic sequence allocation, unique sequence index, sequence-gap detection, bounded export and signed export manifest implemented. Browser MAC can download export JSON. **Independent immutable archive/WORM storage and restricted database roles remain outstanding.**
+- **Database tests:** ephemeral MongoDB 7 in CI. Integration coverage includes bootstrap/login, HttpOnly cookie and CSRF checks, TOTP/recovery, invitation registration/replay, password recovery/reset/replay, cross-tenant denial, session inventory, runtime settings, audit verification/export and deleted-sequence detection.
+- **Verification:** latest confirmed fully green commit before the newest manifest/cookie/UI additions is `68e3f61`; API typecheck, API tests (15 passed, 0 failed, 0 skipped), API build, web typecheck and web build all passed. Newer commits are queued/running in GitHub Actions and must be confirmed before treating the latest tree as verified.
+- **MAC/MAD:** MAC administrator list and MFA-gated role/suspension actions, session inventory/revocation, safe runtime configuration status, audit verification/export/download; MAD remains read-only live aggregate data. Platform administrator creation/invitations and settings mutation workflows remain.
+- **Production session:** browser no longer stores bearer tokens; cookie auth is HttpOnly, CSRF-protected, SameSite-configurable and Secure in production. Session inventory includes device user-agent labels and a hashed IP. Exact CORS origins, TLS, trusted proxy CIDRs, cookie deployment topology and end-to-end browser testing require environment review.
+
+**Phase 1 remains open.** Do not start Phase 2 as a substitute for closing Phase 1 security and release gates. No Meta credentials are configured; all five objectives remain approved and in scope.
