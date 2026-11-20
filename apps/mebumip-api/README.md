@@ -12,7 +12,7 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
 - `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
 - `SESSION_COOKIE_SAME_SITE`: `strict`, `lax` (default) or `none`; `none` requires Secure cookies.
-- `SESSION_COOKIE_DOMAIN`: optional cookie domain for a shared first-party deployment.
+- `SESSION_COOKIE_DOMAIN`: optional cookie domain for a shared first-party deployment. If the frontend and API are on separate sites, use `SESSION_COOKIE_SAME_SITE=none`, HTTPS and a verified exact CORS origin.
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
 The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
@@ -51,7 +51,7 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.
 - `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
-In development/test the API returns a bearer token for local tooling. In production it returns no bearer token: the session is held in an HttpOnly cookie, paired with a separate CSRF cookie and `x-csrf-token` header on unsafe cookie-authenticated requests. Cookie-authenticated state changes also require an exact configured HTTPS Origin. Bearer clients remain supported for non-browser integrations. Only SHA-256 token and CSRF hashes are persisted. Passwords use salted scrypt hashes.
+In development/test the API returns a bearer token for local tooling. In production it returns no bearer token: the session is held in an HttpOnly cookie, paired with a separate CSRF cookie and `x-csrf-token` header on unsafe cookie-authenticated requests. `GET /v1/auth/csrf` returns the current session-bound CSRF token to an allowed credentialed frontend when the CSRF cookie is not readable across origins. Cookie-authenticated state changes also require an exact configured HTTPS Origin. Bearer clients remain supported for non-browser integrations. Only SHA-256 token and CSRF hashes are persisted. Passwords use salted scrypt hashes.
 
 ## MAC and MAD endpoints
 
