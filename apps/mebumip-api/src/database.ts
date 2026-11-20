@@ -16,6 +16,9 @@ export async function ensureMeBuMIPIndexes(db: Db): Promise<void> {
     db.collection("tenantInvitations").createIndex({ tokenHash: 1 }, { unique: true, name: "tenant_invitation_token_unique" }),
     db.collection("tenantInvitations").createIndex({ tenantId: 1, email: 1, expiresAt: 1 }, { name: "tenant_invitation_lookup" }),
     db.collection("tenantInvitations").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "tenant_invitation_expiry_ttl" }),
+    db.collection("passwordRecoveries").createIndex({ tokenHash: 1 }, { unique: true, name: "password_recovery_token_unique" }),
+    db.collection("passwordRecoveries").createIndex({ userId: 1, usedAt: 1, revokedAt: 1 }, { name: "password_recovery_user_state" }),
+    db.collection("passwordRecoveries").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "password_recovery_expiry_ttl" }),
     db.collection("rateLimitCounters").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "rate_limit_expiry_ttl" }),
     db.collection("metaConnections").createIndex({ tenantId: 1, provider: 1, status: 1 }, { name: "meta_connection_tenant_provider_status" }),
   ]);
