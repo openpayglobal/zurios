@@ -57,10 +57,12 @@ Browser sessions are issued as `HttpOnly` session cookies with a separate sessio
 - `GET /v1/mad/overview`: authenticated platform metrics read; read-only aggregates only.
 - `GET /v1/mac/tenants`: platform tenant directory read.
 - `GET /v1/mac/admins`: platform administrator directory read.
+- `GET /v1/mac/settings`: safe runtime configuration status; secret values are never returned.
 - `PATCH /v1/mac/admins/:userId`: platform-owner-only role/status updates for existing platform administrators; requires recent MFA step-up. The platform owner is immutable through this route. Suspending an administrator revokes their active sessions.
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
 - `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded.
 - `GET /v1/mac/audit-events/verify`: verifies HMAC signatures on the latest 500 records and reports unsigned/invalid counts.
+- `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: inspect and revoke active sessions, with device label metadata.
 - `GET /v1/mac/audit-events/export`: paginated, bounded audit export with per-record integrity status; exports are not automatically archived.
 
 MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Tenant invitations are sent through the configured Resend adapter; raw invitation tokens are never returned by the API. Failed delivery revokes the pending invitation. Password recovery uses the same provider and does not reveal whether an email address exists. CI uses an in-memory test mail sink. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
