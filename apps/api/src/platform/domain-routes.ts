@@ -85,8 +85,12 @@ async function authorizedOrganizationIds(db:Db,request:FastifyRequest,p:Principa
 async function authorizedLocationIds(db:Db,request:FastifyRequest,p:Principal,permission:string,locationIds:string[]):Promise<string[]>{
  const locations=await db.collection<{tenantId:string;locationId:string;organizationId:string;status:string}>("locations")
   .find({tenantId:p.tenantId,locationId:{$in:locationIds},status:"active"}).toArray();
+ const activeOrganizations=await db.collection<{tenantId:string;organizationId:string;status:string}>("organizations")
+  .find({tenantId:p.tenantId,organizationId:{$in:[...new Set(locations.map(location=>location.organizationId))]},status:"active"},{projection:{_id:0,organizationId:1}}).toArray();
+ const activeOrganizationIds=new Set(activeOrganizations.map(organization=>organization.organizationId));
  const allowed:string[]=[];
  for(const location of locations){
+  if(!activeOrganizationIds.has(location.organizationId))continue;
   const scope:DomainResourceScope={tenantId:p.tenantId,organizationId:location.organizationId,locationId:location.locationId};
   if(!authorizeDomainResource(p,permission,scope)){
    try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"authorization.denied",resourceType:"domain_api",resourceId:request.routeOptions.url,outcome:"denied",correlationId:request.id,metadata:{permission,locationId:location.locationId}});}
