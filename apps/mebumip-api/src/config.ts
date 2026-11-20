@@ -9,7 +9,7 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:5174"),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   SESSION_COOKIE_SAME_SITE: z.enum(["strict", "lax", "none"]).default("lax"),
-  SESSION_COOKIE_DOMAIN: z.string().regex(/^\\.?[a-zA-Z0-9.-]+$/).optional(),
+  SESSION_COOKIE_DOMAIN: z.string().regex(/^[a-zA-Z0-9.-]+$/).optional(),
   PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
