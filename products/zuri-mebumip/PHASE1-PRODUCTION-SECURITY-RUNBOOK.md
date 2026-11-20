@@ -21,7 +21,9 @@ Configure values through the deployment secret manager. Do not commit real value
 | `MONGODB_URI` | Production MongoDB connection | TLS enabled; private network access; least-privilege application user; backup/restore test |
 | `MONGODB_DATABASE` | Dedicated MeBuMIP database | Confirmed database boundary and ownership |
 | `AUDIT_SIGNING_KEY` | HMAC-SHA256 audit event signatures and signed export manifests | High-entropy secret stored outside MongoDB; restricted access; protected backup |
-| `MFA_ENCRYPTION_KEY` | Legacy single-key fallback for existing MFA ciphertext | Retain only while legacy ciphertext remains; never replace without migration evidence |\n| `MFA_ENCRYPTION_KEYRING` | JSON map of versioned MFA key IDs to 32-byte hex keys | Active and previous keys are backed up, inventoried and access-controlled |\n| `MFA_ENCRYPTION_ACTIVE_KEY_ID` | Selects the key used for new MFA ciphertext | Must identify an entry in `MFA_ENCRYPTION_KEYRING`; old keys remain available for reads |
+| `MFA_ENCRYPTION_KEY` | Legacy single-key fallback for existing MFA ciphertext | Retain only while legacy ciphertext remains; never replace without migration evidence |
+| `MFA_ENCRYPTION_KEYRING` | JSON map of versioned MFA key IDs to 32-byte hex keys | Active and previous keys are backed up, inventoried and access-controlled |
+| `MFA_ENCRYPTION_ACTIVE_KEY_ID` | Selects the key used for new MFA ciphertext | Must identify an entry in `MFA_ENCRYPTION_KEYRING`; old keys remain available for reads |
 | `RESEND_API_KEY` | Transactional email delivery | Key restricted to required sending capabilities and stored only in secret manager |
 | `MAIL_FROM` | Verified sender identity | Sender domain verified with the provider; test invitation and password recovery delivery |
 | `CORS_ORIGINS` | Browser origin allowlist | Exact HTTPS origins only; no wildcard and no localhost |
