@@ -19,3 +19,15 @@ export async function ensureCoreIndexes(db:Db):Promise<void>{
  ];
  await Promise.all(specs.map(([name,key,options])=>db.collection(name).createIndex(key,options)));
 }
+
+export async function ensureIdentitySelectionIndexes(db:Db):Promise<void>{
+ const specs:Array<[string,Record<string,1|-1>,Record<string,unknown>?]>=[
+  ["auth_challenges",{challengeId:1},{unique:true}],
+  ["auth_challenges",{expiresAt:1},{expireAfterSeconds:0}],
+  ["workspace_selection_challenges",{selectionId:1},{unique:true}],
+  ["workspace_selection_challenges",{tokenHash:1},{unique:true}],
+  ["workspace_selection_challenges",{expiresAt:1},{expireAfterSeconds:0}],
+  ["workspace_selection_challenges",{userId:1,usedAt:1}]
+ ];
+ await Promise.all(specs.map(([name,key,options])=>db.collection(name).createIndex(key,options)));
+}
