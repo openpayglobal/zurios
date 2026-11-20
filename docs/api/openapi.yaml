@@ -506,7 +506,7 @@ paths:
                 organizationName: {type: string, minLength: 2, maxLength: 160}
                 requestNote: {type: string, maxLength: 500}
       responses:
-        "202": {description: Non-enumerating acknowledgement; no user, tenant or membership is created}
+        "202": {description: "Non-enumerating acknowledgement; no user, tenant or membership is created"}
         "400": {$ref: "#/components/responses/InvalidRequest"}
   /auth/memberships/{membershipId}/accept:
     servers:
