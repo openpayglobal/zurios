@@ -11,7 +11,9 @@ const refreshSchema=z.object({sessionId:z.string().min(1),refreshToken:z.string(
 function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
  const code=error instanceof Error?error.message:"";
- if(code==="AUTH_RATE_LIMITED")return 429;\n if(code==="WORKSPACE_ACCESS_DENIED")return 403;\n if(code==="WORKSPACE_SELECTION_REPLAYED_OR_EXPIRED")return 409;
+ if(code==="AUTH_RATE_LIMITED")return 429;
+ if(code==="WORKSPACE_ACCESS_DENIED")return 403;
+ if(code==="WORKSPACE_SELECTION_REPLAYED_OR_EXPIRED")return 409;
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_/.test(code))return 401;
  return 500;
 }
@@ -66,7 +68,8 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    try{const body=z.object({userId:z.string().min(1),token:z.string().min(20),newPassword:z.string().min(12).max(128)}).parse(request.body);await resetPassword(db,body.userId,body.token,body.newPassword);return reply.code(204).send();}
    catch(error){return failure(error,reply);}
   });
-  app.get("/auth/me",{preHandler:requireAuth},async request=>({principal:request.principal}));\n  app.get("/auth/workspaces",{preHandler:requireAuth},async request=>({workspaces:await listUserWorkspaces(db,request.principal!.userId)}));
+  app.get("/auth/me",{preHandler:requireAuth},async request=>({principal:request.principal}));
+  app.get("/auth/workspaces",{preHandler:requireAuth},async request=>({workspaces:await listUserWorkspaces(db,request.principal!.userId)}));
   app.post("/auth/workspace/switch",{preHandler:requireAuth},async(request,reply)=>{
    try{
     const body=z.object({tenantId:z.string().min(1)}).parse(request.body),p=request.principal!;
