@@ -13,6 +13,10 @@ The repository is a shared engineering home. Each product must have a clearly de
 
 This document establishes the ecosystem-level map. It does not claim that every envisioned product or integration has been implemented.
 
+## 1.1 Canonical programme documents
+
+The complete accessible Zuri OS baseline is indexed in [docs/README.md](./README.md), including the [Master Execution Plan](./project/ZURI-OS-MASTER-EXECUTION-PLAN.md), [Master Product Requirements Document](./product/ZURI-OS-MASTER-PRD-v1.0.md), [Technical Architecture](./architecture/ZURI-OS-TECHNICAL-ARCHITECTURE-v1.0.md), [MongoDB Database Blueprint](./database/ZURI-OS-MONGODB-DATABASE-BLUEPRINT-v1.0.md), [UI/UX Design System](./ux/ZURI-OS-UI-UX-DESIGN-SYSTEM-v1.0.md) and [Implementation Progress Register](./project/ZURI-OS-PROGRESS-REGISTER.md).
+
 ## 2. Ecosystem principles
 
 1. **Modularity:** products have explicit boundaries and can evolve independently.
