@@ -42,8 +42,11 @@ async function listWorkspaceChoices(db:Db,userId:string){
    tenantId:tenant.tenantId,
    slug:tenant.slug,
    displayName:tenant.displayName||tenant.legalName||tenant.slug,
+   legalName:tenant.legalName||tenant.displayName||tenant.slug,
    membershipId:membership.membershipId,
-   roleKeys:roles.map(role=>role.key as string)
+   roleKeys:roles.map(role=>role.key as string),
+   organizationIds:Array.isArray(membership.organizationIds)?membership.organizationIds:[],
+   locationIds:Array.isArray(membership.locationIds)?membership.locationIds:[]
   };
  }));
  return choices.filter((choice):choice is NonNullable<typeof choice>=>choice!==null).sort((a,b)=>a.displayName.localeCompare(b.displayName));
