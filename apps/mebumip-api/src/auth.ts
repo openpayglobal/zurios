@@ -1,6 +1,6 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ObjectId, type Db, type Document } from "mongodb";
+import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
