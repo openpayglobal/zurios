@@ -234,6 +234,30 @@ export async function getUserWorkspaces(db:Db,userId:string){
  return listWorkspaceChoices(db,userId);
 }
 
+export async function requestWorkspaceAccess(db:Db,input:{email:string;displayName:string;organizationName:string;requestNote?:string;ipHash:string}){
+ const email=normalizeEmail(input.email),now=new Date(),bucket=Math.floor(now.getTime()/60*60*1000);
+ const keys=[
+  {key:createHash("sha256").update("access-email|"+email+"|"+input.ipHash+"|"+bucket).digest("hex"),limit:3},
+  {key:createHash("sha256").update("access-ip|"+input.ipHash+"|"+bucket).digest("hex"),limit:10}
+ ];
+ let allowed=true;
+ for(const item of keys){
+  await db.collection("auth_rate_limits").updateOne({key:item.key},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((bucket+1)*60*60*1000)}},{upsert:true});
+  const row=await db.collection("auth_rate_limits").findOne({key:item.key});
+  if((row?.count??0)>item.limit)allowed=false;
+ }
+ if(allowed){
+  const requestId=randomUUID();
+  await db.collection("access_requests").insertOne({
+   requestId,emailNormalized:email,displayName:input.displayName.trim(),organizationName:input.organizationName.trim(),
+   ...(input.requestNote?.trim()?{requestNote:input.requestNote.trim()}:{}),
+   status:"pending",source:"public-web",requestedAt:now,updatedAt:now
+  });
+  await appendAuditEvent(db,{tenantId:"platform",actor:{userId:"anonymous"},action:"identity.access.requested",resourceType:"access_request",resourceId:requestId,outcome:"success",metadata:{channel:"public-request"}});
+ }
+ return {accepted:true as const,message:"Your request has been received. If further action is appropriate, the Zuri OS team will contact you using the address provided."};
+}
+
 export async function issueMembershipInvitation(db:Db,membershipId:string,ttlSeconds=7*24*60*60,session?:ClientSession){
  if(!Number.isSafeInteger(ttlSeconds)||ttlSeconds<300||ttlSeconds>30*24*60*60)throw new Error("INVALID_INVITATION_TTL");
  const token=randomBytes(32).toString("base64url"),now=new Date();
