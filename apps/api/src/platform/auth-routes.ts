@@ -14,6 +14,8 @@ function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
  const code=error instanceof Error?error.message:"";
  if(code==="AUTH_RATE_LIMITED")return 429;
+ if(code==="WORKSPACE_ACCESS_DENIED")return 403;
+ if(code==="WORKSPACE_SELECTION_REPLAYED")return 409;
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_|WORKSPACE_/.test(code))return 401;
  return 500;
 }
