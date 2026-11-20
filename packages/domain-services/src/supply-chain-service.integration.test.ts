@@ -34,6 +34,6 @@ test("Shipment lifecycle enforces organization locations, ordered status transit
   const stored=await db.collection<any>("supply_chain_shipments").findOne({tenantId,shipmentId:"shipment-001"});
   assert.equal(stored.status,"delivered");assert.equal(stored.proofOfDeliveryRef,"pod://signed-document-001");assert.equal(stored.version,3);
   assert.equal(await db.collection("audit_events").countDocuments({tenantId}),4);
-  assert.equal(await db.collection("outbox_events").countDocuments({tenantId}),3);
+  assert.equal(await db.collection("outbox_events").countDocuments({tenantId}),4);
  }finally{await db.dropDatabase();await client.close();}
 });
