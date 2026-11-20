@@ -28,7 +28,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/auth/workspace/select",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   try{const body=z.object({selectionToken:z.string().min(20),tenantId:z.string().min(1)}).parse(request.body);return await selectWorkspace(db,config,body.selectionToken,body.tenantId);}
+   try{const body=z.object({selectionToken:z.string().min(20).max(4096),tenantId:z.string().min(1).max(128)}).parse(request.body);return await selectWorkspace(db,config,body.selectionToken,body.tenantId);}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/verify",async(request,reply)=>{
@@ -69,10 +69,11 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    catch(error){return failure(error,reply);}
   });
   app.get("/auth/me",{preHandler:requireAuth},async request=>({principal:request.principal}));
-  app.get("/auth/workspaces",{preHandler:requireAuth},async request=>({workspaces:await listUserWorkspaces(db,request.principal!.userId)}));
+  app.get("/auth/workspaces",{preHandler:requireAuth},async(request,reply)=>{reply.header("Cache-Control","private, no-store");return {workspaces:await listUserWorkspaces(db,request.principal!.userId)};});
   app.post("/auth/workspace/switch",{preHandler:requireAuth},async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
    try{
-    const body=z.object({tenantId:z.string().min(1)}).parse(request.body),p=request.principal!;
+    const body=z.object({tenantId:z.string().min(1).max(128)}).parse(request.body),p=request.principal!;
     return await switchWorkspace(db,config,{userId:p.userId,tenantId:p.tenantId,sessionId:p.sessionId,targetTenantId:body.tenantId});
    }catch(error){return failure(error,reply);}
   });
