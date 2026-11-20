@@ -92,7 +92,7 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
       outcome: "success", correlationId: request.id,
       metadata: { deliveryProvider: delivery.provider },
     }));
-    // The raw one-time token is sent only to the invitee's verified email address.
+    // The raw one-time token is sent only to the requested recipient by the mail provider.
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
