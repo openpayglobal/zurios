@@ -30,6 +30,10 @@ test("invitation acceptance and password login use active tenant membership", {s
   await setTenantStatus(db,expiredTenant.tenantId,"active","test");
   const expiredMembership=await createMembership(db,expiredTenant.tenantId,"test",{userId:user.userId});
   await db.collection("memberships").updateOne({membershipId:expiredMembership.membershipId},{$set:{validUntil:new Date(Date.now()-60_000)}});
+  const futureTenant=await provisionTenant(db,"test",{slug:"auth-test-future",legalName:"Future Membership Ltd",displayName:"Future Membership Workspace"});
+  await setTenantStatus(db,futureTenant.tenantId,"active","test");
+  const futureMembership=await createMembership(db,futureTenant.tenantId,"test",{userId:user.userId});
+  await db.collection("memberships").updateOne({membershipId:futureMembership.membershipId},{$set:{validFrom:new Date(Date.now()+60_000)}});
   const platformGrant={grantId:"pog-"+randomUUID(),userId:user.userId,permissionKeys:["platform.tenants.read","platform.tenants.provision"],status:"active",reason:"Integration test platform operator access grant",createdBy:"test",createdAt:new Date(),updatedAt:new Date(),validFrom:new Date()};
   await db.collection("platform_operator_grants").insertOne(platformGrant);
   const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64"),accessRequestsEnabled:true,accessRequestsPrivacyNoticeUrl:"https://example.test/privacy"};
@@ -39,6 +43,8 @@ test("invitation acceptance and password login use active tenant membership", {s
   assert.equal(workspaceLogin.workspaces.length,3);
   assert.equal(workspaceLogin.workspaces.some(choice=>choice.tenantId===expiredTenant.tenantId),false);
   await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,expiredTenant.tenantId),/WORKSPACE_ACCESS_DENIED/);
+  assert.equal(workspaceLogin.workspaces.some(choice=>choice.tenantId===futureTenant.tenantId),false);
+  await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,futureTenant.tenantId),/WORKSPACE_ACCESS_DENIED/);
   assert.equal("accessToken" in workspaceLogin,false);
   const secondChoice=workspaceLogin.workspaces.find(choice=>choice.tenantId===secondTenant.tenantId);
   assert.ok(secondChoice);
