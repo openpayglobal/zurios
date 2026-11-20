@@ -35,6 +35,7 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 ## Canonical identity and operations specifications
 
 - [Identity and Multi-Workspace Architecture](./architecture/IDENTITY-AND-MULTI-WORKSPACE.md) — one global identity, multiple tenant memberships and tenant-bound sessions.
+- [ADR-005: Global Identity with Multiple Workspace Memberships](./architecture/decisions/ADR-005-GLOBAL-IDENTITY-MULTI-WORKSPACE.md) — formal decision, alternatives, consequences and implementation evidence.
 - [Sign-in and Workspace Selection](./ux/SIGN-IN-AND-WORKSPACE-SELECTION.md) — identity-first sign-in, access request, workspace chooser and accessibility.
 - [Identity and Workspace API Contracts](./api/IDENTITY-AND-WORKSPACE-CONTRACTS.md) — login, MFA, workspace selection, switching and session contracts.
 - [Identity and Membership Data Model](./database/IDENTITY-MEMBERSHIP-DATA-MODEL.md) — users, tenants, memberships, sessions and indexes.
