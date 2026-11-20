@@ -28,6 +28,10 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 | MeBuMIP product | [products/zuri-mebumip/](../products/zuri-mebumip/README.md) | Detailed product-specific documentation |
 | CI workflows | [MeBuMIP Phase 1 CI workflow](../.github/workflows/mebumip-phase1.yml) | Automated engineering verification |
 
+## Meta integration readiness
+
+- [Meta Platform Integration Readiness and Version Governance](./integrations/META-PLATFORM-INTEGRATION-READINESS.md) — Graph/Marketing API versioning, Tech Provider/App Review, Pages/Instagram, advertising, WhatsApp, webhooks and multi-business requirements.
+
 ## Security engineering standards
 
 - [Key Management and Audit Archiving](./security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md) — MFA key rings, safe migration, audit-signing lifecycle, WORM archive requirements and external standards.
