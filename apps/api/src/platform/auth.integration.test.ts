@@ -26,6 +26,10 @@ test("invitation acceptance and password login use active tenant membership", {s
   const secondTenant=await provisionTenant(db,"test",{slug:"auth-test-second",legalName:"Second Auth Test Ltd",displayName:"Second Auth Workspace"});
   await setTenantStatus(db,secondTenant.tenantId,"active","test");
   const secondMembership=await createMembership(db,secondTenant.tenantId,"test",{userId:user.userId});
+  const expiredTenant=await provisionTenant(db,"test",{slug:"auth-test-expired",legalName:"Expired Membership Ltd",displayName:"Expired Membership Workspace"});
+  await setTenantStatus(db,expiredTenant.tenantId,"active","test");
+  const expiredMembership=await createMembership(db,expiredTenant.tenantId,"test",{userId:user.userId});
+  await db.collection("memberships").updateOne({membershipId:expiredMembership.membershipId},{$set:{validUntil:new Date(Date.now()-60_000)}});
   const platformGrant={grantId:"pog-"+randomUUID(),userId:user.userId,permissionKeys:["platform.tenants.read","platform.tenants.provision"],status:"active",reason:"Integration test platform operator access grant",createdBy:"test",createdAt:new Date(),updatedAt:new Date(),validFrom:new Date()};
   await db.collection("platform_operator_grants").insertOne(platformGrant);
   const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64"),accessRequestsEnabled:true,accessRequestsPrivacyNoticeUrl:"https://example.test/privacy"};
@@ -33,6 +37,8 @@ test("invitation acceptance and password login use active tenant membership", {s
   assert.equal(workspaceLogin.mfaRequired,false);
   if(workspaceLogin.mfaRequired||!("workspaceSelectionRequired" in workspaceLogin)||!workspaceLogin.workspaceSelectionRequired)throw new Error("Expected workspace selection");
   assert.equal(workspaceLogin.workspaces.length,3);
+  assert.equal(workspaceLogin.workspaces.some(choice=>choice.tenantId===expiredTenant.tenantId),false);
+  await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,expiredTenant.tenantId),/WORKSPACE_ACCESS_DENIED/);
   assert.equal("accessToken" in workspaceLogin,false);
   const secondChoice=workspaceLogin.workspaces.find(choice=>choice.tenantId===secondTenant.tenantId);
   assert.ok(secondChoice);
@@ -41,6 +47,9 @@ test("invitation acceptance and password login use active tenant membership", {s
   const selectedSession=await db.collection("sessions").findOne({sessionId:selected.sessionId,tenantId:secondTenant.tenantId});
   assert.ok(selectedSession);
   await assert.rejects(()=>selectWorkspace(db,cfg,workspaceLogin.selectionToken,tenant.tenantId),/WORKSPACE_SELECTION_INVALID_OR_EXPIRED|WORKSPACE_SELECTION_REPLAYED/);
+  await assert.rejects(()=>switchWorkspace(db,cfg,{userId:user.userId,tenantId:secondTenant.tenantId,membershipId:secondMembership.membershipId,sessionId:selected.sessionId},expiredTenant.tenantId),/WORKSPACE_ACCESS_DENIED/);
+  const stillActiveSession=await db.collection("sessions").findOne({sessionId:selected.sessionId,tenantId:secondTenant.tenantId});
+  assert.equal(stillActiveSession?.revokedAt,undefined);
   const switched=await switchWorkspace(db,cfg,{userId:user.userId,tenantId:secondTenant.tenantId,membershipId:secondMembership.membershipId,sessionId:selected.sessionId},tenant.tenantId);
   assert.ok(switched.accessToken);
   const priorWorkspaceSession=await db.collection("sessions").findOne({sessionId:selected.sessionId,tenantId:secondTenant.tenantId});
@@ -63,6 +72,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   const platformSessionRevoked=await db.collection("sessions").findOne({tenantId:"platform",sessionId:platformSession.sessionId});
   assert.ok(platformSessionRevoked?.revokedAt);
 
+  await assert.rejects(()=>login(db,cfg,{email:"AUTH@example.test",password,tenantSlug:expiredTenant.slug,ipHash:"integration"}),/INVALID_CREDENTIALS/);
   const result=await login(db,cfg,{email:"AUTH@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
   assert.equal(result.mfaRequired,false);
   if(result.mfaRequired)throw new Error("Unexpected MFA challenge");
