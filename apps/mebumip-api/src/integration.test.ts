@@ -125,7 +125,7 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   const existingAdminAccept = await app.inject({ method: "POST", url: "/v1/mac/admin-invitations/accept", headers: { authorization: "Bearer " + memberLogin.json().accessToken }, payload: { token: existingInviteToken } });
   assert.equal(existingAdminAccept.statusCode, 200);
   assert.equal(existingAdminAccept.json().role, "platform_operator");
-  const platformAdminId = String(createdPlatformAdmin?._id);
+  const platformAdminId = String(registered.json().userId);
   const roleUpdate = await app.inject({ method: "PATCH", url: "/v1/mac/admins/" + platformAdminId, headers, payload: { role: "platform_auditor" } });
   assert.equal(roleUpdate.statusCode, 200);
   assert.equal(roleUpdate.json().role, "platform_auditor");
