@@ -33,12 +33,14 @@ The canonical ecosystem, product, architecture, UX, database, API and deployment
 
 ### PR #14 — Zuri OS foundation branch
 
-Head commit at this verification: `5242237db1a038007a9fe64345c285f7aa922974`
+Latest verified head commit: `3ce4f872bfbea9e9a4ab434f6dbea33e970856e4`
 
-- [Full monorepo CI run 44748614780](https://github.com/openpayglobal/zurios/actions/runs/44748614780) — passed.
-- [MeBuMIP Phase 1 verification run 44748614698](https://github.com/openpayglobal/zurios/actions/runs/44748614698) — passed.
-- Full CI steps passed: both OpenAPI validations, route-drift validation, monorepo typecheck, tests and build.
+- [Full monorepo CI run 44749796324](https://github.com/openpayglobal/zurios/actions/runs/44749796324) — passed.
+- [MeBuMIP Phase 1 verification run 44749797548](https://github.com/openpayglobal/zurios/actions/runs/44749797548) — passed.
+- Full CI steps passed: MongoDB replica-set startup, both OpenAPI 3.1 validations, route-drift validation, monorepo typecheck, tests and build.
 - MeBuMIP verification steps passed: API typecheck/tests/build and web typecheck/build.
+- PR #14 is open, non-draft and reported mergeable at the time of verification. It has no unresolved review threads in the GitHub review-thread query.
+- Additional regression coverage asserts that a public access request does not create a user, tenant or membership and that public auth configuration and request responses are not cached.
 
 ### PR #13 — API/security branch
 
@@ -47,7 +49,7 @@ Head commit at this verification: `52e94d1c6b1a87d516cba9fdd64337463259199f`
 - [Full monorepo CI run 44742226521](https://github.com/openpayglobal/zurios/actions/runs/44742226521) — passed.
 - [MeBuMIP Phase 1 verification run 44742226473](https://github.com/openpayglobal/zurios/actions/runs/44742226473) — passed.
 
-These are CI results for the named commits. They do not prove that Vercel has deployed those commits or that production credentials are configured. The latest documentation corrections in this register, privacy requirements and environment template still require a fresh CI run.
+These CI results apply to the exact named commit. They verify source, type, contract, test and build checks; they do not prove Vercel has deployed the commit or that production credentials are configured. The full MeBuMIP documentation set is now mirrored under `docs/products/zuri-mebumip/` and indexed by `docs/README.md`.
 
 ## 4. Canonical Vercel topology
 
@@ -62,7 +64,7 @@ Duplicate projects `web` and `web-ojqo` have been deleted by the owner and are r
 
 - The previously inspected `zurios.vercel.app` alias pointed to an older preview deployment, not a verified production deployment of the current source.
 - The `zurios-api.vercel.app` domain was attached and verified, but the previously inspected alias lookup returned 404 because there was no READY API deployment to receive the alias.
-- The previous Vercel build attempts were blocked by the team's build-rate limit. Recheck current deployments and aliases before any release; do not infer deployment success from GitHub CI.
+- A fresh Vercel API inspection on 2026-11-20 returned HTTP 403 `forbidden` for deployment listing and alias lookup. This is an access-permission blocker, not evidence that the deployments are healthy or unhealthy. No CLI fallback is available in the connected environment. Recheck with an authorized Vercel operator before release; do not infer deployment success from GitHub CI.
 
 ### Environment configuration
 
