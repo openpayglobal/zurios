@@ -153,7 +153,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
     const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
     const events = await db.collection("auditEvents")
-      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1, sequence: 1, previousHash: 1, eventHash: 1, signature: 1 } })
+      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1, sequence: 1, previousHash: 1, eventHash: 1, signature: 1, signatureKeyId: 1 } })
       .sort({ _id: -1 }).limit(limit + 1).toArray();
     const hasMore = events.length > limit;
     if (hasMore) events.pop();
