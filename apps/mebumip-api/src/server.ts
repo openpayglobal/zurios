@@ -10,7 +10,7 @@ import { ensureMeBuMIPIndexes } from "./database.js";
 import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
 
-const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) => {
+const app = Fastify({ logger: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
   const supplied = request.headers["x-correlation-id"];
   return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
     ? supplied
