@@ -33,12 +33,14 @@ The canonical ecosystem, product, architecture, UX, database, API and deployment
 
 ### PR #14 — Zuri OS foundation branch
 
-Latest verified head commit: `3ce4f872bfbea9e9a4ab434f6dbea33e970856e4`
+Latest verified head commit: `6d9397477653b12db6b2ab31e09df458fa127852`
 
-- [Full monorepo CI run 44749796324](https://github.com/openpayglobal/zurios/actions/runs/44749796324) — passed.
-- [MeBuMIP Phase 1 verification run 44749797548](https://github.com/openpayglobal/zurios/actions/runs/44749797548) — passed.
-- Full CI steps passed: MongoDB replica-set startup, both OpenAPI 3.1 validations, route-drift validation, monorepo typecheck, tests and build.
+- [Full monorepo CI run 44788627097](https://github.com/openpayglobal/zurios/actions/runs/44749796324) — passed.
+- [MeBuMIP Phase 1 verification run 44788626980](https://github.com/openpayglobal/zurios/actions/runs/44749797548) — passed.
+- Full CI steps passed: MongoDB replica-set startup, both OpenAPI 3.1 validations, route-drift validation, product-document mirror consistency, monorepo typecheck, tests and build.
 - MeBuMIP verification steps passed: API typecheck/tests/build and web typecheck/build.
+- The public access-request routes now consume the validated `AuthConfig` values supplied by API startup rather than reading `process.env` independently. Tests cover enabled and disabled configurations, including hidden privacy URL and HTTP 503 when disabled.
+- `pnpm docs:sync` and `pnpm docs:check` maintain the five mirrored MeBuMIP product documents; CI executes the check.
 - PR #14 is open, non-draft and reported mergeable at the time of verification. It has no unresolved review threads in the GitHub review-thread query.
 - Additional regression coverage asserts that a public access request does not create a user, tenant or membership and that public auth configuration and request responses are not cached.
 
@@ -64,7 +66,7 @@ Duplicate projects `web` and `web-ojqo` have been deleted by the owner and are r
 
 - The previously inspected `zurios.vercel.app` alias pointed to an older preview deployment, not a verified production deployment of the current source.
 - The `zurios-api.vercel.app` domain was attached and verified, but the previously inspected alias lookup returned 404 because there was no READY API deployment to receive the alias.
-- A fresh Vercel API inspection on 2026-11-20 returned HTTP 403 `forbidden` for deployment listing and alias lookup. This is an access-permission blocker, not evidence that the deployments are healthy or unhealthy. No CLI fallback is available in the connected environment. Recheck with an authorized Vercel operator before release; do not infer deployment success from GitHub CI.
+- Vercel's GitHub commit checks currently report `build-rate-limit` for both `zurios` and `zurios-api`. A fresh Vercel API inspection on 2026-11-20 also returned HTTP 403 `forbidden` for deployment listing and alias lookup. This is an account permission/quota blocker, not evidence that the deployments are healthy or unhealthy. No authorized CLI fallback is available in the connected environment. Recheck with a Vercel team operator after build capacity and access are restored; do not infer deployment success from GitHub CI.
 
 ### Environment configuration
 
