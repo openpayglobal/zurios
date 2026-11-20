@@ -69,6 +69,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   const mfaAttempt=await login(db,cfg,{email:"auth@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
   if(!mfaAttempt.mfaRequired)throw new Error("Expected MFA challenge");
   const second=await verifyMfaLogin(db,cfg,mfaAttempt.challengeToken,recovery.recoveryCodes[0]!);
+  if(!("accessToken" in second))throw new Error("Expected tenant-bound login session after MFA");
   assert.ok(second.accessToken);
   await assert.rejects(()=>verifyMfaLogin(db,cfg,mfaAttempt.challengeToken,recovery.recoveryCodes[0]!));
 
@@ -76,6 +77,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   if(!totpAttempt.mfaRequired)throw new Error("Expected MFA challenge");
   const futureStep=Math.floor(Date.now()/30_000)+1;
   const third=await verifyMfaLogin(db,cfg,totpAttempt.challengeToken,totpCode(enrollment.secret,futureStep));
+  if(!("accessToken" in third))throw new Error("Expected tenant-bound login session after MFA");
   assert.ok(third.accessToken);
   await disableMfa(db,user.userId,password,recovery.recoveryCodes[1]!,cfg);
 
