@@ -93,8 +93,10 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     assert.equal(revoke.statusCode, 204);
     assert.equal((await app.inject({ method: "GET", url: "/v1/auth/me", headers: { authorization: `Bearer ${secondToken}` } })).statusCode, 401);
 
-    const refresh = await app.inject({ method: "POST", url: "/v1/auth/refresh", headers: { authorization: `Bearer ${primaryToken}` } });
-    assert.equal(refresh.statusCode, 200);
+    const refreshResponses = await Promise.all([app.inject({ method: "POST", url: "/v1/auth/refresh", headers: { authorization: `Bearer ${primaryToken}` } }), app.inject({ method: "POST", url: "/v1/auth/refresh", headers: { authorization: `Bearer ${primaryToken}` } })]);
+    assert.equal(refreshResponses.filter((response) => response.statusCode === 200).length, 1);
+    assert.equal(refreshResponses.filter((response) => response.statusCode === 401).length, 1);
+    const refresh = refreshResponses.find((response) => response.statusCode === 200)!;
     const rotatedToken = (refresh.json() as { accessToken: string }).accessToken;
     assert.notEqual(rotatedToken, primaryToken);
     assert.equal((await app.inject({ method: "GET", url: "/v1/auth/me", headers: { authorization: `Bearer ${primaryToken}` } })).statusCode, 401);
