@@ -65,3 +65,8 @@ MAC is the privileged control plane. MAD is a read-only monitoring surface. All 
 This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and password recovery delivery (requires a configured mail provider), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
+
+
+## Automated verification
+
+The Phase 1 GitHub Actions workflow provisions an ephemeral MongoDB 7 service and runs the database-backed integration suite together with API typecheck/tests/build and web typecheck/build. CI-only bootstrap, MFA and audit keys are test fixtures, not production credentials. The integration suite covers owner bootstrap/login, MFA enrollment and one-time recovery-code replay prevention, invitation registration and replay rejection, cross-tenant access denial, and audit signature verification.
