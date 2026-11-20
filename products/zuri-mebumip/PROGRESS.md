@@ -110,3 +110,6 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 | Production session/security architecture | Not complete | Current browser bearer token remains in sessionStorage. Production needs HttpOnly Secure SameSite cookie/BFF, CSRF/origin policy, proxy trust review, device/session metadata, recovery delivery, secrets rotation and deployment security review. |
 
 **Phase 1 decision:** remain **In progress**. No closure or production-readiness claim is authorized until all seven gates are evidenced as complete.
+
+
+**Audit integrity follow-through (2026-11-20):** all new events created through the shared audit-event builder now carry an HMAC-SHA256 signature when `AUDIT_SIGNING_KEY` is configured. Production configuration now requires this key. Added MAC endpoints to verify the latest 500 records and export bounded pages with per-record integrity status. Unit tests cover signature verification and tamper detection. Existing historical records remain unsigned; exports are not yet copied to immutable object storage or independently archived. Production must keep the signing key outside MongoDB and back it up securely.
