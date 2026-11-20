@@ -46,7 +46,7 @@ export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise
     if (!tenantId || !TENANT_ROLES.includes(role)) return [];
     return [{ tenantId, role, status: "active" as const }];
   });
-  const platformRole = PLATFORM_ROLES.includes(user.platformRole as PlatformRole) ? user.platformRole as PlatformRole : undefined;
+  const platformRole = PLATFORM_ROLES.includes(user.platformRole as PlatformRole) && user.platformAdminStatus !== "suspended" ? user.platformRole as PlatformRole : undefined;
   return {
     principal: {
       userId: String(user._id),
