@@ -10,11 +10,11 @@ export async function createShipment(db:Db,input:unknown,actorId:string,key:stri
   if(locations.length!==2)throw new Error("SHIPMENT_LOCATION_SCOPE_INVALID");
   let referenceExists=false;
   if(shipment.referenceType==="purchase_order"){
-   referenceExists=Boolean(await db.collection("erp_purchase_orders").findOne({tenantId:shipment.tenantId,organizationId:shipment.organizationId,orderNumber:shipment.referenceId},{session,projection:{_id:1}}));
+   referenceExists=Boolean(await db.collection<any>("erp_purchase_orders").findOne({tenantId:shipment.tenantId,organizationId:shipment.organizationId,orderNumber:shipment.referenceId},{session,projection:{_id:1}}));
   }else if(shipment.referenceType==="commerce_order"){
-   referenceExists=Boolean(await db.collection("commerce_orders").findOne({tenantId:shipment.tenantId,organizationId:shipment.organizationId,orderId:shipment.referenceId},{session,projection:{_id:1}}));
+   referenceExists=Boolean(await db.collection<any>("commerce_orders").findOne({tenantId:shipment.tenantId,organizationId:shipment.organizationId,orderId:shipment.referenceId},{session,projection:{_id:1}}));
   }else{
-   referenceExists=Boolean(await db.collection("inventory_stock_ledger").findOne({tenantId:shipment.tenantId,movementId:shipment.referenceId,movementType:"transfer"},{session,projection:{_id:1}}));
+   referenceExists=Boolean(await db.collection<any>("inventory_stock_ledger").findOne({tenantId:shipment.tenantId,movementId:shipment.referenceId,movementType:"transfer"},{session,projection:{_id:1}}));
   }
   if(!referenceExists)throw new Error("SHIPMENT_REFERENCE_NOT_FOUND");
   const now=new Date();
