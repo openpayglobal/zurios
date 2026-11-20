@@ -91,7 +91,7 @@ export async function archiveAuditPackage(
   retention: AuditArchiveRetention,
 ): Promise<AuditArchiveReceipt> {
   const now = new Date();
-  if (!(retention.retainUntil instanceof Date) || retention.retainUntil <= now) throw new Error("AUDIT_ARCHIVE_RETENTION_REQUIRED");
+  if (!(retention.retainUntil instanceof Date) || !Number.isFinite(retention.retainUntil.getTime()) || retention.retainUntil <= now) throw new Error("AUDIT_ARCHIVE_RETENTION_REQUIRED");
   const requestedLegalHold = retention.legalHold === true;
   const stored = await sink.putImmutableObject({
     objectKey: archivePackage.objectKey,
@@ -105,6 +105,7 @@ export async function archiveAuditPackage(
     stored.sha256 !== archivePackage.sha256 ||
     stored.retentionMode !== retention.mode ||
     !(stored.retainUntil instanceof Date) ||
+    !Number.isFinite(stored.retainUntil.getTime()) ||
     stored.retainUntil < retention.retainUntil ||
     (requestedLegalHold && !stored.legalHold)
   ) throw new Error("AUDIT_ARCHIVE_STORAGE_RETENTION_NOT_CONFIRMED");
