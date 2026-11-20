@@ -21,7 +21,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   const requireAuth=authenticate(db,config);
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   try{const body=loginSchema.parse(request.body);const ipHash=createHash("sha256").update(request.ip).digest("hex");return await login(db,config,{...body,ipHash});}
+   try{const body=loginSchema.parse(request.body) as {email:string;password:string;tenantSlug:string};const ipHash=createHash("sha256").update(request.ip).digest("hex");return await login(db,config,{...body,ipHash});}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/verify",async(request,reply)=>{
