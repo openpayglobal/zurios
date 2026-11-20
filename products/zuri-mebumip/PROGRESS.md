@@ -300,3 +300,13 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - MeBuMIP verification **#407** passed on head `4a32221f9777ea88fd484a80b4f918788ce9c547`.
 - Full monorepo CI **#1332** passed on the same head: OpenAPI validation, route drift, typecheck, tests and build.
 - The application-code verification remains #401/#1329; this follow-up changed only the progress register.
+
+
+**Production security operations runbook — 2026-11-20:**
+
+- Added `docs/operations/MEBUMIP-PHASE1-SECURITY-OPERATIONS.md` to make the remaining Phase 1 release gates executable and auditable rather than leaving them as a loose checklist.
+- The runbook defines separate operator/approver control, verified sender-domain and browser-origin checks, least-privilege MongoDB identities, audit signing-key escrow/rotation, the dry-run/apply boundary for the bounded audit backfill, independent WORM retention and restore verification, ABAC migration evidence, backup/restore drills, monitoring and independent security review.
+- It explicitly distinguishes MeBuMIP audit-chain backfill from Zuri platform ABAC backfill and documents the correct commands for each.
+- This is operational documentation only. No production credentials, provider configuration, database role changes, migrations, WORM bucket, archive upload, deployment or security sign-off have been performed.
+- The runbook documentation commit is `fb6cd4ae9fa8b3d1218e36ba933df17443b6a10b`; fresh CI for this commit is required before treating the documentation increment as verified.
+- Latest previously inspected CI on the preceding PR #13 head passed: MeBuMIP verification #409 and full monorepo CI #1333. These runs do not include the new runbook commit.
