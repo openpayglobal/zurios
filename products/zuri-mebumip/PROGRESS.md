@@ -242,3 +242,11 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Full monorepo CI **#1318** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
 - The passing database tests include signed audit archive export and offline verification, and reject a tampered archive bundle.
 - The archive remains a portable signed file only. It is not yet stored in WORM/object-lock infrastructure and does not satisfy retention/restore acceptance by itself.
+
+
+**Signed audit archive bundle verification — 2026-11-20:**
+
+- MeBuMIP verification **#381** passed on head `86bf87b32094a2d49443c7ab9e20e3c42129ef5c`: API typecheck, **17 tests passed / 0 failed / 0 skipped**, API build, web typecheck and web build.
+- Full monorepo CI **#1319** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
+- The integration suite verifies the signed archive manifest and all included event signatures, and rejects a modified archive event.
+- This remains a signed export file, not an independently retained WORM archive. Object-lock provisioning, retention policy, delete protection and restore tests are still required.
