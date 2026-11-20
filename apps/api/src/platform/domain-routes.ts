@@ -887,6 +887,18 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   };
   app.post("/projects/time-entries/:timeEntryId/approve",async(request,reply)=>decideTime(request,reply,"approved"));
   app.post("/projects/time-entries/:timeEntryId/reject",async(request,reply)=>decideTime(request,reply,"rejected"));
+  app.get("/analytics/operational.csv",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const query=AnalyticsQuerySchema.parse({...request.query as Record<string,unknown>,tenantId:p.tenantId});
+    const scope=await resolveOrganizationScope(db,p.tenantId,query.organizationId);
+    if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"analytics.report.read",scope);if(denied)return denied;
+    const report=await getOperationalAnalytics(db,query);
+    const csv=["metric,value",...Object.entries(report.metrics).map(([metric,value])=>metric+","+String(value))].join("\r\n")+"\r\n";
+    return reply.type("text/csv; charset=utf-8").header("content-disposition",'attachment; filename="zuri-operational-analytics.csv"').send(csv);
+   }catch(error){return sendError(error,reply);}
+  });
   app.get("/analytics/operational",async(request,reply)=>{
    const p=getPrincipal(request);
    try{
