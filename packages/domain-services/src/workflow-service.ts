@@ -57,13 +57,15 @@ export async function decideWorkflowTask(db:Db,input:unknown,actorId:string,key:
   let runStatus:"running"|"completed"|"rejected"="running";
   if(decision.decision==="rejected"){
    runStatus="rejected";
-   await db.collection("workflow_tasks").updateMany({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:"queued"},
-    {$set:{status:"cancelled",updatedAt:now}},{session});
+   const cancelled=await db.collection("workflow_tasks").updateMany({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:"queued"},
+    {$set:{status:"cancelled",cancelledAt:now,updatedAt:now}},{session});
+   if(cancelled.modifiedCount>0)await auditDomainMutation(db,session,decision.tenantId,actorId,"workflows.tasks.cancelled","workflow_run",task.runId,{organizationId:decision.organizationId,cancelledTaskCount:cancelled.modifiedCount});
   }else if(nextStatus==="approved"){
    const nextTask=await db.collection<any>("workflow_tasks").find({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,stepIndex:{$gt:task.stepIndex},status:"queued"},{session}).sort({stepIndex:1}).limit(1).next();
    if(nextTask){
     await db.collection("workflow_tasks").updateOne({tenantId:decision.tenantId,organizationId:decision.organizationId,taskId:nextTask.taskId,status:"queued"},
      {$set:{status:"pending",activatedAt:now,updatedAt:now}},{session});
+    await auditDomainMutation(db,session,decision.tenantId,actorId,"workflows.task.activated","workflow_task",nextTask.taskId,{organizationId:decision.organizationId,runId:task.runId,stepIndex:nextTask.stepIndex});
     await appendOutboxEvent(db,session,{tenantId:decision.tenantId,eventType:"workflows.task.activated",aggregateType:"workflow_task",aggregateId:nextTask.taskId,payload:{taskId:nextTask.taskId,runId:task.runId,organizationId:decision.organizationId,stepIndex:nextTask.stepIndex}});
    }else{
     const remaining=await db.collection("workflow_tasks").countDocuments({tenantId:decision.tenantId,organizationId:decision.organizationId,runId:task.runId,status:{$ne:"approved"}},{session});
