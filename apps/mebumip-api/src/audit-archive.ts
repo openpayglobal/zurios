@@ -3,9 +3,11 @@ import type { Db } from "mongodb";
 import { signAuditExport, verifyAuditEvent } from "./security.js";
 
 export type AuditArchiveRetention = {
-  mode: "GOVERNANCE" | "COMPLIANCE";
   retainUntil: Date;
-  legalHold?: boolean;
+  legalHold: boolean;
+  preventOverwrite: true;
+  preventDeleteUntilRetention: true;
+  preventAdministrativeBypass: boolean;
 };
 
 export type AuditArchivePackage = {
@@ -24,8 +26,10 @@ export type AuditArchiveReceipt = {
   fromSequence: number;
   toSequence: number;
   eventCount: number;
-  retentionMode: "GOVERNANCE" | "COMPLIANCE";
   retainUntil: Date;
+  preventOverwrite: boolean;
+  preventDeleteUntilRetention: boolean;
+  preventAdministrativeBypass: boolean;
   legalHold: boolean;
   archivedAt: Date;
 };
@@ -41,7 +45,7 @@ export interface ImmutableAuditArchiveSink {
     content: Buffer;
     sha256: string;
     retention: AuditArchiveRetention;
-  }): Promise<{ objectKey: string; versionId: string; sha256: string; retentionMode: "GOVERNANCE" | "COMPLIANCE"; retainUntil: Date; legalHold: boolean }>;
+  }): Promise<{ objectKey: string; versionId: string; sha256: string; retainUntil: Date; legalHold: boolean; preventOverwrite: boolean; preventDeleteUntilRetention: boolean; preventAdministrativeBypass: boolean }>;
 }
 
 export function buildAuditArchivePackage(
@@ -93,7 +97,6 @@ export async function archiveAuditPackage(
 ): Promise<AuditArchiveReceipt> {
   const now = new Date();
   if (!(retention.retainUntil instanceof Date) || !Number.isFinite(retention.retainUntil.getTime()) || retention.retainUntil <= now) throw new Error("AUDIT_ARCHIVE_RETENTION_REQUIRED");
-  const requestedLegalHold = retention.legalHold === true;
   const stored = await sink.putImmutableObject({
     objectKey: archivePackage.objectKey,
     content: archivePackage.content,
@@ -104,11 +107,13 @@ export async function archiveAuditPackage(
     stored.objectKey !== archivePackage.objectKey ||
     !stored.versionId ||
     stored.sha256 !== archivePackage.sha256 ||
-    stored.retentionMode !== retention.mode ||
     !(stored.retainUntil instanceof Date) ||
     !Number.isFinite(stored.retainUntil.getTime()) ||
     stored.retainUntil < retention.retainUntil ||
-    (requestedLegalHold && !stored.legalHold)
+    (retention.legalHold && !stored.legalHold) ||
+    !stored.preventOverwrite ||
+    !stored.preventDeleteUntilRetention ||
+    (retention.preventAdministrativeBypass && stored.preventAdministrativeBypass)
   ) throw new Error("AUDIT_ARCHIVE_STORAGE_RETENTION_NOT_CONFIRMED");
 
   const receipt: AuditArchiveReceipt = {
@@ -117,6 +122,9 @@ export async function archiveAuditPackage(
     toSequence: archivePackage.toSequence,
     eventCount: archivePackage.eventCount,
     legalHold: stored.legalHold,
+    preventOverwrite: stored.preventOverwrite,
+    preventDeleteUntilRetention: stored.preventDeleteUntilRetention,
+    preventAdministrativeBypass: stored.preventAdministrativeBypass,
     archivedAt: now,
   };
   const receipts = db.collection<AuditArchiveReceipt>("auditArchiveReceipts");
