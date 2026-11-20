@@ -137,3 +137,13 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - The monorepo CI additionally caught and fixed literal escaped newlines in `packages/core-platform/src/location-service.ts` and a nested-schema parsing bug in the OpenAPI drift checker. OpenAPI drift validation now passes with 30 paths, 19 idempotent mutations and 19 shared Zod request schemas.
 
 **Release status remains unchanged:** PR #13 is open and unmerged. Vercel checks remain rate-limited; trusted email provider configuration, audit immutability/archive controls, secure production browser sessions, backup/restore drill and independent security review remain outstanding. No production deployment or migration has been run.
+
+
+**Bootstrap and authentication lifecycle hardening — 2026-11-20:**
+
+- Added a unique, expiring MongoDB bootstrap lease so simultaneous first-owner bootstrap requests cannot both pass the preflight owner count. The existing partial unique platform-owner index remains the final invariant; completed bootstrap state is persisted and a stale in-progress lease can be reclaimed.
+- Added MongoDB-backed acceptance coverage for simultaneous bootstrap requests (exactly one owner creation), invalid bootstrap secrets, owner membership creation, failed and successful login, authenticated identity, session inventory, per-session revocation, token rotation/replay denial, password change revocation, logout and audit actions.
+- These are route-level integration tests against an isolated MongoDB database in the Phase 1 replica-set workflow; they do not exercise production credentials or deployment configuration.
+- The bootstrap lease is an application-level concurrency guard, not a substitute for the unique owner index or a transactional deployment environment.
+
+**Verification:** the new integration test and bootstrap guard are committed to `feat/mebumip-phase1-security-hardening`. The latest Actions run must pass before this increment is treated as verified. Phase 1 remains **In progress**; production mail delivery, independent immutable archive/WORM storage, deployment-specific cookie/session hardening, backup/restore and independent security review remain release gates.
