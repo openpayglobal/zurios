@@ -16,6 +16,11 @@ export function AuthPanel() {
   const [token, setToken] = useState(() => sessionStorage.getItem("mebumip_access_token") ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
@@ -33,6 +38,37 @@ export function AuthPanel() {
     } finally { setBusy(false); }
   }
 
+  async function requestRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setRecoveryMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/password/recovery", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (!response.ok) throw new Error("Could not process the recovery request.");
+      setRecoverySent(true);
+      setRecoveryMessage("If an account exists for this address, a reset token has been sent. Check the inbox.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not request password recovery.");
+    } finally { setBusy(false); }
+  }
+
+  async function resetPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError(""); setRecoveryMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/password/reset", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: resetToken, newPassword }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error === "RESET_TOKEN_INVALID_OR_EXPIRED" ? "The reset token is invalid, expired or already used." : "Could not reset the password.");
+      setRecoveryMode(false); setRecoverySent(false); setResetToken(""); setNewPassword(""); setPassword("");
+      setRecoveryMessage("Password reset successfully. Sign in with your new password.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not reset the password.");
+    } finally { setBusy(false); }
+  }
+
   async function logout() {
     if (token) await fetch(API_BASE + "/v1/auth/logout", { method: "POST", headers: { Authorization: "Bearer " + token } }).catch(() => undefined);
     sessionStorage.removeItem("mebumip_access_token"); setToken(""); window.location.reload();
@@ -41,7 +77,33 @@ export function AuthPanel() {
   return <section className="api-auth">
     {token
       ? <><span className="api-online">Authenticated session established</span><button type="button" onClick={logout}>Sign out</button></>
-      : <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button>{error && <span className="api-error">{error}</span>}</form>}
+      : recoveryMode
+        ? recoverySent
+          ? <form onSubmit={resetPassword}>
+              <div><strong>Reset your password</strong><small>Enter the one-time token from your email and choose a new password.</small></div>
+              <input type="text" autoComplete="one-time-code" placeholder="Password reset token" value={resetToken} onChange={(event) => setResetToken(event.target.value)} required minLength={40} maxLength={200}/>
+              <input type="password" autoComplete="new-password" placeholder="New password (12+ characters)" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={12} maxLength={256}/>
+              <button disabled={busy} type="submit">{busy ? "Resetting…" : "Reset password"}</button>
+              <button type="button" onClick={() => { setRecoveryMode(false); setRecoverySent(false); setError(""); }}>Back to sign in</button>
+              {recoveryMessage && <span className="api-online">{recoveryMessage}</span>}
+              {error && <span className="api-error">{error}</span>}
+            </form>
+          : <form onSubmit={requestRecovery}>
+              <div><strong>Recover account access</strong><small>We'll send a one-time reset token if the account exists.</small></div>
+              <input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/>
+              <button disabled={busy} type="submit">{busy ? "Sending…" : "Send reset email"}</button>
+              <button type="button" onClick={() => { setRecoveryMode(false); setError(""); }}>Back to sign in</button>
+              {error && <span className="api-error">{error}</span>}
+            </form>
+        : <form onSubmit={submit}>
+            <div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div>
+            <input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/>
+            <input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/>
+            <button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button>
+            <button type="button" onClick={() => { setRecoveryMode(true); setRecoverySent(false); setError(""); setRecoveryMessage(""); }}>Forgot password?</button>
+            {recoveryMessage && <span className="api-online">{recoveryMessage}</span>}
+            {error && <span className="api-error">{error}</span>}
+          </form>}
   </section>;
 }
 
