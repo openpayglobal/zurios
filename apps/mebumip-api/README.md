@@ -39,6 +39,7 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `GET /v1/auth/me`: returns the authenticated user's platform role and active tenant memberships.
 - `POST /v1/auth/logout`: revokes the current bearer session.
 - `POST /v1/auth/refresh`: rotates the current bearer token.
+- `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: list and revoke the authenticated user’s sessions.
 - `POST /v1/auth/password/change`: changes password and revokes other sessions.
 - `POST /v1/auth/mfa/setup` and `/v1/auth/mfa/enable`: configure TOTP MFA.
 - `POST /v1/auth/step-up`: verifies TOTP for a five-minute privileged-action window.
@@ -56,6 +57,6 @@ MAC is the privileged control plane. MAD is a read-only monitoring surface. All 
 
 ## Current limitations — not production-ready
 
-This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and password recovery delivery, session device management, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
+This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and password recovery delivery (requires a configured mail provider), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
