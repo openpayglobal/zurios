@@ -33,16 +33,17 @@ The canonical ecosystem, product, architecture, UX, database, API and deployment
 
 ### PR #14 — Zuri OS foundation branch
 
-Latest verified head commit: `6d9397477653b12db6b2ab31e09df458fa127852`
+Latest verified head commit: `9ac593036ca913f8185ec0c3a08318d98c128ffe`
 
-- [Full monorepo CI run 44788627097](https://github.com/openpayglobal/zurios/actions/runs/44749796324) — passed.
-- [MeBuMIP Phase 1 verification run 44788626980](https://github.com/openpayglobal/zurios/actions/runs/44749797548) — passed.
-- Full CI steps passed: MongoDB replica-set startup, both OpenAPI 3.1 validations, route-drift validation, product-document mirror consistency, monorepo typecheck, tests and build.
-- MeBuMIP verification steps passed: API typecheck/tests/build and web typecheck/build.
-- The public access-request routes now consume the validated `AuthConfig` values supplied by API startup rather than reading `process.env` independently. Tests cover enabled and disabled configurations, including hidden privacy URL and HTTP 503 when disabled.
+- [Full monorepo CI run 44788969224](https://github.com/openpayglobal/zurios/actions/runs/44788969224) — **passed**.
+- [MeBuMIP Phase 1 verification run 44788970413](https://github.com/openpayglobal/zurios/actions/runs/44788970413) — **passed**.
+- Full CI passed MongoDB replica-set startup, both OpenAPI 3.1 validations, route-drift validation, product-document mirror consistency, monorepo typecheck, tests and build.
+- MeBuMIP verification passed dependency installation, API typecheck/tests/build, web typecheck and web build; the workflow completed successfully.
+- The public access-request routes consume validated `AuthConfig` values supplied by API startup rather than reading `process.env` independently. Tests cover enabled and disabled configurations, including hidden privacy URL and HTTP 503 when disabled.
 - `pnpm docs:sync` and `pnpm docs:check` maintain the five mirrored MeBuMIP product documents; CI executes the check.
-- PR #14 is open, non-draft and reported mergeable at the time of verification. It has no unresolved review threads in the GitHub review-thread query.
-- Additional regression coverage asserts that a public access request does not create a user, tenant or membership and that public auth configuration and request responses are not cached.
+- PR #14 is open, non-draft and reported mergeable at this verification checkpoint. Review threads should be rechecked before merge.
+- Regression coverage asserts that a public access request does not create a user, tenant or membership and that public auth configuration and request responses are not cached.
+- These runs verify the exact head commit above. They do not establish a Vercel deployment, production configuration or production release.
 
 ### PR #13 — API/security branch
 
