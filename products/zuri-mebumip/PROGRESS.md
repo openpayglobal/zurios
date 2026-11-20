@@ -310,3 +310,14 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - This is operational documentation only. No production credentials, provider configuration, database role changes, migrations, WORM bucket, archive upload, deployment or security sign-off have been performed.
 - The runbook documentation commit is `fb6cd4ae9fa8b3d1218e36ba933df17443b6a10b`; fresh CI for this commit is required before treating the documentation increment as verified.
 - Latest previously inspected CI on the preceding PR #13 head passed: MeBuMIP verification #409 and full monorepo CI #1333. These runs do not include the new runbook commit.
+
+
+**Atomic first-owner bootstrap integrity correction — 2026-11-20:**
+
+- Source review found that bootstrap previously created the platform owner, tenant and membership in separate writes and attempted to delete the bootstrap audit event if a later step failed. Direct deletion conflicts with append-only audit expectations and the separate writes could leave partial bootstrap state.
+- Added `appendAuditEventInTransaction` so a caller-owned MongoDB transaction can atomically append a signed, sequenced audit event without opening a nested transaction.
+- Changed first-owner bootstrap to commit owner, initial tenant, tenant-owner membership and the `platform.bootstrap.completed` audit event in one MongoDB transaction. The bootstrap lease still serializes competing requests and the database unique owner invariant remains the final guard.
+- Removed compensating deletes of user/tenant/membership/audit records. Failed transaction attempts roll back as a unit; audit history is never deleted to compensate for bootstrap failure.
+- Added an integration assertion that exactly one successful bootstrap audit event persists.
+- Dedicated MeBuMIP workflow **#417 passed** (API typecheck, MongoDB-backed API tests, API build, web typecheck and web build). Full monorepo CI **#1336 passed** (MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build).
+- Verified commit: `4f66d03c83d27e79e52a04b4f3ffd8b5655c27f0`. This is CI verification, not production deployment or external security sign-off.
