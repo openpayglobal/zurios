@@ -5,11 +5,13 @@ import { MongoClient } from "mongodb";
 import { hashToken } from "./security.js";
 
 process.env.NODE_ENV = "test";
+process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-2026-not-production";
 process.env.PLATFORM_BOOTSTRAP_TOKEN = "mebumip-integration-bootstrap-secret-2026";
 
 const { registerAuthRoutes } = await import("./auth.js");
 const { ensureMeBuMIPIndexes } = await import("./database.js");
 const { clearTestMailOutbox, getTestMailOutbox } = await import("./mail.js");
+const { appendAuditEvent, verifyAuditChain } = await import("./audit-service.js");
 const mongoUri = process.env.MONGODB_TEST_URI;
 
 test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes and rotates credentials", {
@@ -172,6 +174,24 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     assert.ok(auditActions.includes("auth.login.denied"));
     assert.ok(auditActions.includes("auth.session.rotated"));
     assert.ok(auditActions.includes("auth.password.changed"));
+
+    await Promise.all(Array.from({ length: 6 }, (_, index) => appendAuditEvent(db, {
+      actorUserId: meBody.userId,
+      action: "test.audit.concurrent",
+      targetType: "audit_chain_test",
+      outcome: "success",
+      correlationId: "audit-chain-test-" + index,
+    })));
+    const verifiedChain = await verifyAuditChain(db);
+    assert.equal(verifiedChain.valid, true);
+    assert.equal(verifiedChain.legacyUnchainedEvents, 0);
+    assert.equal(verifiedChain.checked, verifiedChain.latestSequence);
+    const latestEvent = await db.collection("auditEvents").findOne({ sequence: verifiedChain.latestSequence });
+    assert.ok(latestEvent);
+    await db.collection("auditEvents").updateOne({ _id: latestEvent._id }, { $set: { action: "tampered.audit.action" } });
+    const tamperedChain = await verifyAuditChain(db);
+    assert.equal(tamperedChain.valid, false);
+    assert.equal(tamperedChain.firstInvalidSequence, verifiedChain.latestSequence);
   } finally {
     await app.close();
     await db.dropDatabase().catch(() => undefined);
