@@ -37,6 +37,7 @@ const parsed = envSchema.superRefine((value, context) => {
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Each MFA key-ring entry must have a valid identifier and 32-byte hex key");
       }
       if (!value.MFA_ENCRYPTION_ACTIVE_KEY_ID || !Object.hasOwn(keyring, value.MFA_ENCRYPTION_ACTIVE_KEY_ID)) throw new Error("MFA_ENCRYPTION_ACTIVE_KEY_ID must identify a key in MFA_ENCRYPTION_KEYRING");
+      if (value.MFA_ENCRYPTION_KEY && typeof keyring.legacy === "string" && value.MFA_ENCRYPTION_KEY.toLowerCase() !== keyring.legacy.toLowerCase()) throw new Error("MFA_ENCRYPTION_KEY conflicts with the legacy key-ring entry");
     } catch (error) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEYRING"], message: error instanceof Error ? error.message : "Invalid MFA key ring" });
     }
