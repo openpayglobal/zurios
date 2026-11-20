@@ -36,7 +36,7 @@ export async function ingestCarrierTrackingEvent(db:Db,input:unknown,signature:s
   );
   if(update.matchedCount!==1)throw new Error("SHIPMENT_VERSION_CONFLICT");
   const eventId=event.carrierId+":"+event.providerEventId;
-  await db.collection("supply_chain_carrier_events").insertOne({
+  await db.collection<any>("supply_chain_carrier_events").insertOne({
    _id:event.tenantId+":"+eventId,tenantId:event.tenantId,organizationId:event.organizationId,
    carrierId:event.carrierId,providerEventId:event.providerEventId,shipmentId:event.shipmentId,
    trackingNumber:event.trackingNumber,status:event.status,reason:event.reason,
