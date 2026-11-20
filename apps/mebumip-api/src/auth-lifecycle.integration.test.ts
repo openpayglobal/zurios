@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { MongoClient } from "mongodb";
-import { hashToken, newOpaqueToken } from "./security.js";
 
 process.env.NODE_ENV = "test";
 process.env.PLATFORM_BOOTSTRAP_TOKEN = "mebumip-integration-bootstrap-secret-2026";
