@@ -65,6 +65,10 @@ Platform → ecosystem/product → tenant → organization → workspace → bra
 ### 4.3 Permission model
 Permissions are action-oriented (for example `sales.invoice.create`, `inventory.adjustment.approve`, `ledger.journal.post`). Roles bundle permissions; ABAC conditions constrain them by tenant, organization, branch, resource ownership, amount, status, time, device or risk. Tenant-supplied IDs are never proof of access.
 
+### 4.4 Global identity and workspace access
+
+One person has one global Zuri identity and may belong to multiple tenant workspaces simultaneously. Sign-in authenticates the person independently of workspace selection. After password and required MFA verification, the user chooses one of their active memberships. Each membership has independent roles and organization/location scope. Switching workspace changes the active tenant context without creating a second user or membership. Users without active memberships must be guided to an approved invitation or access-request process; the client must never self-grant tenant access.
+
 ## 5. Product catalogue and scope
 
 ### 5.1 Platform and shared capabilities
