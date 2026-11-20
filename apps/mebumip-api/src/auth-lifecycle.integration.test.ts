@@ -168,6 +168,10 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     assert.equal((await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: winningEmail, password: "owner-new-secure-password-456" } })).statusCode, 401);
     assert.equal((await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: winningEmail, password: "owner-recovered-password-789" } })).statusCode, 200);
 
+    const cookieLogin = await app.inject({ method: "POST", url: "/v1/auth/login", payload: { email: winningEmail, password: "owner-recovered-password-789" } });
+    assert.equal(cookieLogin.statusCode, 200);
+    assert.ok(cookieLogin.headers["set-cookie"]);
+
     const auditActions = await db.collection("auditEvents").distinct("action");
     assert.ok(auditActions.includes("platform.bootstrap.completed"));
     assert.ok(auditActions.includes("platform.bootstrap.denied"));
