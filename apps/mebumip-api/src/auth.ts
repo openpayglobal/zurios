@@ -277,7 +277,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       const recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
       const consumed = await db.collection("users").updateOne(
         { _id: user._id, mfaRecoveryCodeHashes: recoveryHash },
-        [{ $set: { mfaRecoveryCodeHashes: { $filter: { input: { $ifNull: ["$mfaRecoveryCodeHashes", []] }, as: "codeHash", cond: { $ne: ["$codeHash", recoveryHash] } } } } }],
+        [{ $set: { mfaRecoveryCodeHashes: { $filter: { input: { $ifNull: ["$mfaRecoveryCodeHashes", []] }, as: "codeHash", cond: { $ne: ["$$codeHash", recoveryHash] } } } } }],
       );
       verified = consumed.modifiedCount === 1;
     }
@@ -299,7 +299,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const consumed = await db.collection("users").updateOne(
       { _id: user._id, mfaEnabled: true, mfaRecoveryCodeHashes: recoveryHash },
       [
-        { $set: { mfaRecoveryCodeHashes: { $filter: { input: { $ifNull: ["$mfaRecoveryCodeHashes", []] }, as: "codeHash", cond: { $ne: ["$codeHash", recoveryHash] } } } } },
+        { $set: { mfaRecoveryCodeHashes: { $filter: { input: { $ifNull: ["$mfaRecoveryCodeHashes", []] }, as: "codeHash", cond: { $ne: ["$$codeHash", recoveryHash] } } } } },
         { $unset: ["mfaSecretEncrypted", "mfaEnabled", "mfaEnabledAt", "mfaRecoveryCodeHashes", "mfaPendingSecret", "mfaSetupExpiresAt"] },
       ],
     );
