@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Db, Document } from "mongodb";
 
 export const PLATFORM_ROLES = ["platform_owner", "platform_admin", "platform_operator", "platform_auditor"] as const;
 export const TENANT_ROLES = ["tenant_owner", "tenant_admin", "publisher", "advertiser", "support_agent", "viewer"] as const;
@@ -73,6 +74,7 @@ export interface AuditEventInput {
   outcome: "success" | "denied" | "failure";
   correlationId: string;
   occurredAt?: Date;
+  sequence?: number;
   metadata?: Record<string, string | number | boolean | null>;
 }
 
@@ -88,6 +90,7 @@ function auditPayload(event: AuditEventPayload): string {
     outcome: event.outcome,
     correlationId: event.correlationId,
     occurredAt: event.occurredAt.toISOString(),
+    ...(typeof event.sequence === "number" ? { sequence: event.sequence } : {}),
     ...(event.metadata ? { metadata: event.metadata } : {}),
   });
 }
@@ -114,9 +117,23 @@ export function verifyAuditEvent(event: Record<string, unknown>, signingKey = pr
     ...(typeof event.tenantId === "string" ? { tenantId: event.tenantId } : {}),
     outcome: event.outcome as AuditEventInput["outcome"], correlationId: event.correlationId,
     occurredAt: event.occurredAt,
+    ...(typeof event.sequence === "number" ? { sequence: event.sequence } : {}),
     ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
   };
   const expected = createHmac("sha256", signingKey).update(auditPayload(payload)).digest();
   const actual = Buffer.from(integrity.signature, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export async function appendAuditEvent(db: Db, input: AuditEventInput) {
+  const counters = db.collection<{ _id: string; sequence: number }>("auditCounters");
+  const counter = await counters.findOneAndUpdate(
+    { _id: "global" },
+    { $inc: { sequence: 1 }, $setOnInsert: { createdAt: new Date() } },
+    { upsert: true, returnDocument: "after" },
+  );
+  if (!counter || !Number.isSafeInteger(counter.sequence) || counter.sequence < 1) throw new Error("AUDIT_SEQUENCE_ALLOCATION_FAILED");
+  const event = createAuditEvent({ ...input, sequence: counter.sequence });
+  await db.collection("auditEvents").insertOne(event as Document);
+  return event;
 }
