@@ -3,25 +3,30 @@ import type {FastifyPluginAsync} from "fastify";
 import {z,ZodError} from "zod";
 import {createHash} from "node:crypto";
 import type {AuthConfig} from "./auth-service.js";
-import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,login,logout,refreshLogin,resetPassword,verifyEmail,verifyMfaLogin} from "./auth-service.js";
+import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,login,logout,refreshLogin,resetPassword,verifyEmail,verifyMfaLogin,listUserWorkspaces,selectWorkspace,switchWorkspace} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
-const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64)});
+const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64).optional()});
 const mfaSchema=z.object({challengeToken:z.string().min(20),code:z.string().min(6).max(64)});
 const refreshSchema=z.object({sessionId:z.string().min(1),refreshToken:z.string().min(20)});
 function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
  const code=error instanceof Error?error.message:"";
- if(code==="AUTH_RATE_LIMITED")return 429;
+ if(code==="AUTH_RATE_LIMITED")return 429;\n if(code==="WORKSPACE_ACCESS_DENIED")return 403;\n if(code==="WORKSPACE_SELECTION_REPLAYED_OR_EXPIRED")return 409;
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_/.test(code))return 401;
  return 500;
 }
-function failure(error:unknown,reply:any){const status=statusFor(error);return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===401?"AUTHENTICATION_FAILED":"INTERNAL_SERVER_ERROR"});}
+function failure(error:unknown,reply:any){const status=statusFor(error);return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===401?"AUTHENTICATION_FAILED":status===403?"WORKSPACE_ACCESS_DENIED":status===409?"WORKSPACE_SELECTION_REPLAYED":"INTERNAL_SERVER_ERROR"});}
 export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async function registerAuthRoutes(app){
   const requireAuth=authenticate(db,config);
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   try{const body=loginSchema.parse(request.body) as {email:string;password:string;tenantSlug:string};const ipHash=createHash("sha256").update(request.ip).digest("hex");return await login(db,config,{...body,ipHash});}
+   try{const body=loginSchema.parse(request.body) as {email:string;password:string;tenantSlug?:string};const ipHash=createHash("sha256").update(request.ip).digest("hex");return await login(db,config,{...body,ipHash});}
+   catch(error){return failure(error,reply);}
+  });
+  app.post("/auth/workspace/select",async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   try{const body=z.object({selectionToken:z.string().min(20),tenantId:z.string().min(1)}).parse(request.body);return await selectWorkspace(db,config,body.selectionToken,body.tenantId);}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/verify",async(request,reply)=>{
@@ -61,7 +66,13 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    try{const body=z.object({userId:z.string().min(1),token:z.string().min(20),newPassword:z.string().min(12).max(128)}).parse(request.body);await resetPassword(db,body.userId,body.token,body.newPassword);return reply.code(204).send();}
    catch(error){return failure(error,reply);}
   });
-  app.get("/auth/me",{preHandler:requireAuth},async request=>({principal:request.principal}));
+  app.get("/auth/me",{preHandler:requireAuth},async request=>({principal:request.principal}));\n  app.get("/auth/workspaces",{preHandler:requireAuth},async request=>({workspaces:await listUserWorkspaces(db,request.principal!.userId)}));
+  app.post("/auth/workspace/switch",{preHandler:requireAuth},async(request,reply)=>{
+   try{
+    const body=z.object({tenantId:z.string().min(1)}).parse(request.body),p=request.principal!;
+    return await switchWorkspace(db,config,{userId:p.userId,tenantId:p.tenantId,sessionId:p.sessionId,targetTenantId:body.tenantId});
+   }catch(error){return failure(error,reply);}
+  });
   app.post("/auth/logout",{preHandler:requireAuth},async(request,reply)=>{
    try{const p=request.principal!;await logout(db,p.tenantId,p.sessionId,p.userId);return reply.code(204).send();}
    catch(error){return failure(error,reply);}
