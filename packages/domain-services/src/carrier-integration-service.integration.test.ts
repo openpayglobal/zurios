@@ -2,17 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {MongoClient} from "mongodb";
 import {ingestCarrierTrackingEvent} from "./carrier-integration-service.js";
+import {ensureDomainServiceIndexes} from "./indexes.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 test("carrier tracking events require verified signatures, exact shipment ownership and monotonic versions",{skip:!uri},async()=>{
  const client=new MongoClient(uri!);await client.connect();
  const db=client.db("zuri_carrier_it_"+Date.now());const tenantId="tenant-carrier-a";
  try{
+  await ensureDomainServiceIndexes(db);
   await Promise.all([
    db.collection("idempotency_records").createIndex({tenantId:1,actorId:1,operation:1,key:1},{unique:true}),
    db.collection("audit_events").createIndex({eventId:1},{unique:true}),
    db.collection("outbox_events").createIndex({eventId:1},{unique:true})
   ]);
+  const carrierIndexes=await db.collection("supply_chain_carrier_events").indexes();
+  assert.equal(carrierIndexes.some(index=>index.name==="uq_carrier_provider_event"&&index.unique===true),true);
   await db.collection<any>("supply_chain_shipments").insertOne({
    _id:tenantId+":shipment-1",tenantId,organizationId:"org-a",shipmentId:"shipment-1",
    carrierId:"carrier-a",trackingNumber:"TRACK-1",status:"dispatched",version:1
