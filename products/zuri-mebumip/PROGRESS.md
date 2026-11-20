@@ -234,3 +234,11 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Integration tests verify successful export and reject a tampered archive.
 - **Storage boundary:** the exporter creates a verifiable file; it does not provide WORM retention. Operations must place the verified bundle into a separately administered object-lock store with retention/deletion controls, then test restore. No cloud archive provider or production bucket has been configured.
 - This archive exporter and verifier are newer than the passing #362/#1310 runs and require fresh CI.
+
+
+**Signed audit archive export verification — 2026-11-20:**
+
+- MeBuMIP verification **#379** passed on head `86bf87b32094a2d49443c7ab9e20e3c42129ef5c`: API typecheck, **17 tests passed / 0 failed / 0 skipped**, API build, web typecheck and web build.
+- Full monorepo CI **#1318** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
+- The passing database tests include signed audit archive export and offline verification, and reject a tampered archive bundle.
+- The archive remains a portable signed file only. It is not yet stored in WORM/object-lock infrastructure and does not satisfy retention/restore acceptance by itself.
