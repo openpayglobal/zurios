@@ -1,10 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { appendAuditEvent, signAuditExport } from "./security.js";
+import { appendAuditEvent, hashToken, newOpaqueToken, signAuditExport } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 import { config, corsOrigins } from "./config.js";
+import { sendPlatformAdminInvitationEmail } from "./mail.js";
 
 export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   // MAD: strictly read-only operational aggregates. No tenant content or credentials.
@@ -145,6 +146,56 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
   });
 
+  app.get("/v1/mac/admin-invitations", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:admins:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const items = await db.collection("platformAdminInvitations").find({ acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { projection: { tokenHash: 0 } }).sort({ createdAt: -1 }).limit(100).toArray();
+    return reply.send({ items: items.map((item) => ({ id: String(item._id), email: item.email, role: item.role, expiresAt: item.expiresAt, createdAt: item.createdAt })) });
+  });
+
+  app.post("/v1/mac/admin-invitations", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (resolved.principal.platformRole !== "platform_owner") return reply.code(403).send({ error: "PLATFORM_OWNER_REQUIRED" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const parsed = z.object({ email: z.string().email().max(254), role: z.enum(["platform_admin", "platform_operator", "platform_auditor"]) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const email = parsed.data.email.trim().toLowerCase();
+    const existing = await db.collection("users").findOne({ normalizedEmail: email, platformRole: { $exists: true } });
+    if (existing) return reply.code(409).send({ error: "USER_ALREADY_HAS_PLATFORM_ROLE" });
+    const pending = await db.collection("platformAdminInvitations").findOne({ email, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
+    if (pending) return reply.code(409).send({ error: "PLATFORM_ADMIN_INVITATION_ALREADY_PENDING" });
+    const token = newOpaqueToken();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 48 * 60 * 60_000);
+    const inserted = await db.collection("platformAdminInvitations").insertOne({ email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt });
+    const delivery = await sendPlatformAdminInvitationEmail({ to: email, role: parsed.data.role, token, expiresAt });
+    if (!delivery.delivered) {
+      await db.collection("platformAdminInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
+      await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.delivery_failed", targetType: "platform_admin_invitation", targetId: String(inserted.insertedId), outcome: "failure", correlationId: request.id });
+      return reply.code(503).send({ error: "PLATFORM_ADMIN_INVITATION_DELIVERY_UNAVAILABLE" });
+    }
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.created", targetType: "platform_admin_invitation", targetId: String(inserted.insertedId), outcome: "success", correlationId: request.id });
+    return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
+  });
+
+  app.post("/v1/mac/admin-invitations/accept", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    const parsed = z.object({ token: z.string().min(40).max(200) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
+    if (!user) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    const invitation = await db.collection("platformAdminInvitations").findOne({ tokenHash: hashToken(parsed.data.token), email: user.normalizedEmail, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
+    if (!invitation) return reply.code(404).send({ error: "PLATFORM_ADMIN_INVITATION_INVALID_OR_EMAIL_MISMATCH" });
+    const claimed = await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { acceptedAt: new Date(), acceptedBy: resolved.principal.userId } });
+    if (claimed.modifiedCount !== 1) return reply.code(409).send({ error: "PLATFORM_ADMIN_INVITATION_ALREADY_USED" });
+    const updated = await db.collection("users").updateOne({ _id: user._id, platformRole: { $exists: false } }, { $set: { platformRole: invitation.role, platformAdminStatus: "active", platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: new Date() } });
+    if (updated.modifiedCount !== 1) { await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedBy: resolved.principal.userId }, { $unset: { acceptedAt: "", acceptedBy: "" } }); return reply.code(409).send({ error: "USER_ALREADY_HAS_PLATFORM_ROLE" }); }
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.accepted", targetType: "platform_admin", targetId: resolved.principal.userId, outcome: "success", correlationId: request.id, metadata: { role: String(invitation.role) } });
+    return reply.send({ status: "accepted", role: invitation.role });
+  });
   app.get("/v1/mac/audit-events/verify", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
