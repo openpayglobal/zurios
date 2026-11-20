@@ -10,8 +10,9 @@ export function createEnvironmentWebhookSecretResolver(
 ): WebhookSecretResolver {
   return async (secretRef: string) => {
     const match = /^env:\/\/(ZURI_WEBHOOK_SECRET_[A-Z0-9_]{1,100})$/.exec(secretRef);
-    if (!match) throw new Error("WEBHOOK_SECRET_REFERENCE_NOT_ALLOWED");
-    const secret = environment[match[1]];
+    const variableName = match?.[1];
+    if (!variableName) throw new Error("WEBHOOK_SECRET_REFERENCE_NOT_ALLOWED");
+    const secret = environment[variableName];
     if (!secret) throw new Error("WEBHOOK_SECRET_NOT_CONFIGURED");
     if (secret.length < 32) throw new Error("WEBHOOK_SIGNING_SECRET_TOO_SHORT");
     return secret;
