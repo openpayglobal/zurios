@@ -26,11 +26,12 @@ export async function ingestCarrierTrackingEvent(db:Db,input:unknown,signature:s
    carrierId:event.carrierId,trackingNumber:event.trackingNumber
   },{session});
   if(!shipment)throw new Error("CARRIER_SHIPMENT_NOT_FOUND");
-  if(shipment.version!==event.expectedShipmentVersion)throw new Error("SHIPMENT_VERSION_CONFLICT");
+  const occurredAt=new Date(event.occurredAt);
+  if(shipment.lastStatusAt&&occurredAt<=new Date(shipment.lastStatusAt))throw new Error("CARRIER_EVENT_STALE");
   if(!transitions[shipment.status]?.includes(event.status))throw new Error("SHIPMENT_STATUS_TRANSITION_INVALID");
   const now=new Date();
   const update=await db.collection("supply_chain_shipments").updateOne(
-   {tenantId:event.tenantId,organizationId:event.organizationId,shipmentId:event.shipmentId,carrierId:event.carrierId,trackingNumber:event.trackingNumber,status:shipment.status,version:event.expectedShipmentVersion},
+   {tenantId:event.tenantId,organizationId:event.organizationId,shipmentId:event.shipmentId,carrierId:event.carrierId,trackingNumber:event.trackingNumber,status:shipment.status,version:shipment.version},
    {$set:{status:event.status,lastStatusReason:event.reason,lastStatusAt:new Date(event.occurredAt),updatedAt:now,...(event.proofOfDeliveryRef?{proofOfDeliveryRef:event.proofOfDeliveryRef}:{})},$inc:{version:1}},
    {session}
   );
@@ -40,15 +41,15 @@ export async function ingestCarrierTrackingEvent(db:Db,input:unknown,signature:s
    _id:event.tenantId+":"+eventId,tenantId:event.tenantId,organizationId:event.organizationId,
    carrierId:event.carrierId,providerEventId:event.providerEventId,shipmentId:event.shipmentId,
    trackingNumber:event.trackingNumber,status:event.status,reason:event.reason,
-   occurredAt:new Date(event.occurredAt),receivedAt:now,shipmentVersion:event.expectedShipmentVersion+1
+   occurredAt:new Date(event.occurredAt),receivedAt:now,shipmentVersion:shipment.version+1
   },{session});
   await auditDomainMutation(db,session,event.tenantId,actorId,"supply_chain.carrier_event.accepted","shipment",event.shipmentId,{
    organizationId:event.organizationId,carrierId:event.carrierId,providerEventId:event.providerEventId,
-   status:event.status,shipmentVersion:event.expectedShipmentVersion+1
+   status:event.status,shipmentVersion:shipment.version+1
   });
   await appendOutboxEvent(db,session,{tenantId:event.tenantId,eventType:"supply_chain.shipment."+event.status,aggregateType:"shipment",aggregateId:event.shipmentId,payload:{
    shipmentId:event.shipmentId,organizationId:event.organizationId,status:event.status,
-   occurredAt:event.occurredAt,version:event.expectedShipmentVersion+1,carrierId:event.carrierId,providerEventId:event.providerEventId
+   occurredAt:event.occurredAt,version:shipment.version+1,carrierId:event.carrierId,providerEventId:event.providerEventId
   }});
   return {statusCode:200,body:{shipmentId:event.shipmentId,providerEventId:event.providerEventId,status:event.status,version:event.expectedShipmentVersion+1}};
  });
