@@ -11,3 +11,4 @@ export * from "./project-service.js";
 export * from "./procurement-service.js";
 export * from "./workflow-service.js";
 export * from "./analytics-service.js";
+export * from "./supply-chain-service.js";
