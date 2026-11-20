@@ -50,12 +50,15 @@ async function issueWorkspaceSelection(db:Db,config:AuthConfig,userId:string){
  return {workspaceSelectionRequired:true as const,selectionToken,workspaces,accessToken:undefined as never,refreshToken:undefined as never,sessionId:undefined as never};
 }
 export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:string,tenantId:string){
- const verified=await jwtVerify(selectionToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]}),claims=verified.payload,now=new Date();
+ let verified;
+ try{verified=await jwtVerify(selectionToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});}
+ catch{throw new Error("WORKSPACE_SELECTION_INVALID");}
+ const claims=verified.payload,now=new Date();
  if(claims.purpose!=="workspace_selection"||typeof claims.sub!=="string"||typeof claims.selectionId!=="string")throw new Error("WORKSPACE_SELECTION_INVALID");
  const c=coreCollections(db),[user,tenant,membership]=await Promise.all([
   c.users.findOne({userId:claims.sub,status:"active"}),
   c.tenants.findOne({tenantId,status:"active"}),
-  c.memberships.findOne({tenantId,userId:claims.sub,status:"active"})
+  c.memberships.findOne({tenantId,userId:claims.sub,status:"active",$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]})
  ]);
  if(!user||!tenant||!membership)throw new Error("WORKSPACE_ACCESS_DENIED");
  const consumed=await db.collection("workspace_selection_challenges").updateOne({selectionId:claims.selectionId,userId:claims.sub,usedAt:{$exists:false},expiresAt:{$gt:now}},{$set:{usedAt:now}});
@@ -66,7 +69,7 @@ export async function switchWorkspace(db:Db,config:AuthConfig,input:{userId:stri
  const c=coreCollections(db),[currentSession,targetTenant,targetMembership]=await Promise.all([
   c.sessions.findOne({tenantId:input.tenantId,sessionId:input.sessionId,userId:input.userId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}}),
   c.tenants.findOne({tenantId:input.targetTenantId,status:"active"}),
-  c.memberships.findOne({tenantId:input.targetTenantId,userId:input.userId,status:"active"})
+  c.memberships.findOne({tenantId:input.targetTenantId,userId:input.userId,status:"active",$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:new Date()}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:new Date()}}]}]})
  ]);
  if(!currentSession)throw new Error("SESSION_INVALID");
  if(!targetTenant||!targetMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
