@@ -6,6 +6,7 @@ process.env.NODE_ENV = "test";
 process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-2026-not-production";
 const { ensureMeBuMIPIndexes } = await import("./database.js");
 const { appendAuditEvent, applyAuditChainBackfill, planAuditChainBackfill, verifyAuditChain } = await import("./audit-service.js");
+const { exportAuditArchive, verifyAuditArchiveBundle } = await import("./audit-service.js");
 const mongoUri = process.env.MONGODB_TEST_URI;
 
 test("audit chain backfill defaults to dry-run and verifies migrated legacy events", {
@@ -36,6 +37,13 @@ test("audit chain backfill defaults to dry-run and verifies migrated legacy even
     assert.equal(verification.valid, true);
     assert.equal(verification.checked, 3);
     assert.equal(verification.legacyUnchainedEvents, 0);
+    const archive = await exportAuditArchive(db);
+    assert.equal(verifyAuditArchiveBundle(archive).valid, true);
+    const tamperedArchive = {
+      ...archive,
+      events: archive.events.map((event, index) => index === 1 ? { ...event, action: "tampered.archive.event" } : event),
+    };
+    assert.equal(verifyAuditArchiveBundle(tamperedArchive).valid, false);
 
     const repeat = await planAuditChainBackfill(db);
     assert.equal(repeat.legacyCount, 0);
