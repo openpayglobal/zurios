@@ -110,8 +110,8 @@ Meta API versions must be explicit and centrally configured; never rely on unver
 - Key inventory, dual-control backup and recovery evidence exist.
 - MFA key-ring dry-run and controlled apply migration are tested on a restorable non-production copy.
 - Old keys remain available until every dependent ciphertext and retained backup is migrated or expired.
-- Audit key rotation remains blocked until versioned verification exists.
-- Independent archive provider, retention and access policy are approved and exercised.
+- Versioned audit key-ring verification is implemented and tested; production rotation remains blocked until backup/recovery evidence, full-history verification and a controlled deployment window are approved.
+- Independent archive provider, retention and access policy are approved and exercised; the provider-neutral package builder and sink contract alone do not satisfy this gate.
 - Full-history audit archive reconciliation passes.
 - Critical/high findings are closed or explicitly risk-accepted by the accountable owner.
 
