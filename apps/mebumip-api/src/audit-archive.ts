@@ -113,7 +113,7 @@ export async function archiveAuditPackage(
     (retention.legalHold && !stored.legalHold) ||
     !stored.preventOverwrite ||
     !stored.preventDeleteUntilRetention ||
-    (retention.preventAdministrativeBypass && stored.preventAdministrativeBypass)
+    (retention.preventAdministrativeBypass && !stored.preventAdministrativeBypass)
   ) throw new Error("AUDIT_ARCHIVE_STORAGE_RETENTION_NOT_CONFIRMED");
 
   const receipt: AuditArchiveReceipt = {
