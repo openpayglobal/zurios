@@ -8,7 +8,7 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   process.env.MFA_ENCRYPTION_KEY = "b".repeat(64);
   process.env.AUDIT_SIGNING_KEY = "mebumip-integration-audit-signing-key";
 
-  const [{ default: Fastify }, { MongoClient, ObjectId }, { ensureMeBuMIPIndexes }, { registerAuthRoutes }, { registerTenantMemberRoutes }, { registerAdminRoutes }, { registerDatabaseRateLimit }, { generateTotpCode }, { verifyAuditEvent }, { getTestMailOutbox, clearTestMailOutbox }] = await Promise.all([
+  const [{ default: Fastify }, { MongoClient, ObjectId }, { ensureMeBuMIPIndexes }, { registerAuthRoutes }, { registerTenantMemberRoutes }, { registerAdminRoutes }, { registerDatabaseRateLimit }, { generateTotpCode }, { appendAuditEvent, verifyAuditEvent }, { getTestMailOutbox, clearTestMailOutbox }] = await Promise.all([
     import("fastify"), import("mongodb"), import("./database.js"), import("./auth.js"),
     import("./tenant-members.js"), import("./admin.js"), import("./rate-limit.js"), import("./mfa.js"), import("./security.js"), import("./mail.js"),
   ]);
@@ -113,5 +113,11 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(auditExport.json().integrity.unsignedOrInvalid, 0);
   assert.equal(auditExport.json().manifest.integrity.algorithm, "HMAC-SHA256");
   assert.equal(String(auditExport.json().manifest.integrity.signature).length, 64);
+  const firstSequence = await appendAuditEvent(db, { actorUserId: "integration", action: "test.audit.sequence.first", targetType: "test", outcome: "success", correlationId: randomUUID() });
+  await appendAuditEvent(db, { actorUserId: "integration", action: "test.audit.sequence.second", targetType: "test", outcome: "success", correlationId: randomUUID() });
+  await db.collection("auditEvents").deleteOne({ sequence: firstSequence.sequence });
+  const gapCheck = await app.inject({ method: "GET", url: "/v1/mac/audit-events/verify", headers });
+  assert.equal(gapCheck.statusCode, 200);
+  assert.ok(gapCheck.json().sequenceGaps >= 1);
   assert.equal(await db.collection("tenantInvitations").countDocuments({ acceptedAt: { $exists: false } }), 0);
 });
