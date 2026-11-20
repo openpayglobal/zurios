@@ -44,7 +44,7 @@ This directory is the authoritative entry point for ecosystem-wide specification
 - [Sign-in and Workspace Selection](./ux/SIGN-IN-AND-WORKSPACE-SELECTION.md) — identity-first sign-in, access request, workspace chooser and accessibility.
 - [Identity and Workspace API Contracts](./api/IDENTITY-AND-WORKSPACE-CONTRACTS.md) — login, MFA, workspace selection, switching and session contracts.
 - [Identity and Membership Data Model](./database/IDENTITY-MEMBERSHIP-DATA-MODEL.md) — users, tenants, memberships, sessions and indexes.
-- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
+- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.\n- [PR #13 / PR #14 Security Integration and Acceptance Plan](./operations/PR13-PR14-SECURITY-INTEGRATION-ACCEPTANCE.md) — branch reconciliation, audit-chain invariants, security regression matrix and merge/release gates.
 
 ## Full Zuri OS baseline specifications
 
