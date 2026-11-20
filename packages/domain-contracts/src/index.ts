@@ -210,6 +210,7 @@ export type StockReservation=z.infer<typeof StockReservationSchema>;
 export const ERP_EVENT_TYPES=["erp.purchase_order.submitted","erp.purchase_order.received","erp.invoice.issued","erp.journal.posted"] as const;
 export const POS_EVENT_TYPES=["pos.sale.completed","pos.sale.voided","pos.refund.completed","pos.tender.captured"] as const;
 export const INVENTORY_EVENT_TYPES=["inventory.stock.received","inventory.stock.issued","inventory.stock.transferred","inventory.stock.adjusted","inventory.stock.reserved","inventory.stock.consumed"] as const;
+export const SUPPLY_CHAIN_EVENT_TYPES=["supply_chain.shipment.created","supply_chain.shipment.dispatched","supply_chain.shipment.in_transit","supply_chain.shipment.delayed","supply_chain.shipment.delivered","supply_chain.shipment.cancelled"] as const;
 
 export const FiscalPeriodSchema=z.object({
  tenantId:z.string().min(1),organizationId:z.string().min(1).optional(),periodId:z.string().min(1),periodCode:z.string().min(1).max(32),
