@@ -77,7 +77,7 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
       });
       return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" });
     }
-    await db.collection("auditEvents").insertOne(createAuditEvent({
+    await appendAuditEvent(db, {
       actorUserId: resolved.principal.userId, action: "tenant.invitation.created",
       targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
       outcome: "success", correlationId: request.id,
