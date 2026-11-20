@@ -212,3 +212,52 @@ The route-drift checker was corrected to identify the outer schema properties bl
 **Meta platform global research baseline (2026-11-20):** added `docs/integrations/META-PLATFORM-INTEGRATION-READINESS.md` and indexed it in `docs/README.md`. The document records the current official Meta Graph API and Marketing API version observations, separates their version schedules, and defines Tech Provider/App Review gates, least-privilege permissions, Pages/Instagram lifecycle, advertising spend controls, WhatsApp opt-in/templates/webhooks, event reliability and tenant isolation. This is a readiness specification, not implementation evidence. Objectives A–D remain not started; Meta setup remains deferred by the owner.
 
 **Audit export signer compile correction (2026-11-20):** CI had reported duplicate exported `signAuditExport` implementations in `apps/mebumip-api/src/security.ts`. Removed the duplicate legacy implementation while preserving the version-aware signer and the single manifest verifier. The failing run predates this fix; verification is pending on the subsequent commit.
+
+
+## Programme status snapshot — 20 November 2026
+
+### Five approved objectives
+
+| Objective | Scope | Phase | Status |
+|---|---|---:|---|
+| A | Facebook Pages and Instagram account management | 2 | Not started |
+| B | Facebook and Instagram advertising | 3 | Not started |
+| C | WhatsApp Business Platform/API | 4 | Not started |
+| D | Multi-business Meta management | 5 | Not started |
+| E | Zuri OS and third-party integrations | 6 | Not started |
+
+### Programme phases
+
+| Phase | Status |
+|---|---|
+| 0 — Governance and Meta prerequisites | In progress; Meta setup deferred by owner |
+| 1 — Foundation, security, MAC and MAD | In progress |
+| 2 — Facebook and Instagram | Not started |
+| 3 — Advertising | Not started |
+| 4 — WhatsApp | Not started |
+| 5 — Multi-business SaaS | Not started |
+| 6 — External integrations | Not started |
+| 7 — Production readiness and launch | Not started |
+
+### Latest verified code checkpoint
+
+- Repository: `openpayglobal/zurios`
+- Branch: `feat/zuri-mebumip-foundation`
+- Code fix: `75fb1201dfb8dba7e4c4ca611e057f1ff82fe7b8` removed the duplicate audit export signer reported by CI.
+- Repository CI run [44744980971](https://github.com/openpayglobal/zurios/actions/runs/44744980971): OpenAPI contract validation, route drift, monorepo typecheck, tests and build all passed. This run tested the code-fix commit; later commits in this checkpoint add documentation only.
+- MeBuMIP Phase 1 run [44744971467](https://github.com/openpayglobal/zurios/actions/runs/44744971467): API typecheck, API tests, API build, web typecheck and web build all passed.
+- A subsequent MeBuMIP run [44744981017](https://github.com/openpayglobal/zurios/actions/runs/44744981017) has completed API typecheck, API tests, API build, web typecheck and web build successfully; final container cleanup was still running when this register was updated.
+- Earlier failing runs on pre-fix commits are retained as history and must not be mistaken for the latest code status.
+
+### Remaining Phase 1 closure gates
+
+- Configure and verify the production mail sender and secrets.
+- Exercise MFA key migration on a restorable non-production database; verify backup and rollback; do not rotate live keys without owner approval and evidence.
+- Select and configure an independent immutable/WORM audit archive, retention policy, IAM boundary, retry/outbox and full-history reconciliation.
+- Complete production HTTPS, CORS, trusted proxy, cookie topology, secrets custody/rotation and recovery runbook verification.
+- Complete final MAC/MAD authorization and operational policy review.
+- Verify deployment topology and production observability; no production deployment is claimed.
+
+### Current boundaries
+
+No live Meta app credentials, business portfolio, Tech Provider verification, App Review/Advanced Access approval, webhook subscription or customer Meta connection is configured or claimed. The Meta readiness specification in `docs/integrations/` informs future phases but does not change their approved status. Phase 1 remains in progress and the programme is not production-ready.
