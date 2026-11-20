@@ -9,7 +9,7 @@
 
 The identity-first, multi-workspace sign-in foundation is implemented and CI-verified. One global user identity can have multiple active tenant memberships. Sign-in verifies the user first; workspace selection then issues a tenant- and membership-bound session. Switching workspace revalidates membership and revokes the prior session.
 
-The canonical ecosystem, product, architecture, UX, database, API and deployment documents are now indexed under `docs/`. This register distinguishes source/CI evidence from Vercel deployment and production readiness.
+The canonical ecosystem, product, architecture, UX, database, API and deployment documents are now indexed under `docs/`, including ADR-005 for the global identity/multi-workspace decision and safe API/web `.env.example` templates. This register distinguishes source/CI evidence from Vercel deployment and production readiness.
 
 ## 2. Current delivery evidence
 
@@ -40,8 +40,8 @@ Head commit: `62862b5e8f43aaf5fd614ef0d230975981e1166c`
 
 Head commit at verification: `1991c29efe2d3c224dc2589ede66cfaa9baa89f6`
 
-- [Full monorepo CI run 44740968370](https://github.com/openpayglobal/zurios/actions/runs/44740968370) — passed.
-- [MeBuMIP Phase 1 verification run 44740968460](https://github.com/openpayglobal/zurios/actions/runs/44740968460) — passed.
+- [Full monorepo CI run 44741920316](https://github.com/openpayglobal/zurios/actions/runs/44741920316) — passed.
+- [MeBuMIP Phase 1 verification run 44741920500](https://github.com/openpayglobal/zurios/actions/runs/44741920500) — passed.
 - OpenAPI validation, route drift, TypeScript typecheck, MongoDB replica-set tests, API build and web build all passed.
 
 These are CI results for the named commits. They do not prove that Vercel has deployed those commits or that production credentials are configured.
