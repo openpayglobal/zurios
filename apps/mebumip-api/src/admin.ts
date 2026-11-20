@@ -76,11 +76,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         tenantId: String(tenantResult.insertedId), userId: String(owner._id),
         role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
       });
-      await db.collection("auditEvents").insertOne(createAuditEvent({
+      await appendAuditEvent(db, {
         actorUserId: resolved.principal.userId, action: "platform.tenant.created",
         targetType: "tenant", targetId: String(tenantResult.insertedId),
         outcome: "success", correlationId: request.id,
-      }));
+      });
     } catch (error) {
       await db.collection("memberships").deleteOne({ tenantId: String(tenantResult.insertedId) });
       await db.collection("tenants").deleteOne({ _id: tenantResult.insertedId });
