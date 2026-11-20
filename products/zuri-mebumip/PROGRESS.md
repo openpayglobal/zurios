@@ -125,3 +125,6 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Session deployment hardening follow-through (2026-11-20):** cookie SameSite policy is configurable (`Strict`, `Lax`, `None`) and the API now trusts reverse-proxy client IP headers only for explicitly configured `TRUSTED_PROXY_CIDRS`. Session records capture a bounded user-agent and a one-way IP hash; the session inventory exposes device label metadata without exposing IP addresses or token material. Production still requires HTTPS, exact CORS origins, appropriate SameSite selection and a verified proxy topology.
+
+
+**MAC control-screen follow-through (2026-11-20):** the MAC administrator screen now supports MFA step-up and interactive role/suspension changes; the session screen lists active sessions and supports per-session revocation; the platform settings screen now reads safe runtime configuration status without exposing secrets; the audit screen supports signature verification and bounded export. Integration tests now also assert session inventory/device metadata and MAC runtime settings/audit verification/export endpoints. The settings screen is deliberately read-only for deployment secrets; runtime mutation controls remain separately governed.
