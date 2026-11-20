@@ -43,7 +43,7 @@ test("MongoDB-backed bootstrap is concurrency-safe and session lifecycle revokes
     assert.equal(await db.collection("users").countDocuments({ platformRole: "platform_owner" }), 1);
     assert.equal(await db.collection("tenants").countDocuments({}), 1);
     assert.equal(await db.collection("memberships").countDocuments({ role: "tenant_owner", status: "active" }), 1);
-    assert.equal((await db.collection("platformBootstrapLocks").findOne({ _id: "singleton" }))?.status, "completed");
+    assert.equal((await db.collection<{ _id: string; status?: string }>("platformBootstrapLocks").findOne({ _id: "singleton" }))?.status, "completed");
 
     const winningEmail = bootstrapA.statusCode === 201 ? "owner-a@example.test" : "owner-b@example.test";
     const invalidBootstrap = await app.inject({
