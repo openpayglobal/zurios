@@ -7,7 +7,8 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_URI`: MongoDB connection URI.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
-- `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.\n- `AUDIT_SIGNING_KEY`: at least 32 random characters; required in production and stored only in the secret manager. It HMAC-signs the append-only audit hash chain.
+- `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.
+- `AUDIT_SIGNING_KEY`: at least 32 random characters; required in production and stored only in the secret manager. It HMAC-signs the append-only audit hash chain.
 - `RESEND_API_KEY` and `MAIL_FROM`: trusted email provider credentials and verified sender address; both are mandatory in production. Invitation tokens are delivered by email and are never returned by the API. The test environment uses an in-memory sink only.
 - `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
 - `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
@@ -60,7 +61,8 @@ In development/test the API returns a bearer token for local tooling. In product
 - `GET /v1/mac/admins`: platform administrator directory read.
 - `PATCH /v1/mac/admins/:userId`: platform-owner-only role/status updates for existing platform administrators; requires recent MFA step-up. The platform owner is immutable through this route. Suspending an administrator revokes their active sessions.
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
-- `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded and chain metadata included.\n- `GET /v1/mac/audit-events/verify`: checks sequence continuity, previous-hash links and HMAC signatures; it reports any legacy events not yet backfilled.
+- `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded and chain metadata included.
+- `GET /v1/mac/audit-events/verify`: checks sequence continuity, previous-hash links and HMAC signatures; it reports any legacy events not yet backfilled.
 
 MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are hashed at rest and delivered only to the requested recipient through the configured Resend adapter; when delivery is unavailable the invitation is revoked and the API fails closed with 503. Password recovery uses the same provider, a 30-minute token lifetime and single-use database consumption. The test environment uses a non-network mail sink. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`. New writes use a transactionally allocated sequence, previous-event hash and HMAC signature. Existing legacy events without chain fields are reported as unverified until a controlled backfill is completed.
 
