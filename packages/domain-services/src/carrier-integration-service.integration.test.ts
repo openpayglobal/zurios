@@ -20,8 +20,7 @@ test("carrier tracking events require verified signatures, exact shipment owners
   const event={
    tenantId,organizationId:"org-a",shipmentId:"shipment-1",carrierId:"carrier-a",
    trackingNumber:"TRACK-1",providerEventId:"provider-event-1",status:"in_transit",
-   reason:"Carrier scan confirms departure from origin",occurredAt:"2026-11-20T10:00:00.000Z",
-   expectedShipmentVersion:1
+   reason:"Carrier scan confirms departure from origin",occurredAt:new Date().toISOString()
   };
   await assert.rejects(()=>ingestCarrierTrackingEvent(db,event,"invalid",async()=>false),/CARRIER_SIGNATURE_INVALID/);
   assert.equal(await db.collection("supply_chain_carrier_events").countDocuments({tenantId}),0);
@@ -30,7 +29,7 @@ test("carrier tracking events require verified signatures, exact shipment owners
   assert.deepEqual(result.body,{shipmentId:"shipment-1",providerEventId:"provider-event-1",status:"in_transit",version:2});
   const replay=await ingestCarrierTrackingEvent(db,event,"valid",async()=>true);
   assert.equal(replay.replayed,true);
-  await assert.rejects(()=>ingestCarrierTrackingEvent(db,{...event,providerEventId:"provider-event-2",expectedShipmentVersion:1,status:"delayed"},"valid",async()=>true),/SHIPMENT_VERSION_CONFLICT/);
+  await assert.rejects(()=>ingestCarrierTrackingEvent(db,{...event,providerEventId:"provider-event-2",occurredAt:"2020-01-01T00:00:00.000Z",status:"delayed"},"valid",async()=>true),/CARRIER_EVENT_STALE/);
   const shipment=await db.collection<any>("supply_chain_shipments").findOne({tenantId,shipmentId:"shipment-1"});
   assert.equal(shipment.status,"in_transit");assert.equal(shipment.version,2);
   assert.equal(await db.collection("supply_chain_carrier_events").countDocuments({tenantId}),1);
