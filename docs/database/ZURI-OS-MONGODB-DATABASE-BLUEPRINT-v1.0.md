@@ -93,6 +93,7 @@ Every tenant-owned query must include `tenantId` derived from authenticated memb
 | `entitlements` | platform/tenant | Product/module capabilities and limits |
 | `feature_flags` | platform/tenant | Feature release controls |
 | `audit_events` | tenant/platform | Append-only audit facts |
+| `access_requests` | platform | Public, non-provisioning Zuri OS access enquiries; status and review metadata only |\nAccess requests are platform-level records, not tenant memberships. Public submission must not create users, tenants, workspaces or memberships. The review queue is ordered by `requestedAt` and filtered by status; a successful review decision records an audited outcome but only approves follow-up. It does not grant access. Keep the collection disabled from public intake until the privacy notice, controller, retention schedule and deletion authority are approved. The application creates a unique `requestId` index and a `{status, requestedAt}` queue index.\n
 
 #### Identity and multi-membership invariant
 
