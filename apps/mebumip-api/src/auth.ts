@@ -4,7 +4,7 @@ import { ObjectId, type Db, type Document } from "mongodb";
 import { z } from "zod";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
-import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { appendAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
 import { sendPasswordRecoveryEmail } from "./mail.js";
 
@@ -100,10 +100,10 @@ export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise
 }
 
 async function writeAudit(db: Db, request: FastifyRequest, actorUserId: string, action: string, targetType: string, outcome: "success" | "denied" | "failure", targetId?: string) {
-  await db.collection("auditEvents").insertOne(createAuditEvent({
+  await appendAuditEvent(db, {
     actorUserId, action, targetType, outcome, correlationId: request.id,
     ...(targetId ? { targetId } : {}),
-  }) as Document);
+  });
 }
 
 function unauthorized(reply: FastifyReply) {
