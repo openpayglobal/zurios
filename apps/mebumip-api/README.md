@@ -8,6 +8,7 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
+- `AUDIT_SIGNING_KEY`: at least 32 characters; required in production. HMAC-SHA256 signs newly created audit events. Keep it in a secret manager and back it up separately from MongoDB.
 - `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
@@ -54,6 +55,8 @@ Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persist
 - `PATCH /v1/mac/admins/:userId`: platform-owner-only role/status updates for existing platform administrators; requires recent MFA step-up. The platform owner is immutable through this route. Suspending an administrator revokes their active sessions.
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
 - `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded.
+- `GET /v1/mac/audit-events/verify`: verifies HMAC signatures on the latest 500 records and reports unsigned/invalid counts.
+- `GET /v1/mac/audit-events/export`: paginated, bounded audit export with per-record integrity status; exports are not automatically archived.
 
 MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are returned once by the API for delivery through a trusted mail adapter; automated email delivery is not configured yet. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
 
