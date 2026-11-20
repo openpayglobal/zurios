@@ -53,7 +53,7 @@ export async function login(db:Db,config:AuthConfig,input:{email:string;password
 export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:string,code:string){
  const verified=await jwtVerify(challengeToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});
  const claims=verified.payload;
- if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.tenantId!=="string"||typeof claims.membershipId!=="string"||typeof claims.challengeId!=="string")throw new Error("INVALID_MFA_CHALLENGE");
+ if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.challengeId!=="string"||((typeof claims.tenantId==="string")!==(typeof claims.membershipId==="string")))throw new Error("INVALID_MFA_CHALLENGE");
  const c=coreCollections(db),user=await c.users.findOne({userId:claims.sub,status:"active",mfaEnabled:true});
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_NOT_CONFIGURED");
  const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
