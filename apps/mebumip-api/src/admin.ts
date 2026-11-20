@@ -5,7 +5,7 @@ import { appendAuditEvent, hashToken, newOpaqueToken, signAuditExport } from "./
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 import { config, corsOrigins } from "./config.js";
-import { sendPlatformAdminInvitationEmail } from "./mail.js";
+import { sendPlatformAdminInvitationEmail, sendTenantInvitationEmail } from "./mail.js";
 
 export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
   // MAD: strictly read-only operational aggregates. No tenant content or credentials.
@@ -101,6 +101,83 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       corsOrigins, emailDeliveryConfigured: Boolean(config.RESEND_API_KEY && config.MAIL_FROM), emailProvider: config.RESEND_API_KEY ? "resend" : "not_configured",
       auditSigningConfigured: Boolean(config.AUDIT_SIGNING_KEY), mfaEncryptionConfigured: Boolean(config.MFA_ENCRYPTION_KEY),
     }, mode: "read_only_runtime_configuration", note: "Secret values are never returned. Runtime configuration changes are managed through the deployment secret manager." });
+  });
+  app.get("/v1/mac/tenants/:tenantId/members", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:tenants:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const { tenantId } = request.params as { tenantId: string };
+    if (!ObjectId.isValid(tenantId)) return reply.code(400).send({ error: "INVALID_TENANT_ID" });
+    const [members, invitations] = await Promise.all([
+      db.collection("memberships").find({ tenantId, status: { $in: ["active", "suspended"] } }).limit(200).toArray(),
+      db.collection("tenantInvitations").find({ tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { projection: { tokenHash: 0 } }).limit(100).toArray(),
+    ]);
+    return reply.send({ members: members.map((member) => ({ id: String(member._id), userId: member.userId, role: member.role, status: member.status, createdAt: member.createdAt })), invitations: invitations.map((invite) => ({ id: String(invite._id), email: invite.email, role: invite.role, expiresAt: invite.expiresAt })) });
+  });
+
+  app.post("/v1/mac/tenants/:tenantId/invitations", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:tenants:write")) return reply.code(403).send({ error: "FORBIDDEN" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const { tenantId } = request.params as { tenantId: string };
+    if (!ObjectId.isValid(tenantId)) return reply.code(400).send({ error: "INVALID_TENANT_ID" });
+    const parsed = z.object({ email: z.string().email().max(254), role: z.enum(["tenant_admin", "publisher", "advertiser", "support_agent", "viewer"]) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const tenant = await db.collection("tenants").findOne({ _id: new ObjectId(tenantId), status: "active" });
+    if (!tenant) return reply.code(404).send({ error: "TENANT_NOT_FOUND" });
+    const email = parsed.data.email.trim().toLowerCase();
+    const user = await db.collection("users").findOne({ normalizedEmail: email, status: "active" });
+    if (user && await db.collection("memberships").findOne({ tenantId, userId: String(user._id), status: "active" })) return reply.code(409).send({ error: "USER_ALREADY_MEMBER" });
+    const pending = await db.collection("tenantInvitations").findOne({ tenantId, email, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
+    if (pending) return reply.code(409).send({ error: "INVITATION_ALREADY_PENDING" });
+    const token = newOpaqueToken(); const now = new Date(); const expiresAt = new Date(now.getTime() + 72 * 60 * 60_000);
+    const inserted = await db.collection("tenantInvitations").insertOne({ tenantId, email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt });
+    const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
+    if (!delivery.delivered) { await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } }); await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.delivery_failed", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "failure", correlationId: request.id }); return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" }); }
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.created", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "success", correlationId: request.id });
+    return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
+  });
+
+  app.patch("/v1/mac/tenants/:tenantId/members/:userId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:tenants:write")) return reply.code(403).send({ error: "FORBIDDEN" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const { tenantId, userId } = request.params as { tenantId: string; userId: string };
+    if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
+    const parsed = z.object({ role: z.enum(["tenant_admin", "publisher", "advertiser", "support_agent", "viewer"]).optional(), status: z.enum(["active", "suspended"]).optional() }).refine((value) => value.role !== undefined || value.status !== undefined).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" } }, { $set: { ...parsed.data, updatedAt: new Date() } });
+    if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.membership.updated", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id, metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) } });
+    return reply.send({ status: "updated" });
+  });
+
+  app.delete("/v1/mac/tenants/:tenantId/members/:userId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:tenants:write")) return reply.code(403).send({ error: "FORBIDDEN" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const { tenantId, userId } = request.params as { tenantId: string; userId: string };
+    if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
+    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" }, status: "active" }, { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } });
+    if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.membership.removed", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id });
+    return reply.code(204).send();
+  });
+
+  app.delete("/v1/mac/tenants/:tenantId/invitations/:invitationId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:tenants:write")) return reply.code(403).send({ error: "FORBIDDEN" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const { tenantId, invitationId } = request.params as { tenantId: string; invitationId: string };
+    if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(invitationId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
+    const result = await db.collection("tenantInvitations").updateOne({ _id: new ObjectId(invitationId), tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokedBy: resolved.principal.userId } });
+    if (!result.matchedCount) return reply.code(404).send({ error: "PENDING_INVITATION_NOT_FOUND" });
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.revoked", targetType: "tenant_invitation", targetId: invitationId, tenantId, outcome: "success", correlationId: request.id });
+    return reply.code(204).send();
   });
   app.get("/v1/mac/admins", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
