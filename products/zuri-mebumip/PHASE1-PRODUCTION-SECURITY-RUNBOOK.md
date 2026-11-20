@@ -20,7 +20,9 @@ Configure values through the deployment secret manager. Do not commit real value
 |---|---|---|
 | `MONGODB_URI` | Production MongoDB connection | TLS enabled; private network access; least-privilege application user; backup/restore test |
 | `MONGODB_DATABASE` | Dedicated MeBuMIP database | Confirmed database boundary and ownership |
-| `AUDIT_SIGNING_KEY` | Legacy HMAC-SHA256 verification for historical events | Retain until historical events and backups no longer depend on it; never replace in place |\n| `AUDIT_SIGNING_KEYRING` | JSON map of audit key IDs to 32-byte hex keys (legacy entry may encode original key bytes) | New and historical keys backed up, inventoried and access-controlled |\n| `AUDIT_SIGNING_ACTIVE_KEY_ID` | Selects the 32-byte key for new HMAC-SHA256-v2 events and manifests | Must identify a non-legacy key in `AUDIT_SIGNING_KEYRING`; historical keys remain available for verification |
+| `AUDIT_SIGNING_KEY` | Legacy HMAC-SHA256 verification for historical events | Retain until historical events and backups no longer depend on it; never replace in place |
+| `AUDIT_SIGNING_KEYRING` | JSON map of audit key IDs to 32-byte hex keys (legacy entry may encode original key bytes) | New and historical keys backed up, inventoried and access-controlled |
+| `AUDIT_SIGNING_ACTIVE_KEY_ID` | Selects the 32-byte key for new HMAC-SHA256-v2 events and manifests | Must identify a non-legacy key in `AUDIT_SIGNING_KEYRING`; historical keys remain available for verification |
 | `MFA_ENCRYPTION_KEY` | Legacy single-key fallback for existing MFA ciphertext | Retain only while legacy ciphertext remains; never replace without migration evidence |
 | `MFA_ENCRYPTION_KEYRING` | JSON map of versioned MFA key IDs to 32-byte hex keys | Active and previous keys are backed up, inventoried and access-controlled |
 | `MFA_ENCRYPTION_ACTIVE_KEY_ID` | Selects the key used for new MFA ciphertext | Must identify an entry in `MFA_ENCRYPTION_KEYRING`; old keys remain available for reads |
