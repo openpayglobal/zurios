@@ -199,3 +199,24 @@ export function signAuditExport(events: Array<Record<string, unknown>>, generate
   const payload = JSON.stringify({ ...manifest, eventSignatures: events.map((event) => { const integrity = event.integrity as { signature?: unknown } | undefined; return { id: String(event._id ?? ""), sequence: event.sequence ?? null, signature: typeof integrity?.signature === "string" ? integrity.signature : null }; }) });
   return { ...manifest, integrity: { algorithm: "HMAC-SHA256", signature: createHmac("sha256", signingKey).update(payload).digest("hex") } };
 }
+
+export function verifyAuditExportManifest(manifest:Record<string,unknown>,events:Array<Record<string,unknown>>,signingKey?:string):boolean{
+ const integrity=manifest.integrity as {algorithm?:unknown;signature?:unknown;keyId?:unknown}|undefined;
+ if(!integrity||typeof integrity.signature!=="string"||!/^[a-f0-9]{64}$/.test(integrity.signature))return false;
+ const fields={format:manifest.format,generatedAt:manifest.generatedAt,count:manifest.count,firstSequence:manifest.firstSequence,lastSequence:manifest.lastSequence};
+ const eventSignatures=events.map(event=>{const eventIntegrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,signature:typeof eventIntegrity?.signature==="string"?eventIntegrity.signature:null};});
+ let key:Buffer|undefined,payload:string;
+ if(integrity.algorithm==="HMAC-SHA256-v2"&&typeof integrity.keyId==="string"){
+  const ring=loadAuditKeyRing();
+  key=signingKey?Buffer.from(signingKey):ring?.keys[integrity.keyId];
+  if(!key)return false;
+  payload=JSON.stringify({keyId:integrity.keyId,...fields,eventSignatures});
+ }else if(integrity.algorithm==="HMAC-SHA256"){
+  key=legacyAuditSigningKey(signingKey);
+  if(!key)return false;
+  payload=JSON.stringify({...fields,eventSignatures});
+ }else return false;
+ const expected=createHmac("sha256",key).update(payload).digest();
+ const actual=Buffer.from(integrity.signature,"hex");
+ return actual.length===expected.length&&timingSafeEqual(actual,expected);
+}
