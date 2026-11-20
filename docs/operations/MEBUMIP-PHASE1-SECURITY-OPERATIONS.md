@@ -13,7 +13,7 @@
 - Stop on unexpected counts, mixed audit histories, failed integrity verification, missing backup evidence, permission errors or any unplanned write.
 - CI against disposable MongoDB is not production evidence. A successful application build is not deployment acceptance.
 
-## 2. Production identity, email and browser configuration
+## 2. First-owner bootstrap atomicity\n\nThe first platform owner, initial tenant, tenant-owner membership and signed `platform.bootstrap.completed` audit event must be written in one MongoDB transaction. The bootstrap lease serializes competing requests; the unique platform-owner index remains the database-level invariant. The transaction-scoped audit append must use the caller session, not create a nested transaction. Failed transactions must roll back together: never compensate by deleting an audit event or by leaving partially created owner/tenant records. The integration test must exercise concurrent bootstrap requests and assert exactly one successful owner and one successful bootstrap audit event.\n\n**Evidence:** successful replica-set concurrency test; one owner, one tenant and one owner membership; exactly one bootstrap audit event; clean signed-chain verification.\n\n## 3. Production identity, email and browser configuration
 
 Before enabling public traffic:
 
