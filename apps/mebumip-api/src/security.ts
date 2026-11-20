@@ -137,3 +137,11 @@ export async function appendAuditEvent(db: Db, input: AuditEventInput) {
   await db.collection("auditEvents").insertOne(event as Document);
   return event;
 }
+
+export function signAuditExport(events: Array<Record<string, unknown>>, generatedAt: string, signingKey = process.env.AUDIT_SIGNING_KEY) {
+  const sequences = events.map((event) => Number(event.sequence)).filter((value) => Number.isSafeInteger(value));
+  const manifest = { format: "zuri-mebumip-audit-export-v1", generatedAt, count: events.length, firstSequence: sequences.length ? Math.min(...sequences) : null, lastSequence: sequences.length ? Math.max(...sequences) : null };
+  if (!signingKey) return { ...manifest, integrity: { algorithm: "unsigned", signature: null } };
+  const payload = JSON.stringify({ ...manifest, eventSignatures: events.map((event) => { const integrity = event.integrity as { signature?: unknown } | undefined; return { id: String(event._id ?? ""), sequence: event.sequence ?? null, signature: typeof integrity?.signature === "string" ? integrity.signature : null }; }) });
+  return { ...manifest, integrity: { algorithm: "HMAC-SHA256", signature: createHmac("sha256", signingKey).update(payload).digest("hex") } };
+}
