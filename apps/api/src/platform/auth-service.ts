@@ -47,7 +47,7 @@ async function issueWorkspaceSelection(db:Db,config:AuthConfig,userId:string){
  const selectionToken=await new SignJWT({purpose:"workspace_selection",selectionId})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(key(config));
  await db.collection("workspace_selection_challenges").insertOne({selectionId,userId,createdAt:now,expiresAt:new Date(now.getTime()+5*60_000)});
- return {workspaceSelectionRequired:true as const,selectionToken,workspaces};
+ return {workspaceSelectionRequired:true as const,selectionToken,workspaces,accessToken:undefined as never,refreshToken:undefined as never,sessionId:undefined as never};
 }
 export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:string,tenantId:string){
  const verified=await jwtVerify(selectionToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]}),claims=verified.payload,now=new Date();
