@@ -35,11 +35,13 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   await db.collection("organizations").insertMany([
    {tenantId:"tenant-a",organizationId:"org-a",status:"active"},
    {tenantId:"tenant-a",organizationId:"org-b",status:"active"},
+   {tenantId:"tenant-a",organizationId:"org-inactive",status:"inactive"},
    {tenantId:"tenant-b",organizationId:"org-secret",status:"active"}
   ]);
   await db.collection("locations").insertMany([
    {tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",status:"active"},
    {tenantId:"tenant-a",locationId:"loc-b",organizationId:"org-b",status:"active"},
+   {tenantId:"tenant-a",locationId:"loc-inactive-org",organizationId:"org-inactive",status:"active"},
    {tenantId:"tenant-a",locationId:"loc-dest",organizationId:"org-a",status:"active"},
    {tenantId:"tenant-b",locationId:"loc-secret",organizationId:"org-secret",status:"active"}
   ]);
@@ -61,7 +63,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
    tenantId:"tenant-a",membershipId:"inventory-membership",userId:"inventory-user",
-   organizationIds:["org-a"],locationIds:["loc-a"],roleIds:["inventory-role"],status:"active"
+   organizationIds:["org-a"],locationIds:["loc-a","loc-inactive-org"],roleIds:["inventory-role"],status:"active"
   });
   await db.collection("sessions").insertOne({
    tenantId:"tenant-a",sessionId:"inventory-session",userId:"inventory-user",membershipId:"inventory-membership",
@@ -86,6 +88,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   await db.collection("inventory_warehouses").insertMany([
    {tenantId:"tenant-a",warehouseId:"warehouse-a",code:"WH-A",name:"Assigned warehouse",locationId:"loc-a",status:"active"},
    {tenantId:"tenant-a",warehouseId:"warehouse-b",code:"WH-B",name:"Other location warehouse",locationId:"loc-b",status:"active"},
+   {tenantId:"tenant-a",warehouseId:"warehouse-inactive-org",code:"WH-IO",name:"Inactive organization warehouse",locationId:"loc-inactive-org",status:"active"},
    {tenantId:"tenant-b",warehouseId:"warehouse-secret",code:"WH-S",name:"Foreign tenant warehouse",locationId:"loc-secret",status:"active"}
   ]);
   await app.register(domainRoutes(db,config),{prefix:"/v1"});await app.ready();
@@ -100,7 +103,8 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
 
   const listed=await app.inject({method:"GET",url:"/v1/inventory/warehouses",headers});
   assert.equal(listed.statusCode,200);
-  assert.deepEqual(listed.json().data.map((w:any)=>w.warehouseId),["warehouse-a"]);
+  assert.deepEqual(listed.json().data.map((w:any)=>w.warehouseId),["warehouse-a"],
+   "locations belonging to inactive organizations must not expose warehouse data");
 
   const foreign=await app.inject({method:"GET",url:"/v1/inventory/warehouses/warehouse-secret/balances",headers});
   assert.equal(foreign.statusCode,404,"foreign-tenant resources must not be discoverable");
