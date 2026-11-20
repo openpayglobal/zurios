@@ -112,7 +112,10 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
       db.collection("memberships").find({ tenantId, status: { $in: ["active", "suspended"] } }).limit(200).toArray(),
       db.collection("tenantInvitations").find({ tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { projection: { tokenHash: 0 } }).limit(100).toArray(),
     ]);
-    return reply.send({ members: members.map((member) => ({ id: String(member._id), userId: member.userId, role: member.role, status: member.status, createdAt: member.createdAt })), invitations: invitations.map((invite) => ({ id: String(invite._id), email: invite.email, role: invite.role, expiresAt: invite.expiresAt })) });
+    const userIds = members.map((member) => String(member.userId)).filter((id) => ObjectId.isValid(id)).map((id) => new ObjectId(id));
+    const users = await db.collection("users").find({ _id: { $in: userIds } }, { projection: { normalizedEmail: 1, displayName: 1 } }).toArray();
+    const userById = new Map(users.map((user) => [String(user._id), user]));
+    return reply.send({ members: members.map((member) => { const user = userById.get(String(member.userId)); return { id: String(member._id), userId: member.userId, email: user?.normalizedEmail ?? "", displayName: user?.displayName ?? "", role: member.role, status: member.status, createdAt: member.createdAt }; }), invitations: invitations.map((invite) => ({ id: String(invite._id), email: invite.email, role: invite.role, expiresAt: invite.expiresAt })) });
   });
 
   app.post("/v1/mac/tenants/:tenantId/invitations", async (request, reply) => {
