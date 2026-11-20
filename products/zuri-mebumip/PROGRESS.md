@@ -264,3 +264,10 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - MeBuMIP verification **#389** passed on head `f90f0ccdaa4229c5d517650d912b88e1114e1538`: API typecheck, **17 tests passed / 0 failed / 0 skipped**, API build, web typecheck and web build.
 - Full monorepo CI **#1323** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, typecheck, tests and build.
 - The production-only startup topology guard is now typechecked and built. CI exercises the replica-set path; production standalone rejection has not been tested against a live deployment.
+
+
+**Cookie/CSRF integration acceptance — 2026-11-20:**
+
+- Extended the MongoDB-backed authentication lifecycle test to assert login issues both session and CSRF cookies, cookie-only access to `/v1/auth/me`, denial of cookie-authenticated logout without the CSRF header, acceptance with a matching CSRF token and trusted Origin, and rejection after logout.
+- This covers the core browser-cookie/CSRF flow against the MongoDB-backed Fastify routes. Broader origin-matrix, SameSite=None cross-site browser testing, cookie-domain behavior and production browser testing remain outstanding.
+- This integration test is newer than the currently passing workflows and requires fresh CI.
