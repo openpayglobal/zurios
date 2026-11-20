@@ -88,13 +88,13 @@ function loadAuditKeyRing():AuditKeyRing|null{
  if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error("INVALID_AUDIT_SIGNING_KEYRING");
  const keys=Object.create(null) as Record<string,Buffer>;
  for(const [keyId,value] of Object.entries(parsed as Record<string,unknown>)){
-  if(!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId)||typeof value!=="string"||!/^[a-fA-F0-9]{64}$/.test(value))throw new Error("INVALID_AUDIT_SIGNING_KEYRING");
+  if(!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId)||typeof value!=="string"||(keyId==="legacy"?!/^(?:[a-fA-F0-9]{2}){32,}$/.test(value):!/^[a-fA-F0-9]{64}$/.test(value)))throw new Error("INVALID_AUDIT_SIGNING_KEYRING");
   keys[keyId]=Buffer.from(value,"hex");
  }
  const activeKeyId=process.env.AUDIT_SIGNING_ACTIVE_KEY_ID??"";
- if(!Object.hasOwn(keys,activeKeyId))throw new Error("AUDIT_ACTIVE_SIGNING_KEY_NOT_AVAILABLE");
+ if(!activeKeyId||activeKeyId==="legacy"||!Object.hasOwn(keys,activeKeyId)||keys[activeKeyId]!.length!==32)throw new Error("AUDIT_ACTIVE_SIGNING_KEY_NOT_AVAILABLE");
  const environmentLegacy=process.env.AUDIT_SIGNING_KEY?Buffer.from(process.env.AUDIT_SIGNING_KEY):undefined;
- if(environmentLegacy&&keys.legacy&&!timingSafeEqual(environmentLegacy,keys.legacy))throw new Error("AUDIT_LEGACY_KEY_CONFIGURATION_CONFLICT");
+ if(environmentLegacy&&keys.legacy&&(environmentLegacy.length!==keys.legacy.length||!timingSafeEqual(environmentLegacy,keys.legacy)))throw new Error("AUDIT_LEGACY_KEY_CONFIGURATION_CONFLICT");
  const legacyKey=environmentLegacy??keys.legacy;
  return {keys,activeKeyId,...(legacyKey?{legacyKey}:{})};
 }
