@@ -6,6 +6,7 @@ import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
+import { sendPasswordRecoveryEmail } from "./mail.js";
 
 const bootstrapSchema = z.object({
   bootstrapToken: z.string().min(32),
@@ -294,6 +295,81 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     await db.collection("sessions").updateOne({ _id: resolved.sessionId }, { $unset: { stepUpUntil: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.password.changed", "user", "success");
     return reply.send({ status: "password_changed", otherSessionsRevoked: true });
+  });
+
+  app.post("/v1/auth/password/recovery", async (request, reply) => {
+    const parsed = z.object({ email: z.string().email().max(254) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const email = parsed.data.email.trim().toLowerCase();
+    const user = await db.collection("users").findOne({ normalizedEmail: email, status: "active" });
+    // Always return the same response for known and unknown addresses.
+    if (!user) return reply.code(202).send({ status: "if_account_exists_email_sent" });
+
+    const now = new Date();
+    const token = newOpaqueToken();
+    const expiresAt = new Date(now.getTime() + 30 * 60_000);
+    await db.collection("passwordRecoveries").updateMany(
+      { userId: String(user._id), usedAt: { $exists: false }, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, revokeReason: "superseded" } },
+    );
+    const recovery = await db.collection("passwordRecoveries").insertOne({
+      userId: String(user._id),
+      tokenHash: hashToken(token),
+      createdAt: now,
+      expiresAt,
+    });
+    const delivery = await sendPasswordRecoveryEmail({ to: email, token, expiresAt });
+    if (!delivery.delivered) {
+      await db.collection("passwordRecoveries").updateOne(
+        { _id: recovery.insertedId, usedAt: { $exists: false } },
+        { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } },
+      );
+      await writeAudit(db, request, String(user._id), "auth.password.recovery.delivery_failed", "user", "failure");
+      return reply.code(202).send({ status: "if_account_exists_email_sent" });
+    }
+    await writeAudit(db, request, String(user._id), "auth.password.recovery.requested", "user", "success");
+    return reply.code(202).send({ status: "if_account_exists_email_sent" });
+  });
+
+  app.post("/v1/auth/password/reset", async (request, reply) => {
+    const parsed = z.object({
+      token: z.string().min(40).max(200),
+      newPassword: z.string().min(12).max(256),
+    }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const now = new Date();
+    const recovery = await db.collection("passwordRecoveries").findOne({
+      tokenHash: hashToken(parsed.data.token),
+      usedAt: { $exists: false },
+      revokedAt: { $exists: false },
+      expiresAt: { $gt: now },
+    });
+    if (!recovery || typeof recovery.userId !== "string" || !ObjectId.isValid(recovery.userId)) {
+      return reply.code(400).send({ error: "RESET_TOKEN_INVALID_OR_EXPIRED" });
+    }
+    const consumed = await db.collection("passwordRecoveries").updateOne(
+      { _id: recovery._id, usedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+      { $set: { usedAt: now } },
+    );
+    if (consumed.modifiedCount !== 1) return reply.code(400).send({ error: "RESET_TOKEN_INVALID_OR_EXPIRED" });
+
+    const userId = recovery.userId;
+    const updated = await db.collection("users").updateOne(
+      { _id: new ObjectId(userId), status: "active" },
+      { $set: { passwordHash: await hashPassword(parsed.data.newPassword), passwordChangedAt: now, updatedAt: now } },
+    );
+    if (updated.matchedCount !== 1) return reply.code(400).send({ error: "RESET_TOKEN_INVALID_OR_EXPIRED" });
+    await db.collection("passwordRecoveries").updateMany(
+      { userId, _id: { $ne: recovery._id }, usedAt: { $exists: false }, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, revokeReason: "password_reset_completed" } },
+    );
+    await db.collection("sessions").updateMany(
+      { userId, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, revokeReason: "password_recovered" } },
+      { $unset: { stepUpUntil: "" } },
+    );
+    await writeAudit(db, request, userId, "auth.password.recovered", "user", "success");
+    return reply.send({ status: "password_reset", sessionsRevoked: true });
   });
 
   app.post("/v1/auth/mfa/setup", async (request, reply) => {
