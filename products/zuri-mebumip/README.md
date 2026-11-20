@@ -48,4 +48,4 @@ Do not introduce PostgreSQL or another application database without an approved 
 
 ## Current status
 
-See [implementation roadmap](./IMPLEMENTATION-ROADMAP.md), [architecture](./ARCHITECTURE.md) and [progress tracker](./PROGRESS.md). This folder is the product source of truth for scope and delivery status.
+See [implementation roadmap](./IMPLEMENTATION-ROADMAP.md), [architecture](./ARCHITECTURE.md), [progress tracker](./PROGRESS.md) and the [Phase 1 production security runbook](./PHASE1-PRODUCTION-SECURITY-RUNBOOK.md). This folder is the product source of truth for scope and delivery status.
