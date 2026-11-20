@@ -103,3 +103,5 @@ To reconcile ODEI-specific product modules, workflows, user roles, workspace onb
 - **Complete:** all approved acceptance criteria and release gates pass.
 
 At this checkpoint, the identity-first multi-workspace foundation and PR #14 public access-request workflow are **CI-verified** on their recorded commits. The Zuri OS production deployment and production public-access enablement are **not complete**.
+
+**Ecosystem documentation index expansion (2026-11-20):** audited the complete `docs/` tree (33 files) against `docs/README.md`. Added direct index entries for all previously unlisted platform foundation/Deliverable 6A specifications, event contracts, acceptance criteria, governance/release gates and the audit archive provider comparison. The authoritative index now exposes these engineering documents without requiring users to discover paths manually. CI verification for this documentation-only update is running; do not treat it as verified until the exact resulting commit's workflow succeeds.
