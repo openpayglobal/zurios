@@ -6,8 +6,8 @@ import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {authorizeDomainResource,type DomainResourceScope} from "./domain-authorization.js";
 import {appendAuditEvent,evaluatePolicy} from "@zuri/core-platform";
-import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry,receivePurchaseOrder,getOperationalAnalytics,createWorkflowDefinition,startWorkflowRun,decideWorkflowTask} from "@zuri/domain-services";
-import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema,PurchaseOrderReceiptSchema,AnalyticsQuerySchema,WorkflowDefinitionSchema,WorkflowRunStartSchema,WorkflowTaskDecisionSchema} from "@zuri/domain-contracts";
+import {createWarehouse,recordStockMovement,reserveStock,commitReservation,releaseReservation,registerPosTerminal,openCashierShift,closeCashierShift,completePosSale,refundPosSale,acceptOfflinePosCommand,createAccount,createFiscalPeriod,createPurchaseOrder,createInvoice,postJournalEntry,allocateInvoicePayment,createCrmAccount,createCrmContact,createCrmLead,createCrmOpportunity,recordCrmActivity,updateCrmOpportunityStage,createHrEmployee,createHrLeaveRequest,decideHrLeaveRequest,createPayrollRun,approvePayrollRun,createPaymentIntent,requestPaymentRefund,createCommerceProduct,createCommerceOrder,createAsset,createMaintenanceWorkOrder,completeMaintenanceWorkOrder,createProject,createProjectTask,submitTimeEntry,decideTimeEntry,receivePurchaseOrder,createShipment,updateShipmentStatus,getOperationalAnalytics,createWorkflowDefinition,startWorkflowRun,decideWorkflowTask} from "@zuri/domain-services";
+import {StockMovementSchema,StockReservationSchema,WarehouseSchema,PosTerminalSchema,CashierShiftSchema,PosSaleSchema,PosRefundSchema,AccountSchema,FiscalPeriodSchema,PurchaseOrderSchema,InvoiceSchema,JournalEntrySchema,CrmAccountSchema,CrmContactSchema,CrmLeadSchema,CrmOpportunitySchema,CrmActivitySchema,CrmOpportunityStageUpdateSchema,HrEmployeeSchema,HrLeaveRequestSchema,HrLeaveDecisionSchema,PayrollRunSchema,PayrollApprovalSchema,PaymentIntentSchema,PaymentRefundRequestSchema,CommerceProductSchema,CommerceOrderRequestSchema,AssetSchema,MaintenanceWorkOrderSchema,MaintenanceCompletionSchema,ProjectSchema,ProjectTaskSchema,TimeEntrySchema,TimeEntryDecisionSchema,PurchaseOrderReceiptSchema,ShipmentSchema,ShipmentStatusUpdateSchema,AnalyticsQuerySchema,WorkflowDefinitionSchema,WorkflowRunStartSchema,WorkflowTaskDecisionSchema} from "@zuri/domain-contracts";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 const getPrincipal=(request:FastifyRequest)=>(request as FastifyRequest&{principal:Principal}).principal;
@@ -887,6 +887,41 @@ export function domainRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   };
   app.post("/projects/time-entries/:timeEntryId/approve",async(request,reply)=>decideTime(request,reply,"approved"));
   app.post("/projects/time-entries/:timeEntryId/reject",async(request,reply)=>decideTime(request,reply,"rejected"));
+  app.get("/shipments",async(request)=>{
+   const p=getPrincipal(request);
+   const allowed=await authorizedOrganizationIds(db,request,p,"supply_chain.shipment.read",p.organizationIds??[]);
+   if(!allowed.length)return {data:[]};
+   return {data:await db.collection("supply_chain_shipments").find({tenantId:p.tenantId,organizationId:{$in:allowed}},{projection:{_id:0}}).sort({createdAt:-1}).limit(500).toArray()};
+  });
+  app.post("/shipments",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"supply_chain.shipment.create",scope);if(denied)return denied;
+    const body=ShipmentSchema.parse({...raw,tenantId:p.tenantId,organizationId,status:"planned",version:0});
+    const result=await createShipment(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
+  app.post("/shipments/:shipmentId/status",async(request,reply)=>{
+   const p=getPrincipal(request);
+   try{
+    const key=idempotencyKey(request);if(!key)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const {shipmentId}=z.object({shipmentId:z.string().min(1)}).parse(request.params);
+    const raw=request.body&&typeof request.body==="object"?request.body as Record<string,unknown>:{};
+    const organizationId=typeof raw.organizationId==="string"?raw.organizationId:"";
+    if(!organizationId)return reply.code(400).send({error:"ORGANIZATION_ID_REQUIRED"});
+    const scope=await resolveOrganizationScope(db,p.tenantId,organizationId);if(!scope)return reply.code(422).send({error:"ACTIVE_ORGANIZATION_REQUIRED"});
+    const denied=await permit(db,request,reply,p,"supply_chain.shipment.update",scope);if(denied)return denied;
+    const body=ShipmentStatusUpdateSchema.parse({...raw,tenantId:p.tenantId,organizationId,shipmentId});
+    const result=await updateShipmentStatus(db,body,p.userId,key);
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return sendError(error,reply);}
+  });
   app.get("/analytics/operational.csv",async(request,reply)=>{
    const p=getPrincipal(request);
    try{
