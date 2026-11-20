@@ -293,3 +293,10 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - MeBuMIP verification **#405** passed on documentation head `20ec3a6d9ed26c77e63928e008a59a2bef501ca3`.
 - Full monorepo CI **#1331** passed on the same head: OpenAPI validation, route drift, typecheck, tests and build.
 - The cookie/CSRF application code and database-backed tests passed on code head `8fa7541d27ff1900b2c148db50f40a4d362c6f29` in MeBuMIP **#401** and monorepo **#1329**.
+
+
+**Latest progress-register verification — 2026-11-20:**
+
+- MeBuMIP verification **#407** passed on head `4a32221f9777ea88fd484a80b4f918788ce9c547`.
+- Full monorepo CI **#1332** passed on the same head: OpenAPI validation, route drift, typecheck, tests and build.
+- The application-code verification remains #401/#1329; this follow-up changed only the progress register.
