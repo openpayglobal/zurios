@@ -55,6 +55,8 @@ This directory is the authoritative entry point for ecosystem-wide specification
 - [UI/UX Design System](./ux/ZURI-OS-UI-UX-DESIGN-SYSTEM-v1.0.md) — app shell, navigation, reusable components, workflows and accessibility.
 - [Implementation Progress Register](./project/ZURI-OS-PROGRESS-REGISTER.md) — exact CI evidence, deployment state, blockers and release gates.
 
+Product document mirrors are kept in sync with the product workspace using `pnpm docs:sync`; CI verifies them with `pnpm docs:check`. Update the canonical file under `products/` first, then synchronize the copy under `docs/products/`.
+
 ## Document control
 
 Every authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions and change history.
