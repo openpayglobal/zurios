@@ -8,6 +8,8 @@ const envSchema = z.object({
   MONGODB_DATABASE: z.string().min(1).default("zuri_mebumip"),
   CORS_ORIGINS: z.string().default("http://localhost:5174"),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  SESSION_COOKIE_SAME_SITE: z.enum(["Strict", "Lax", "None"]).default("Lax"),
+  TRUSTED_PROXY_CIDRS: z.string().optional(),
   PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   AUDIT_SIGNING_KEY: z.string().min(32).optional(),
