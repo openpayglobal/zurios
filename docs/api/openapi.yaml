@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
   title: Zuri OS Platform API
   version: 1.0.0
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
   summary: Shared multi-tenant platform control-plane API
   description: |
     Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
