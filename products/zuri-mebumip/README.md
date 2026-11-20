@@ -49,3 +49,8 @@ Do not introduce PostgreSQL or another application database without an approved 
 ## Current status
 
 See [implementation roadmap](./IMPLEMENTATION-ROADMAP.md), [architecture](./ARCHITECTURE.md), [progress tracker](./PROGRESS.md) and the [Phase 1 production security runbook](./PHASE1-PRODUCTION-SECURITY-RUNBOOK.md). This folder is the product source of truth for scope and delivery status.
+
+
+## Ecosystem documentation
+
+See the [ZURI ecosystem documentation index](../../docs/README.md) and [ZURI Ecosystem Overview](../../docs/ZURI-ECOSYSTEM-OVERVIEW.md) for cross-product principles, governance and the full programme map. This product README, roadmap, architecture and progress register remain the authoritative MeBuMIP-specific references.
