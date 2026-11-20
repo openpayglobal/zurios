@@ -1,7 +1,8 @@
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
-import {coreCollections} from "./repositories.js";\nimport type {TenantDocument} from "./types.js";
+import {coreCollections} from "./repositories.js";
+import type {TenantDocument} from "./types.js";
 const inputSchema=z.object({slug:z.string().min(2).max(64).regex(/^[a-z0-9-]+$/),legalName:z.string().min(2).max(200),displayName:z.string().min(2).max(100),defaultLocale:z.string().default("en"),defaultCurrency:z.string().length(3).transform(v=>v.toUpperCase()).default("UGX"),timezone:z.string().default("Africa/Kampala")});
 export async function provisionTenant(db:Db,actorId:string,input:unknown,session?:ClientSession){
  const data=inputSchema.parse(input),c=coreCollections(db),now=new Date(),tenantId=newId("ten");
