@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTenantAccess, createAuditEvent, verifyAuditEvent, signAuditExport, hasPlatformPermission, hasTenantPermission, hashToken, newOpaqueToken } from "./security.js";
+import { assertTenantAccess, createAuditEvent, verifyAuditEvent, signAuditExport, verifyAuditExportManifest, hasPlatformPermission, hasTenantPermission, hashToken, newOpaqueToken } from "./security.js";
 import type { Principal } from "./security.js";
 
 const principal: Principal = {
@@ -65,6 +65,8 @@ test("versioned audit key ring signs with the active key and verifies historical
   const manifest = signAuditExport([event as unknown as Record<string, unknown>], new Date().toISOString());
   assert.equal(manifest.integrity.algorithm, "HMAC-SHA256-v2");
   assert.equal("keyId" in manifest.integrity ? manifest.integrity.keyId : null, "audit-2026");
+  assert.equal(verifyAuditExportManifest(manifest as unknown as Record<string, unknown>, [event as unknown as Record<string, unknown>]), true);
+  assert.equal(verifyAuditExportManifest({ ...manifest, count: 99 } as unknown as Record<string, unknown>, [event as unknown as Record<string, unknown>]), false);
   delete process.env.AUDIT_SIGNING_KEYRING;
   delete process.env.AUDIT_SIGNING_ACTIVE_KEY_ID;
 });
