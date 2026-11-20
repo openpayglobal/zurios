@@ -89,3 +89,6 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 
 
 **Final review note for this implementation pass:** invited-user registration and existing-user invitation acceptance are both available. MFA enrollment now requires password reauthentication and an expiring confirmation window. Session inventory and per-session revocation are available. Source formatting for the registration route and shared token hashing imports was corrected during review. These changes have not yet passed a confirmed remote build or test run.
+
+
+**MFA recovery implementation follow-through (2026-11-20):** MFA enablement now creates ten high-entropy one-time recovery codes, returns them once, and stores only SHA-256 hashes. Step-up accepts either TOTP or a recovery code; recovery-code consumption uses an atomic database update so a code cannot be replayed. A factor-reset endpoint requires the current password and an unused recovery code, removes the enrolled factor, and revokes all active sessions. Added unit coverage for recovery-code generation, uniqueness, normalization and bounds. The factor-reset flow is an account recovery mechanism, not a support-agent bypass. This change still requires remote CI verification and database-backed route tests.
