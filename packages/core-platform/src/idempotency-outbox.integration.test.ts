@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {randomUUID} from "node:crypto";
 import {MongoClient} from "mongodb";
 import {runIdempotentMutation,IdempotencyConflictError} from "./idempotency-service.js";
-import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent,consumeEventOnce,createMongoEventBusPublisher} from "./outbox-service.js";
+import {appendOutboxEvent,dispatchOutboxBatch,replayDeadLetterEvent,consumeEventOnce,createMongoEventBusPublisher,runOutboxWorker} from "./outbox-service.js";
+import {registerWebhookSubscription,queueWebhookDeliveries,dispatchWebhookBatch,replayDeadLetterWebhookDelivery} from "./webhook-delivery-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
 test("idempotency, audit-compatible outbox and delivery lifecycle are transactional",{skip:!uri},async()=>{
@@ -47,7 +48,7 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(await db.collection("outbox_events").countDocuments({eventType:"resource.concurrent"}),1);
 
   assert.equal(await db.collection("test_resources").countDocuments({}),2);
-  assert.equal(await db.collection("outbox_events").countDocuments({}),1);
+  assert.equal(await db.collection("outbox_events").countDocuments({}),2);
   await assert.rejects(
    ()=>runIdempotentMutation(db,{...input,request:{name:"Different"}},work),
    (error:unknown)=>error instanceof IdempotencyConflictError&&error.message==="IDEMPOTENCY_KEY_REUSED"
@@ -85,6 +86,29 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(consumerEffects,1);
   assert.equal(await db.collection("consumer_effects").countDocuments({}),1);
 
+  await assert.rejects(()=>registerWebhookSubscription(db,{tenantId:"tenant-a",endpointId:"unsafe-hook",url:"http://127.0.0.1/hook",secretRef:"vault/unsafe",eventTypes:["resource.created"]},"admin-a",["127.0.0.1"]),/WEBHOOK_DESTINATION_NOT_ALLOWED/);
+  await registerWebhookSubscription(db,{tenantId:"tenant-a",endpointId:"hook-a",url:"https://hooks.example.test/events",secretRef:"vault/tenant-a/hook-a",eventTypes:["resource.created"]},"admin-a",["hooks.example.test"]);
+  assert.equal(await queueWebhookDeliveries(db,sourceEvent as any),1);
+  let receivedSignature="",receivedEventId="";
+  const delivery=await dispatchWebhookBatch(db,{resolveSecret:async()=> "s".repeat(32),fetch:async(_url,init)=>{
+   const headers=new Headers(init.headers);
+   receivedSignature=headers.get("x-zuri-signature")??"";
+   receivedEventId=headers.get("x-zuri-event-id")??"";
+   return new Response(null,{status:204});
+  }},{workerId:"webhook-worker-a",batchSize:5});
+  assert.equal(delivery.delivered,1);
+  assert.equal(receivedEventId,sourceEvent!.eventId);
+  assert.match(receivedSignature,/^sha256=[a-f0-9]{64}$/);
+  assert.equal(await db.collection("webhook_deliveries").countDocuments({endpointId:"hook-a",status:"delivered"}),1);
+  await registerWebhookSubscription(db,{tenantId:"tenant-a",endpointId:"hook-b",url:"https://hooks.example.test/retry",secretRef:"vault/tenant-a/hook-b",eventTypes:["resource.created"]},"admin-a",["hooks.example.test"]);
+  assert.equal(await queueWebhookDeliveries(db,sourceEvent as any),1);
+  const failedDelivery=await dispatchWebhookBatch(db,{resolveSecret:async()=>"r".repeat(32),fetch:async()=>new Response(null,{status:503})},{workerId:"webhook-worker-b",maxAttempts:1});
+  assert.equal(failedDelivery.deadLettered,1);
+  const deadDelivery=await db.collection<any>("webhook_deliveries").findOne({endpointId:"hook-b",eventId:sourceEvent!.eventId});
+  assert.equal(deadDelivery.status,"dead_letter");
+  assert.equal(await replayDeadLetterWebhookDelivery(db,deadDelivery.deliveryId),true);
+  const replayDelivery=await dispatchWebhookBatch(db,{resolveSecret:async()=>"r".repeat(32),fetch:async()=>new Response(null,{status:204})},{workerId:"webhook-worker-c"});
+  assert.equal(replayDelivery.delivered,1);
 
   await db.collection("outbox_events").insertOne({
    eventId:"dead-letter-event",tenantId:"tenant-a",eventType:"resource.dead",aggregateType:"resource",
@@ -95,6 +119,29 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(await replayDeadLetterEvent(db,"dead-letter-event"),true);
   const replayed=await dispatchOutboxBatch(db,async()=>{}, {workerId:"worker-c",batchSize:1});
   assert.equal(replayed.published,1);
+
+  await db.collection("outbox_events").insertOne({
+   eventId:"worker-recovery-event",tenantId:"tenant-a",eventType:"resource.worker.recovery",aggregateType:"resource",
+   payload:{},occurredAt:new Date(),status:"pending",attempts:0,availableAt:new Date(),createdAt:new Date(),updatedAt:new Date()
+  });
+  const originalCollection=db.collection.bind(db);
+  let failFirstPoll=true,workerErrors=0,workerDelivered=0;
+  const transientDb=new Proxy(db,{get(target,property){
+   if(property==="collection")return (...args:unknown[])=>{
+    if(failFirstPoll){failFirstPoll=false;throw new Error("simulated transient Mongo poll failure");}
+    return (originalCollection as (...values:unknown[])=>unknown)(...args);
+   };
+   return Reflect.get(target,property,target);
+  }}) as any;
+  const controller=new AbortController();
+  await runOutboxWorker(transientDb,async event=>{
+   workerDelivered++;
+   await mongoPublisher(event);
+   controller.abort();
+  },controller.signal,{pollIntervalMs:250,onError:()=>{workerErrors++;}});
+  assert.equal(workerErrors,1);
+  assert.equal(workerDelivered,1);
+  assert.equal(await db.collection("outbox_events").countDocuments({eventId:"worker-recovery-event",status:"published"}),1);
  }finally{
   await db.dropDatabase();await client.close();
  }

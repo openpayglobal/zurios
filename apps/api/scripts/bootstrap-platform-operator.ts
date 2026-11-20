@@ -1,5 +1,5 @@
 import {connectMongo,closeMongo} from "../src/db/mongo.js";
-import {grantPlatformOperator,appendAuditEvent,coreCollections,createOrganization,createRole,createMembership} from "@zuri/core-platform";
+import {grantPlatformOperator,appendAuditEvent,coreCollections,createOrganization,createRole,createMembership,upsertPolicy} from "@zuri/core-platform";
 
 const userId=process.env.PLATFORM_OPERATOR_USER_ID?.trim();
 const permissionInput=process.env.PLATFORM_OPERATOR_PERMISSIONS??"";
@@ -30,6 +30,7 @@ if(!userId||!permissions.length||reason.length<20){
    if(!membership)await createMembership(db,"platform","bootstrap:platform-operator",{userId,organizationIds:[root.organizationId],locationIds:[],roleIds:[role.roleId]},session);
    else await coreCollections(db).memberships.updateOne({tenantId:"platform",membershipId:membership.membershipId},{$addToSet:{roleIds:role.roleId,organizationIds:root.organizationId},$set:{updatedAt:new Date(),updatedBy:"bootstrap:platform-operator"}},{session});
    const grant=await grantPlatformOperator(db,session,{userId,permissionKeys:permissions,reason}, "bootstrap:controlled-operator-provisioning");
+   await upsertPolicy(db,"platform","bootstrap:controlled-operator-provisioning",{key:"platform-operator:"+userId,effect:"allow",priority:0,subject:{userId},resource:{resourceType:"platform_admin"},actions:permissions,conditions:{}},session);
    await appendAuditEvent(db,{tenantId:"platform",actor:{service:"platform-bootstrap"},action:"platform.operator.granted",resourceType:"platform_operator_grant",resourceId:grant.grantId,outcome:"success",metadata:{userId,permissionKeys:permissions,reason}},session);
   },{writeConcern:{w:"majority"}});
   process.stdout.write("Platform operator grant provisioned. Verify the assigned permission set and record the approval outside this script.\n");

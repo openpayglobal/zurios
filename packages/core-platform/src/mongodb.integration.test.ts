@@ -62,6 +62,9 @@ test("MongoDB replica-set integration: tenant isolation, service lifecycles, mig
   const role2=await createRole(db,tenantA,"integration-test",{key:"test.viewer",name:"Test Viewer",permissionKeys:["organization.read"]});
   const membership2=await createMembership(db,tenantA,"integration-test",{userId:user2.userId,organizationIds:["org-a"],locationIds:["loc-a"],roleIds:[role2.roleId]});
   assert.deepEqual(await permissionsForMembership(db,tenantA,membership2.membershipId),["organization.read"]);
+  const membershipPolicy=await db.collection("policies").findOne({tenantId:tenantA,key:"membership-role:"+membership2.membershipId});
+  assert.deepEqual(membershipPolicy?.actions,["organization.read"],"membership creation must persist the matching ABAC allow policy");
+  assert.deepEqual(membershipPolicy?.subject,{userId:user2.userId});
   await assert.rejects(()=>createMembership(db,tenantA,"integration-test",{userId:user2.userId,organizationIds:["org-b"]}),/INVALID_ORGANIZATION_SCOPE/);
   const issued=await createSession(db,tenantA,user2.userId,membership2.membershipId,3600);
   const persisted=await db.collection("sessions").findOne({tenantId:tenantA,sessionId:issued.sessionId});

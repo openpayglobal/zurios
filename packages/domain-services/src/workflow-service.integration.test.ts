@@ -1,0 +1,84 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {MongoClient} from "mongodb";
+import {createWorkflowDefinition,startWorkflowRun,decideWorkflowTask} from "./workflow-service.js";
+
+const uri=process.env.MONGODB_TEST_URI;
+test("Workflow approvals support assigned multi-approver tasks and requester separation",{skip:!uri},async()=>{
+ const client=new MongoClient(uri!);await client.connect();
+ const db=client.db("zuri_workflows_it_"+Date.now());
+ const tenantId="tenant-workflows-a";
+ try{
+  await Promise.all([
+   db.collection("idempotency_records").createIndex({tenantId:1,actorId:1,operation:1,key:1},{unique:true}),
+   db.collection("audit_events").createIndex({eventId:1},{unique:true}),
+   db.collection("outbox_events").createIndex({eventId:1},{unique:true}),
+   db.collection("workflow_definitions").createIndex({tenantId:1,workflowId:1},{unique:true}),
+   db.collection("workflow_runs").createIndex({tenantId:1,runId:1},{unique:true}),
+   db.collection("workflow_tasks").createIndex({tenantId:1,taskId:1},{unique:true})
+  ]);
+  const definition=await createWorkflowDefinition(db,{
+   tenantId,organizationId:"org-workflows-a",workflowId:"workflow-001",name:"Purchase approval",
+   triggerType:"manual",steps:[{stepId:"finance-review",stepType:"approval",assigneeUserIds:["approver-a","approver-b"],requiredApprovals:2}],
+   version:1,status:"active"
+  },"workflow-admin","workflow-definition-001");
+  assert.equal((definition.body as {status:string}).status,"active");
+  const started=await startWorkflowRun(db,{
+   tenantId,organizationId:"org-workflows-a",runId:"workflow-run-001",workflowId:"workflow-001",context:{purchaseOrderId:"PO-001"}
+  },"requester-user","workflow-run-start-001");
+  assert.equal((started.body as {taskCount:number}).taskCount,1);
+  const decision={tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-001-finance-review",decision:"approved" as const,reason:"Finance review completed with supporting documents",expectedVersion:0};
+  await assert.rejects(()=>decideWorkflowTask(db,decision,"requester-user","workflow-self-approval"),/WORKFLOW_SELF_APPROVAL_DENIED/);
+  await assert.rejects(()=>decideWorkflowTask(db,decision,"approver-c","workflow-unassigned"),/WORKFLOW_TASK_NOT_ASSIGNED/);
+  const first=await decideWorkflowTask(db,decision,"approver-a","workflow-approval-a");
+  assert.deepEqual(first.body,{taskId:"workflow-run-001-finance-review",runId:"workflow-run-001",taskStatus:"pending",runStatus:"running",approvals:1,version:1});
+  await assert.rejects(()=>decideWorkflowTask(db,{...decision,expectedVersion:1},"approver-a","workflow-duplicate-approval"),/WORKFLOW_DUPLICATE_APPROVAL/);
+  const second=await decideWorkflowTask(db,{...decision,expectedVersion:1},"approver-b","workflow-approval-b");
+  assert.equal((second.body as {taskStatus:string}).taskStatus,"approved");
+  assert.equal((second.body as {runStatus:string}).runStatus,"completed");
+  const run=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-001"});
+  assert.equal(run.status,"completed");
+  assert.ok(await db.collection("audit_events").countDocuments({tenantId})>=4);
+  assert.ok(await db.collection("outbox_events").countDocuments({tenantId})>=4);
+  await createWorkflowDefinition(db,{
+   tenantId,organizationId:"org-workflows-a",workflowId:"workflow-002",name:"Sequential procurement approval",
+   triggerType:"manual",steps:[
+    {stepId:"manager-review",stepType:"approval",assigneeUserIds:["approver-a"],requiredApprovals:1},
+    {stepId:"finance-review",stepType:"approval",assigneeUserIds:["approver-b"],requiredApprovals:1}
+   ],version:1,status:"active"
+  },"workflow-admin","workflow-definition-002");
+  await startWorkflowRun(db,{
+   tenantId,organizationId:"org-workflows-a",runId:"workflow-run-002",workflowId:"workflow-002",context:{purchaseOrderId:"PO-002"}
+  },"requester-user","workflow-run-start-002");
+  let sequentialTasks=await db.collection<any>("workflow_tasks").find({tenantId,runId:"workflow-run-002"}).sort({stepIndex:1}).toArray();
+  assert.deepEqual(sequentialTasks.map(task=>task.status),["pending","queued"]);
+  await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-002-manager-review",decision:"approved",reason:"Manager review completed and documented",expectedVersion:0},"approver-a","workflow-sequential-approval-1");
+  sequentialTasks=await db.collection<any>("workflow_tasks").find({tenantId,runId:"workflow-run-002"}).sort({stepIndex:1}).toArray();
+  assert.deepEqual(sequentialTasks.map(task=>task.status),["approved","pending"]);
+  const sequentialRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-002"});
+  assert.equal(sequentialRun.status,"running");
+  await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-002-finance-review",decision:"approved",reason:"Finance review completed and documented",expectedVersion:0},"approver-b","workflow-sequential-approval-2");
+  const completedSequentialRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-002"});
+  assert.equal(completedSequentialRun.status,"completed");
+  await createWorkflowDefinition(db,{
+   tenantId,organizationId:"org-workflows-a",workflowId:"workflow-003",name:"Rejected procurement approval",
+   triggerType:"manual",steps:[
+    {stepId:"manager-review",stepType:"approval",assigneeUserIds:["approver-a"],requiredApprovals:1},
+    {stepId:"finance-review",stepType:"approval",assigneeUserIds:["approver-b"],requiredApprovals:1}
+   ],version:1,status:"active"
+  },"workflow-admin","workflow-definition-003");
+  await startWorkflowRun(db,{
+   tenantId,organizationId:"org-workflows-a",runId:"workflow-run-003",workflowId:"workflow-003",context:{purchaseOrderId:"PO-003"}
+  },"requester-user","workflow-run-start-003");
+  await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-003-manager-review",decision:"rejected",reason:"Rejected because the procurement request lacks supporting evidence",expectedVersion:0},"approver-a","workflow-sequential-rejection");
+  sequentialTasks=await db.collection<any>("workflow_tasks").find({tenantId,runId:"workflow-run-003"}).sort({stepIndex:1}).toArray();
+  assert.deepEqual(sequentialTasks.map(task=>task.status),["rejected","cancelled"]);
+  const rejectedRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-003"});
+  assert.equal(rejectedRun.status,"rejected");
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId,action:"workflows.task.activated"}),1);
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId,action:"workflows.tasks.cancelled"}),1);
+  assert.equal(await db.collection("outbox_events").countDocuments({tenantId,eventType:"workflows.task.activated"}),1);
+ }finally{
+  await db.dropDatabase();await client.close();
+ }
+});

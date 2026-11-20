@@ -1,8 +1,9 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from "react";
+import {Badge as SharedBadge,Button as SharedButton,Card as SharedCard,TextField as SharedTextField} from "@zuri/design-system";
 import {
  ArrowDownToLine,ArrowRight,Blocks,Building2,Check,ChevronDown,Command,FileSearch,Grid2X2,
  KeyRound,Layers3,LockKeyhole,LogOut,Menu,RefreshCw,Settings2,ShieldCheck,UserPlus,Users,
- X,AlertTriangle,Mail,CheckCircle2
+ X,AlertTriangle,Mail,CheckCircle2,Workflow,BarChart3,Truck
 } from "lucide-react";
 
 declare global {
@@ -11,7 +12,7 @@ declare global {
 }
 
 const API_BASE=import.meta.env.VITE_API_BASE_URL??"";
-type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"tenants";
+type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"tenants"|"workflows"|"analytics"|"shipments";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
 type Session={accessToken:string;refreshToken:string;sessionId:string};
 const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:string;platform?:string}>= [
@@ -22,26 +23,28 @@ const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:str
  {id:"audit",label:"Audit centre",icon:FileSearch,permission:"platform.audit.read"},
  {id:"breakglass",label:"Break-glass",icon:KeyRound,permission:"platform.breakglass.read"},
  {id:"configuration",label:"Configuration",icon:Settings2,permission:"platform.configuration.read"},
- {id:"tenants",label:"Tenant directory",icon:Layers3,platform:"platform.tenants.read"}
+ {id:"tenants",label:"Tenant directory",icon:Layers3,platform:"platform.tenants.read"},
+ {id:"workflows",label:"Workflow automation",icon:Workflow,permission:"workflows.definition.read"},
+ {id:"analytics",label:"Operational analytics",icon:BarChart3,permission:"analytics.report.read"},
+ {id:"shipments",label:"Shipment tracking",icon:Truck,permission:"supply_chain.shipment.read"}
 ];
 function cn(...values:Array<string|false|undefined>){return values.filter(Boolean).join(" ");}
 function Panel({children,className=""}:{children:ReactNode;className?:string}){
- return <section className={cn("rounded-2xl border border-white/[0.08] bg-[#111d2e]/85 shadow-[0_18px_55px_rgba(0,0,0,.12)]",className)}>{children}</section>;
+ return <SharedCard className={cn("rounded-2xl border border-white/[0.08] bg-[#111d2e]/85 shadow-[0_18px_55px_rgba(0,0,0,.12)]",className)}>{children}</SharedCard>;
 }
 function SectionTitle({eyebrow,title,description,action}:{eyebrow:string;title:string;description:string;action?:ReactNode}){
  return <div className="mb-6 flex flex-wrap items-end justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200/80">{eyebrow}</p><h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-100 md:text-3xl">{title}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">{description}</p></div>{action}</div>;
 }
-function Button({children,onClick,disabled=false,variant="primary",type="button"}:{children:ReactNode;onClick?:()=>void;disabled?:boolean;variant?:"primary"|"secondary"|"danger";type?:"button"|"submit"}){
- const styles={primary:"border-cyan-200/20 bg-cyan-200/[0.12] text-cyan-100 hover:bg-cyan-200/[0.18]",secondary:"border-white/10 bg-white/[0.04] text-slate-300 hover:bg-white/[0.08]",danger:"border-rose-300/20 bg-rose-300/[0.08] text-rose-200 hover:bg-rose-300/[0.14]"};
- return <button type={type} onClick={onClick} disabled={disabled} className={cn("inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-40",styles[variant])}>{children}</button>;
+function Button({children,onClick,disabled=false,variant="primary",type="button"}:{children:ReactNode;onClick?:()=>void;disabled?:boolean;variant?:"primary"|"secondary"|"danger"|"ghost";type?:"button"|"submit"}){
+ return <SharedButton type={type} onClick={onClick} disabled={disabled} variant={variant}>{children}</SharedButton>;
 }
-function Input({label,value,onChange,placeholder="",type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;placeholder?:string;type?:string;required?:boolean}){
- return <label className="block"><span className="mb-2 block text-xs font-medium text-slate-400">{label}</span><input type={type} required={required} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-cyan-200/40 focus:ring-2 focus:ring-cyan-200/10"/></label>;
+function Input({label,value,onChange,placeholder="",type="text",required=false}:{label:string;value:string;onChange:(value:string)=>void;placeholder?:string;type?:"text"|"email"|"password";required?:boolean}){
+ return <SharedTextField label={label} value={value} onChange={event=>onChange(event.currentTarget.value)} placeholder={placeholder} type={type} required={required}/>;
 }
 function Status({value}:{value:string}){
  const good=["active","executed","approved","sent","published"].includes(value.toLowerCase());
  const bad=["failed","rejected","revoked","dead_letter","suspended","expired"].includes(value.toLowerCase());
- return <span className={cn("inline-flex rounded-full border px-2.5 py-1 text-[10px] font-medium",good?"border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-200":bad?"border-rose-300/20 bg-rose-300/[0.07] text-rose-200":"border-amber-200/15 bg-amber-200/[0.06] text-amber-100")}>{value.replaceAll("_"," ")}</span>;
+ return <SharedBadge variant={good?"success":bad?"danger":"warning"}>{value.replaceAll("_"," ")}</SharedBadge>;
 }
 function Empty({label}:{label:string}){return <div className="rounded-xl border border-dashed border-white/10 px-5 py-10 text-center text-sm text-slate-500">{label}</div>;}
 function ErrorBanner({message}:{message:string}){return message?<div className="mb-5 flex items-start gap-2 rounded-xl border border-rose-300/20 bg-rose-300/[0.06] px-4 py-3 text-xs leading-5 text-rose-200"><AlertTriangle size={15} className="mt-0.5 shrink-0"/>{message}</div>:null;}
@@ -54,6 +57,8 @@ export default function App(){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [viewData,setViewData]=useState<Record<string,unknown>>({});
+ const [analyticsData,setAnalyticsData]=useState<any>(null);
+ const [analyticsBusy,setAnalyticsBusy]=useState(false);
  const [tenantSlug,setTenantSlug]=useState("platform");
  const [email,setEmail]=useState("");
  const [password,setPassword]=useState("");
@@ -115,6 +120,11 @@ export default function App(){
    if(target==="breakglass")result=await api("/v1/platform/admin/break-glass");
    if(target==="configuration")result=await api("/v1/platform/admin/configuration");
    if(target==="tenants")result=await api("/v1/platform/admin/tenants");
+   if(target==="shipments")result=await api("/v1/shipments");
+   if(target==="workflows"){
+    const [definitions,runs,tasks]=await Promise.all([api("/v1/workflows"),api("/v1/workflow-runs"),api("/v1/workflow-tasks")]);
+    result={definitions,runs,tasks};
+   }
    setViewData(previous=>({...previous,[target]:result}));
   }catch(e){setError(e instanceof Error?e.message:"Unable to load this workspace.");}
   finally{setLoading(false);}
@@ -174,6 +184,10 @@ export default function App(){
  const grants=(data.data??[]) as any[];
  const configRows=(data.data??[]) as any[];
  const tenants=(data.data??[]) as any[];
+ const shipments=(data.data??[]) as any[];
+ const workflowDefinitions=(data.definitions?.data??[]) as any[];
+ const workflowRuns=(data.runs?.data??[]) as any[];
+ const workflowTasks=(data.tasks?.data??[]) as any[];
 
  const submitInvitation=async(event:FormEvent<HTMLFormElement>)=>{
   event.preventDefault();const form=new FormData(event.currentTarget);
@@ -194,6 +208,84 @@ export default function App(){
   event.preventDefault();const form=new FormData(event.currentTarget),key=String(form.get("key")),value=form.get("value");
   try{await api("/v1/platform/admin/configuration/"+key,{method:"PUT",headers:{"idempotency-key":idempotency()},body:JSON.stringify({value,reason:form.get("reason")})});setNotice("Tenant configuration updated.");void loadView("configuration");}
   catch(e){setError(e instanceof Error?e.message:"Configuration update failed.");}
+ };
+ const submitShipment=async(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget);
+  try{
+   await api("/v1/shipments",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({
+    organizationId:String(form.get("organizationId")),shipmentId:String(form.get("shipmentId")),
+    referenceType:String(form.get("referenceType")),referenceId:String(form.get("referenceId")),
+    carrierId:String(form.get("carrierId")),trackingNumber:String(form.get("trackingNumber")),
+    originLocationId:String(form.get("originLocationId")),destinationLocationId:String(form.get("destinationLocationId")),
+    expectedDeliveryAt:new Date(String(form.get("expectedDeliveryAt"))).toISOString()
+   })});
+   setNotice("Shipment created.");event.currentTarget.reset();void loadView("shipments");
+  }catch(e){setError(e instanceof Error?e.message:"Shipment creation failed.");}
+ };
+ const transitionShipment=async(shipment:any,status:"dispatched"|"in_transit"|"delayed"|"delivered"|"cancelled")=>{
+  const reason=window.prompt("Enter the shipment status reason:");
+  if(!reason||reason.trim().length<5)return;
+  let proofOfDeliveryRef:string|undefined;
+  if(status==="delivered"){
+   proofOfDeliveryRef=window.prompt("Enter the proof-of-delivery reference:")??undefined;
+   if(!proofOfDeliveryRef)return;
+  }
+  try{
+   await api("/v1/shipments/"+encodeURIComponent(shipment.shipmentId)+"/status",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({
+    organizationId:shipment.organizationId,status,reason,occurredAt:new Date().toISOString(),expectedVersion:shipment.version,
+    ...(proofOfDeliveryRef?{proofOfDeliveryRef}:{})
+   })});
+   setNotice("Shipment status updated.");void loadView("shipments");
+  }catch(e){setError(e instanceof Error?e.message:"Shipment status update failed.");}
+ };
+ const exportAnalytics=()=>{
+  if(!analyticsData)return;
+  const rows=[["metric","value"],...Object.entries(analyticsData.metrics??{})];
+  const csv=rows.map(row=>row.map(value=>'"'+String(value).replaceAll('"','""')+'"').join(",")).join("\r\n")+"\r\n";
+  const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+  const link=document.createElement("a");link.href=url;link.download="zuri-operational-analytics.csv";link.click();URL.revokeObjectURL(url);
+ };
+ const loadAnalytics=async(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget);
+  const organizationId=String(form.get("organizationId"));
+  const from=String(form.get("from"))+"T00:00:00.000Z";
+  const to=String(form.get("to"))+"T23:59:59.999Z";
+  setAnalyticsBusy(true);setError("");
+  try{
+   const params=new URLSearchParams({organizationId,from,to});
+   const result=await api<any>("/v1/analytics/operational?"+params.toString());
+   setAnalyticsData(result);setNotice("Operational metrics refreshed.");
+  }catch(e){setError(e instanceof Error?e.message:"Analytics request failed.");setAnalyticsData(null);}
+  finally{setAnalyticsBusy(false);}
+ };
+ const createWorkflow=async(event:FormEvent<HTMLFormElement>)=>{
+  event.preventDefault();const form=new FormData(event.currentTarget);
+  try{
+   await api("/v1/workflows",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({
+    organizationId:String(form.get("organizationId")),workflowId:String(form.get("workflowId")),name:String(form.get("name")),
+    triggerType:"manual",version:1,status:"active",
+    steps:[{stepId:"approval",stepType:"approval",assigneeUserIds:[String(form.get("assigneeUserId"))],requiredApprovals:1}]
+   })});
+   setNotice("Workflow definition created and activated.");event.currentTarget.reset();void loadView("workflows");
+  }catch(e){setError(e instanceof Error?e.message:"Workflow creation failed.");}
+ };
+ const startWorkflow=async(workflow:any)=>{
+  const organizationId=window.prompt("Organization ID for this workflow:");
+  if(!organizationId)return;
+  const runId=window.prompt("Unique workflow run ID:");
+  if(!runId)return;
+  try{
+   await api("/v1/workflows/"+encodeURIComponent(workflow.workflowId)+"/runs",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({organizationId,runId,context:{}})});
+   setNotice("Workflow run started.");void loadView("workflows");
+  }catch(e){setError(e instanceof Error?e.message:"Workflow start failed.");}
+ };
+ const decideWorkflowTask=async(task:any,decision:"approve"|"reject")=>{
+  const reason=window.prompt("Decision reason (at least 10 characters):");
+  if(!reason||reason.trim().length<10)return;
+  try{
+   await api("/v1/workflow-tasks/"+encodeURIComponent(task.taskId)+"/"+decision,{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({organizationId:task.organizationId,reason,expectedVersion:task.version})});
+   setNotice(decision==="approve"?"Workflow task approved.":"Workflow task rejected.");void loadView("workflows");
+  }catch(e){setError(e instanceof Error?e.message:"Workflow decision failed.");}
  };
  const resendInvitation=async(membershipId:string)=>{
   const reason=window.prompt("Reason for reissuing this invitation (20+ characters):");
@@ -245,6 +337,9 @@ export default function App(){
     {view==="audit"&&<><SectionTitle eyebrow="Accountability" title="Audit centre" description="Tenant-scoped event history with actor, outcome and correlation context."/><Panel className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Recent events</h2><Button variant="secondary" onClick={async()=>{try{await api("/v1/platform/admin/audit-exports",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({filters:{limit:10000},reason:"Export requested by authorized tenant administrator for compliance review."})});setNotice("Audit export job queued.");}catch(e){setError(e instanceof Error?e.message:"Export request failed.");}}}><ArrowDownToLine size={14}/> Request export</Button></div>{auditEvents.length?auditEvents.map((event:any)=><div key={event.eventId} className="grid gap-2 border-t border-white/[0.06] py-3 md:grid-cols-[1fr_1fr_auto] md:items-center"><div><p className="text-xs font-medium">{event.action}</p><p className="mt-1 text-[10px] text-slate-500">{event.resourceType} {event.resourceId??""} · {event.actor?.userId??event.actor?.service??"system"}</p></div><p className="text-[10px] text-slate-500">{event.occurredAt?new Date(event.occurredAt).toLocaleString():"—"}</p><Status value={event.outcome}/></div>):<Empty label="No audit events returned."/ >}</Panel></>}
     {view==="breakglass"&&<><SectionTitle eyebrow="Emergency controls" title="Break-glass access" description="Time-bound emergency permissions, constrained to explicit organizations and locations. Every action is audited."/><Panel className="p-5">{grants.length?grants.map((grant:any)=><div key={grant.grantId} className="flex flex-col justify-between gap-3 border-t border-white/[0.06] py-4 md:flex-row md:items-center"><div><p className="text-sm font-medium">{grant.userId}</p><p className="mt-1 text-xs text-slate-500">{grant.permissionKeys?.join(", ")}</p><p className="mt-1 text-[10px] text-slate-600">Expires {new Date(grant.expiresAt).toLocaleString()} · Approved by {grant.approvedBy}</p></div><div className="flex items-center gap-3"><Status value={grant.status}/>{grant.status==="active"&&<Button variant="danger" onClick={()=>{const reason=window.prompt("Reason for emergency grant revocation (20+ characters):");if(reason&&reason.length>=20)void revokeGrant(grant.grantId,reason);}}><X size={14}/> Revoke</Button>}</div></div>):<Empty label="No emergency grants found."/ >}</Panel></>}
     {view==="configuration"&&<><SectionTitle eyebrow="Tenant settings" title="Configuration" description="Controlled tenant-level defaults. Sensitive secrets and provider credentials are managed outside this workspace."/><div className="grid gap-5 xl:grid-cols-[1fr_.8fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Current configuration</h2>{configRows.length?configRows.map((row:any)=><div key={row.key} className="flex items-center justify-between border-t border-white/[0.06] py-3"><p className="text-xs text-slate-400">{row.key}</p><p className="text-xs font-medium text-slate-200">{String(row.value)}</p></div>):<Empty label="No tenant overrides are configured."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Update a setting</h2><form onSubmit={updateConfig} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Setting</span><select name="key" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"><option value="displayName">Display name</option><option value="defaultLocale">Default locale</option><option value="defaultCurrency">Default currency</option><option value="timezone">Timezone</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Value</span><input name="value" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit"><Check size={14}/> Save configuration</Button></form></Panel></div></>}
+    {view==="shipments"&&<><SectionTitle eyebrow="Supply chain & logistics" title="Shipment tracking" description="Create shipments tied to owned purchase orders, commerce orders or inventory transfers, then record dispatch, transit and proof-of-delivery milestones." action={<Button variant="secondary" onClick={refresh}><RefreshCw size={14}/> Refresh</Button>}/><div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Create planned shipment</h2><form onSubmit={submitShipment} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Organization ID</span><input name="organizationId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Shipment ID</span><input name="shipmentId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reference type</span><select name="referenceType" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"><option value="purchase_order">Purchase order</option><option value="commerce_order">Commerce order</option><option value="inventory_transfer">Inventory transfer</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reference ID</span><input name="referenceId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><div className="grid grid-cols-2 gap-2"><label className="block"><span className="mb-2 block text-xs text-slate-400">Carrier ID</span><input name="carrierId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Tracking number</span><input name="trackingNumber" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label></div><div className="grid grid-cols-2 gap-2"><label className="block"><span className="mb-2 block text-xs text-slate-400">Origin location</span><input name="originLocationId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Destination location</span><input name="destinationLocationId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label></div><label className="block"><span className="mb-2 block text-xs text-slate-400">Expected delivery</span><input name="expectedDeliveryAt" type="datetime-local" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><Button type="submit">Create shipment</Button></form></Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Shipments <span className="ml-2 text-xs font-normal text-slate-500">{shipments.length}</span></h2>{shipments.length?shipments.map((shipment:any)=><div key={shipment.shipmentId} className="border-t border-white/[0.06] py-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">{shipment.shipmentId} · {shipment.trackingNumber}</p><p className="mt-1 text-[10px] text-slate-500">{shipment.referenceType}: {shipment.referenceId} · {shipment.originLocationId} → {shipment.destinationLocationId}</p><p className="mt-1 text-[10px] text-slate-500">Expected {new Date(shipment.expectedDeliveryAt).toLocaleString()} · v{shipment.version}</p></div><Status value={shipment.status}/></div>{!["delivered","cancelled"].includes(shipment.status)&&<div className="mt-3 flex flex-wrap gap-2">{shipment.status==="planned"&&<Button onClick={()=>void transitionShipment(shipment,"dispatched")}>Dispatch</Button>}{shipment.status==="dispatched"&&<Button onClick={()=>void transitionShipment(shipment,"in_transit")}>In transit</Button>}{["dispatched","in_transit"].includes(shipment.status)&&<Button variant="secondary" onClick={()=>void transitionShipment(shipment,"delayed")}>Mark delayed</Button>}{["dispatched","in_transit","delayed"].includes(shipment.status)&&<Button onClick={()=>void transitionShipment(shipment,"delivered")}>Mark delivered</Button>}<Button variant="danger" onClick={()=>void transitionShipment(shipment,"cancelled")}>Cancel</Button></div>}{shipment.proofOfDeliveryRef&&<p className="mt-2 text-[10px] text-slate-500">Proof of delivery: {shipment.proofOfDeliveryRef}</p>}</div>):<Empty label="No shipments are available in your authorized organizations."/ >}</Panel></div></>}
+    {view==="analytics"&&<><SectionTitle eyebrow="Analytics & reporting" title="Operational performance" description="Live read-only operational counts across your authorized organization. Every report is constrained to a selected date range and organization." action={<div className="flex gap-2">{analyticsData&&<Button variant="secondary" onClick={exportAnalytics}>Export CSV</Button>}<Button variant="secondary" onClick={()=>setAnalyticsData(null)}><RefreshCw size={14}/> Clear report</Button></div>}/><Panel className="mb-5 p-5"><form onSubmit={loadAnalytics} className="grid gap-3 md:grid-cols-4"><label className="block"><span className="mb-2 block text-xs text-slate-400">Organization ID</span><input name="organizationId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">From date</span><input name="from" type="date" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">To date</span><input name="to" type="date" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><div className="flex items-end"><Button type="submit" disabled={analyticsBusy}>{analyticsBusy?"Loading…":"Generate report"}</Button></div></form></Panel>{analyticsData?<><div className="mb-3 text-xs text-slate-500">Organization {analyticsData.organizationId} · {new Date(analyticsData.period.from).toLocaleDateString()} – {new Date(analyticsData.period.to).toLocaleDateString()} · Generated {new Date(analyticsData.generatedAt).toLocaleString()}</div><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{Object.entries(analyticsData.metrics??{}).map(([key,value])=><Panel key={key} className="p-4"><p className="text-[10px] uppercase tracking-wider text-slate-500">{key.replaceAll(/([A-Z])/g," $1")}</p><p className="mt-2 text-2xl font-semibold tabular-nums">{Number(value).toLocaleString()}</p></Panel>)}</div></>:<Empty label="Choose an organization and reporting period to generate a scoped operational report."/ >}</>}
+    {view==="workflows"&&<><SectionTitle eyebrow="Workflow automation" title="Approval workflows" description="Create governed approval definitions, start workflow runs and review assigned approval tasks within your authorized organizations." action={<Button variant="secondary" onClick={refresh}><RefreshCw size={14}/> Refresh</Button>}/><div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Create an approval workflow</h2><form onSubmit={createWorkflow} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Organization ID</span><input name="organizationId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Workflow ID</span><input name="workflowId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Name</span><input name="name" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Approver user ID</span><input name="assigneeUserId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3 py-3 text-sm"/></label><Button type="submit"><Check size={14}/> Create workflow</Button></form><p className="mt-4 text-[10px] leading-5 text-slate-500">This initial editor creates a manual, single-step approval workflow. Multi-step definitions and event/schedule triggers are available through the API contract.</p></Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Workflow definitions <span className="ml-2 text-xs font-normal text-slate-500">{workflowDefinitions.length}</span></h2>{workflowDefinitions.length?workflowDefinitions.map((workflow:any)=><div key={workflow.workflowId} className="flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] py-4"><div><p className="text-sm font-medium">{workflow.name}</p><p className="mt-1 text-[10px] text-slate-500">{workflow.workflowId} · {workflow.organizationId} · v{workflow.version}</p></div><div className="flex items-center gap-3"><Status value={workflow.status}/><Button variant="secondary" onClick={()=>void startWorkflow(workflow)}>Start run</Button></div></div>):<Empty label="No workflow definitions are available in your scope."/ >}</Panel></div><div className="mt-5 grid gap-5 xl:grid-cols-2"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Workflow runs <span className="ml-2 text-xs font-normal text-slate-500">{workflowRuns.length}</span></h2>{workflowRuns.length?workflowRuns.map((run:any)=><div key={run.runId} className="flex items-center justify-between gap-3 border-t border-white/[0.06] py-3"><div><p className="text-xs font-medium">{run.workflowId} · {run.runId}</p><p className="mt-1 text-[10px] text-slate-500">{run.organizationId} · {run.startedAt?new Date(run.startedAt).toLocaleString():""}</p></div><Status value={run.status}/></div>):<Empty label="No workflow runs found."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Assigned approval tasks <span className="ml-2 text-xs font-normal text-slate-500">{workflowTasks.length}</span></h2>{workflowTasks.length?workflowTasks.map((task:any)=><div key={task.taskId} className="border-t border-white/[0.06] py-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-medium">{task.taskId}</p><p className="mt-1 text-[10px] text-slate-500">{task.workflowId} · {task.organizationId} · {task.approvals?.length??0}/{task.requiredApprovals} approvals</p></div><Status value={task.status}/></div>{task.status==="pending"&&<div className="mt-3 flex gap-2"><Button onClick={()=>void decideWorkflowTask(task,"approve")}>Approve</Button><Button variant="danger" onClick={()=>void decideWorkflowTask(task,"reject")}>Reject</Button></div>}</div>):<Empty label="No workflow tasks are available in your scope."/ >}</Panel></div></>}
     {view==="tenants"&&<><SectionTitle eyebrow="Platform operations" title="Tenant directory" description="Cross-tenant provisioning and lifecycle operations are restricted to separately provisioned platform operators."/><div className="grid gap-5 xl:grid-cols-[1fr_.9fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Tenants</h2>{tenants.length?tenants.map((tenant:any)=><div key={tenant.tenantId} className="flex items-center justify-between border-t border-white/[0.06] py-3"><div><p className="text-sm font-medium">{tenant.displayName}</p><p className="mt-1 text-[10px] text-slate-500">{tenant.slug} · {tenant.tenantId}</p></div><Status value={tenant.status}/></div>):<Empty label="No tenant records returned."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provision a tenant</h2><form onSubmit={createTenant} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant slug</span><input name="slug" required pattern="[a-z0-9-]{2,64}" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Legal name</span><input name="legalName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Display name</span><input name="displayName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner name</span><input name="ownerName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner email</span><input name="ownerEmail" type="email" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label></div><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit"><Building2 size={14}/> Provision tenant</Button></form><div className="mt-8 border-t border-white/[0.07] pt-5"><h3 className="mb-3 text-sm font-semibold">Request tenant lifecycle change</h3><form onSubmit={requestTenantLifecycle} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant ID</span><input name="tenantId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Action</span><select name="action" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"><option value="tenant.activate">Activate</option><option value="tenant.suspend">Suspend</option><option value="tenant.close">Close</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit">Request lifecycle approval</Button></form></div></Panel></div></>}
     <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-5 text-[10px] text-slate-600"><span>ZURI OS · One foundation · Many governed ecosystems</span><span>OIPTECH / ODEL Developers</span></footer>
    </main>
