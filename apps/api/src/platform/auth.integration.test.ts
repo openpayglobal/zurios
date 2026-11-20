@@ -107,6 +107,14 @@ test("invitation acceptance and password login use active tenant membership", {s
 
   const app=Fastify();
   await app.register(authRoutes(db,cfg));
+  const usersBeforeAccessRequest=await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"});
+  const accessRequest=await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"prospective@example.test",displayName:"Prospective User",organizationName:"Prospective Org Ltd",requestNote:"We need a shared operating workspace."}});
+  assert.equal(accessRequest.statusCode,202);
+  assert.equal(accessRequest.json().accepted,true);
+  const storedAccessRequest=await db.collection("access_requests").findOne({emailNormalized:"prospective@example.test",status:"pending"});
+  assert.ok(storedAccessRequest);
+  assert.equal(await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"}),usersBeforeAccessRequest);
+
   const routeLogin=await app.inject({method:"POST",url:"/auth/login",payload:{email:"auth@example.test",password:newPassword,tenantSlug:tenant.slug}});
   assert.equal(routeLogin.statusCode,200);
   const routeBody=routeLogin.json() as {accessToken:string;sessionId:string};
