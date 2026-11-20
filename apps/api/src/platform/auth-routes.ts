@@ -23,7 +23,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   const requireAuth=authenticate(db,config);
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   try{const body=loginSchema.parse(request.body);const ipHash=createHash("sha256").update(request.ip).digest("hex");return await login(db,config,{...body,ipHash});}
+   try{const body=loginSchema.parse(request.body);const ipHash=createHash("sha256").update(request.ip).digest("hex");return await login(db,config,{email:body.email,password:body.password,...(body.tenantSlug?{tenantSlug:body.tenantSlug}:{}),ipHash});}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/workspace/select",async(request,reply)=>{
@@ -33,7 +33,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     return await selectWorkspace(db,config,body.selectionToken,body.tenantId);
    }catch(error){return failure(error,reply);}
   });
-  app.get("/auth/workspaces",{preHandler:requireAuth},async request=>{
+  app.get("/auth/workspaces",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
    return {workspaces:await getUserWorkspaces(db,request.principal!.userId)};
   });
