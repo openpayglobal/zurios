@@ -1,16 +1,19 @@
 # Public Access Request — Privacy and Retention Requirements
 
 **Status:** Draft — legal and product-owner review required  
-**Version:** 0.1  
+**Version:** 0.2  
 **Date:** 2026-11-20  
-**Owner:** Blockchain Innovations LTD  
-**Applies to:** Zuri OS public access-request intake and MeBuMIP workspace access review
+**Programme owner:** Zuri OS programme / OIPTECH / ODEL Developers  
+**Legal data controller:** To be confirmed by the programme owner and privacy/legal reviewer before public production use  
+**Applies to:** Zuri OS public access-request intake only
 
 ## 1. Purpose and boundaries
 
-The public access-request form allows a prospective user to ask for access to Zuri OS. Submission is a request for human review only. It does not create a user account, tenant, workspace, membership, Meta connection or entitlement.
+The public access-request form allows a prospective user to ask for access to Zuri OS. Submission is a request for human review only. It does not create a user account, tenant, workspace, membership, Meta connection or entitlement. A Zuri OS identity may have multiple workspace memberships; requesting platform access is not the same as selecting an existing authorized workspace or requesting a membership in a specific existing workspace.
 
-The endpoint uses a non-enumerating acknowledgement and rate limits requests by normalized email and source IP. MAC reviewers can mark a request reviewed, approve it for follow-up or decline it. An approval decision does not provision access automatically.
+The endpoint uses a non-enumerating acknowledgement and rate limits requests using normalized email and a hashed source-IP key. Authorized platform operators can mark a request reviewed, approve it for follow-up or decline it. An approval decision does not provision access automatically. Workspace creation and membership assignment remain separate privileged, audited operations.
+
+Zuri MeBuMIP is a separately owned product of Blockchain Innovations LTD. This Zuri OS public intake document does not assign MeBuMIP product ownership or determine the controller for any separate MeBuMIP data collection.
 
 ## 2. Data collected
 
@@ -37,11 +40,12 @@ Do not use access-request data for advertising, profiling, unrelated marketing, 
 ## 4. Access controls and audit
 
 - Public callers can submit but cannot list, search, read or modify requests.
-- MAC queue access requires an explicit platform permission.
-- Review actions require the elevated platform permission and an idempotency key.
-- Review actions are audited; raw request notes must not be copied into general audit metadata.
+- The platform access-request queue requires an explicit platform permission.
+- Review actions require the elevated platform provisioning permission and an idempotency key.
+- Review actions are audited and emitted to the platform outbox; raw request notes are not copied into general audit metadata.
 - Database and backup access must follow least privilege.
 - Exports must be access-controlled and included in approved retention and deletion procedures.
+- Review approval is only approval for follow-up; it does not create an account, tenant, workspace or membership.
 
 ## 5. Retention and deletion — decision required
 
@@ -60,7 +64,7 @@ The public intake is disabled by default through `ACCESS_REQUESTS_ENABLED=false`
 ## 6. Notice, rights and jurisdiction
 
 Before public production use, publish an approved privacy notice adjacent to the form and identify:
-- The responsible controller and any processors.
+- The legally responsible controller and any processors.
 - The lawful basis and specific purpose for each data category.
 - Contact details for privacy requests and complaints.
 - Applicable data-subject rights and request handling process.
@@ -71,15 +75,18 @@ The applicable jurisdiction, controller/processor roles and lawful basis have no
 
 ## 7. Production release gates
 
-- Owner/privacy review approves this document and the public-facing notice.
+- Programme owner/privacy review approves this document and the public-facing notice.
+- Legal data controller is identified and recorded.
 - Retention schedule and deletion authority are documented and implemented.
-- Email delivery and requester communication are verified.
-- MAC access permissions and audit evidence are tested.
+- Email delivery and requester communication are verified before promising follow-up.
+- Platform access permissions and audit/outbox evidence are tested.
 - Backup, restore, deletion and incident-response procedures include access-request records.
 - Public form copy clearly states that submission is not account or workspace creation.
+- The access-request feature flag remains disabled until all above gates are met.
 
 ## 8. Change history
 
 | Date | Change |
 |---|---|
 | 2026-11-20 | Initial draft reflecting the implemented non-enumerating, rate-limited, human-reviewed access-request workflow. |
+| 2026-11-20 | Corrected ownership boundary: this is a Zuri OS programme workflow, not a MeBuMIP-owned workflow; documented multi-workspace selection vs platform access request and non-provisioning approval. |
