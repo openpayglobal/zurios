@@ -55,7 +55,7 @@ Before production, the owner and privacy/legal reviewer must decide:
 - How deletion propagates to replicas, backups, exports and immutable archives.
 - Who can authorize deletion and how deletion is audited.
 
-The current implementation does not automatically expire or delete access-request records. This is intentional until an approved retention schedule is recorded.
+The public intake is disabled by default through `ACCESS_REQUESTS_ENABLED=false`. Production configuration refuses to enable it without an HTTPS `ACCESS_REQUESTS_PRIVACY_NOTICE_URL`; the public sign-in UI exposes the request action and notice link only when the public configuration endpoint confirms enablement. The current implementation does not automatically expire or delete access-request records. This is intentional until an approved retention schedule is recorded.
 
 ## 6. Notice, rights and jurisdiction
 
