@@ -12,3 +12,6 @@ Do not use persistent local storage for access tokens. Use HTTPS in every shared
 
 
 The browser authenticates with credentialed HttpOnly session cookies; access tokens are not stored in browser storage. State-changing requests send the session-bound CSRF token from the non-HttpOnly CSRF cookie. Production deployment must use HTTPS and the exact configured CORS origins.
+
+
+The sign-in panel includes password recovery request and one-time token reset flows. Recovery email delivery requires the configured Resend provider and verified sender address; no reset token is displayed in API responses.
