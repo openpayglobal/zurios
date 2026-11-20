@@ -66,6 +66,15 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(enabled.statusCode, 200);
   const cookieStepUp = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader, "x-csrf-token": decodeURIComponent(csrfCookie) }, payload: { code: generateTotpCode(setup.json().secret) } });
   assert.equal(cookieStepUp.statusCode, 200);
+  const macMembers = await app.inject({ method: "GET", url: "/v1/mac/tenants/" + String(tenant._id) + "/members", headers });
+  assert.equal(macMembers.statusCode, 200);
+  assert.ok(macMembers.json().members.some((member: { role: string }) => member.role === "tenant_owner"));
+  clearTestMailOutbox();
+  const macTenantInvite = await app.inject({ method: "POST", url: "/v1/mac/tenants/" + String(tenant._id) + "/invitations", headers, payload: { email: "mac-invite@example.test", role: "publisher" } });
+  assert.equal(macTenantInvite.statusCode, 201);
+  assert.equal("token" in macTenantInvite.json(), false);
+  const macTenantInviteRevoke = await app.inject({ method: "DELETE", url: "/v1/mac/tenants/" + String(tenant._id) + "/invitations/" + macTenantInvite.json().invitationId, headers });
+  assert.equal(macTenantInviteRevoke.statusCode, 204);
   const recoveryCode = enabled.json().recoveryCodes[0] as string;
   const stepUp = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers, payload: { recoveryCode } });
   assert.equal(stepUp.statusCode, 200);
@@ -98,6 +107,8 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.ok(invitationToken);
   const registered = await app.inject({ method: "POST", url: "/v1/auth/register", payload: { token: invitationToken, email: "member@example.test", password: "Integration-Member-Password-2026!", displayName: "Invited Member" } });
   assert.equal(registered.statusCode, 201);
+  const macMembershipUpdate = await app.inject({ method: "PATCH", url: "/v1/mac/tenants/" + String(tenant._id) + "/members/" + registered.json().userId, headers, payload: { role: "publisher" } });
+  assert.equal(macMembershipUpdate.statusCode, 200);
   const replayInvite = await app.inject({ method: "POST", url: "/v1/auth/register", payload: { token: invitationToken, email: "member@example.test", password: "Integration-Member-Password-2026!", displayName: "Invited Member" } });
   assert.equal(replayInvite.statusCode, 404);
   clearTestMailOutbox();
