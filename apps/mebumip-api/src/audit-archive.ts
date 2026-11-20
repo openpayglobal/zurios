@@ -65,6 +65,7 @@ export function buildAuditArchivePackage(
   if (manifest.integrity.algorithm === "unsigned") throw new Error("AUDIT_ARCHIVE_MANIFEST_UNSIGNED");
   const payload = {
     archiveFormat: "zuri-mebumip-immutable-audit-archive-v1",
+    archiveStatus: "prepared_not_archived",
     generatedAt: generatedAt.toISOString(),
     fromSequence,
     toSequence,
