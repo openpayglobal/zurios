@@ -615,3 +615,16 @@ export const ShipmentStatusUpdateSchema=z.object({
  if(update.status!=="delivered"&&update.proofOfDeliveryRef)ctx.addIssue({code:z.ZodIssueCode.custom,path:["proofOfDeliveryRef"],message:"Proof-of-delivery evidence is only valid for delivered shipments"});
 });
 export type ShipmentStatusUpdate=z.infer<typeof ShipmentStatusUpdateSchema>;
+
+export const CarrierTrackingEventSchema=z.object({
+ tenantId:z.string().min(1),organizationId:z.string().min(1),shipmentId:z.string().min(1),
+ carrierId:z.string().min(1),trackingNumber:z.string().min(1).max(160),providerEventId:z.string().min(1).max(160),
+ status:z.enum(["dispatched","in_transit","delayed","delivered","cancelled"]),
+ reason:z.string().min(5).max(1000),occurredAt:z.string().datetime(),
+ expectedShipmentVersion:z.number().int().nonnegative(),proofOfDeliveryRef:z.string().min(1).max(500).optional()
+}).superRefine((event,ctx)=>{
+ if(event.status==="delivered"&&!event.proofOfDeliveryRef)ctx.addIssue({code:z.ZodIssueCode.custom,path:["proofOfDeliveryRef"],message:"Delivered carrier events require proof-of-delivery evidence"});
+ if(event.status!=="delivered"&&event.proofOfDeliveryRef)ctx.addIssue({code:z.ZodIssueCode.custom,path:["proofOfDeliveryRef"],message:"Proof-of-delivery evidence is only valid for delivered carrier events"});
+});
+export type CarrierTrackingEvent=z.infer<typeof CarrierTrackingEventSchema>;
+
