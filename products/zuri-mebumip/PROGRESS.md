@@ -174,3 +174,12 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Full monorepo CI **#1264** passed on the same code head: OpenAPI checks, typecheck, tests and build.
 
 **Remaining email/recovery release work:** configure and verify the production Resend sender domain/secret; implement email verification; add durable retry/outbox semantics and delivery monitoring. The newest MAC UI follow-up requires fresh CI after its commit.
+
+
+**Production browser-session hardening — 2026-11-20:**
+
+- Added HttpOnly session cookies with configurable SameSite and optional domain attributes; production cookies are Secure. Production login/refresh responses omit raw bearer tokens, while development/test retain bearer responses for local tooling.
+- Added a separate CSRF cookie whose hash is stored with the session. Cookie-authenticated unsafe requests require the matching `x-csrf-token` header and an exact configured Origin. Bearer-based non-browser clients remain supported.
+- Refresh rotates both the session token and CSRF token. Logout, password recovery and MFA factor reset clear browser cookies. Production startup rejects non-HTTPS CORS origins.
+- Updated CORS to allow the CSRF header and the MAC/MAD web client to use credentialed cookie sessions, discover existing sessions through `/v1/auth/me`, and send the CSRF header on logout. Fixed the unauthenticated dashboard 401 handling to avoid a reload loop.
+- Cookie/session changes have not yet completed a fresh CI run, and the new cookie/CSRF flow still needs explicit database-backed integration coverage before production acceptance. Existing passing run #272 predates this cookie implementation.
