@@ -196,3 +196,10 @@ No live Meta integration, production deployment, immutable archive provider conf
 ## Latest verification checkpoint — 2026-11-20
 
 The full repository CI passed on commit `b65cda422aaa18158cc00bf8774b7bf54d65870e` (run 44745084612): OpenAPI validation, route drift, monorepo typecheck, tests and build all passed. The test suites reported 49 tests (42 passed, 7 skipped, 0 failed). The MeBuMIP Phase 1 workflow also passed on the same commit (run 44745084508), including API and web typecheck, tests and builds. This verifies the code snapshot at that commit; production configuration and provider approvals remain separate gates.
+
+
+## Latest integrated verification — 2026-11-20
+
+The latest full-repository validation run (44746548613) passed both OpenAPI 3.1 lint steps, API route drift, monorepo typechecking, all tests and the monorepo build. The three workspace test suites reported 52 tests: 45 passed, 7 skipped and 0 failed. The MeBuMIP Phase 1 workflow (44746548651) passed API typecheck, 23 API tests, API build, web typecheck and web build. Both runs were in runner cleanup after all validation steps succeeded.
+
+The MeBuMIP audit archive work now includes signed package preparation, a MAC download action, archive-preparation audit logging, a provider-neutral immutable-storage contract and a researched provider comparison. It is not yet independently archived: no provider, region, retention schedule, legal-hold policy or credentials have been approved.
