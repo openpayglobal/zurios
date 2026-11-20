@@ -1,16 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
+import { createRateLimitKey } from "./rate-limit.js";
 
-test("rate limit key digests do not expose raw client addresses", () => {
+test("rate limit keys are opaque and do not expose raw client addresses", () => {
   const address = "203.0.113.20";
-  const digest = createHash("sha256").update(address).digest("hex").slice(0, 32);
-  assert.equal(digest.length, 32);
-  assert.notEqual(digest, address);
+  const key = createRateLimitKey(address, "/v1/auth/login", 1_700_000_000_000);
+  assert.equal(key.length, 64);
+  assert.equal(key.includes(address), false);
 });
 
-test("fixed windows produce distinct keys", () => {
-  const first = createHash("sha256").update("/v1/auth/login:client:1000").digest("hex");
-  const second = createHash("sha256").update("/v1/auth/login:client:2000").digest("hex");
-  assert.notEqual(first, second);
+test("rate limit keys isolate route, client and fixed time window", () => {
+  const first = createRateLimitKey("client-a", "/v1/auth/login", 1000);
+  assert.notEqual(first, createRateLimitKey("client-b", "/v1/auth/login", 1000));
+  assert.notEqual(first, createRateLimitKey("client-a", "/v1/auth/step-up", 1000));
+  assert.notEqual(first, createRateLimitKey("client-a", "/v1/auth/login", 2000));
 });
