@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
   title: Zuri MeBuMIP API
   version: 1.0.0
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
   description: |
     API contract for Zuri Meta Business Management and Integration Platform.
     This specification describes the currently implemented MAC/MAD audit endpoints.
@@ -34,7 +37,7 @@ paths:
       operationId: verifyRecentMeBuMIPAuditEvents
       summary: Verify signatures and sequence continuity for the latest 500 audit events
       responses:
-        "200": {description: Counts of verified, unsigned and invalid events plus detected sequence gaps}
+        "200": {description: "Counts of verified, unsigned and invalid events plus detected sequence gaps"}
         "401": {description: Authentication required}
         "403": {description: Platform audit-read permission required}
   /v1/mac/audit-events/export:
@@ -62,7 +65,7 @@ paths:
         "400": {description: Invalid sequence range}
         "401": {description: Authentication required}
         "403": {description: Platform audit-read permission required}
-        "409": {description: Sequence gap, unsigned manifest or invalid event signature}
+        "409": {description: "Sequence gap, unsigned manifest or invalid event signature"}
         "503": {description: Audit signing key is not configured}
   /v1/mad/overview:
     get:
