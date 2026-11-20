@@ -158,6 +158,9 @@ test("invitation acceptance and password login use active tenant membership", {s
   const reviewedAccessRequest=await app.inject({method:"PATCH",url:"/platform/admin/access-requests/"+queuedAccessRequest.requestId,headers:{authorization:"Bearer "+platformLoginSession.accessToken,"idempotency-key":"access-review-0001"},payload:{status:"approved",reason:"Approved for follow-up after organization verification."}});
   assert.equal(reviewedAccessRequest.statusCode,200);
   assert.equal(await db.collection("memberships").countDocuments({userId:user.userId}),membershipsBeforeReview);
+  const repeatedReview=await app.inject({method:"PATCH",url:"/platform/admin/access-requests/"+queuedAccessRequest.requestId,headers:{authorization:"Bearer "+platformLoginSession.accessToken,"idempotency-key":"access-review-0001"},payload:{status:"approved",reason:"Approved for follow-up after organization verification."}});
+  assert.equal(repeatedReview.statusCode,200);
+  assert.equal(await db.collection("memberships").countDocuments({userId:user.userId}),membershipsBeforeReview);
 
   const platformSwitch=await app.inject({method:"POST",url:"/auth/workspace/switch",headers:{authorization:"Bearer "+platformLoginSession.accessToken},payload:{tenantId:tenant.tenantId}});
   assert.equal(platformSwitch.statusCode,200);
