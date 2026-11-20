@@ -1579,6 +1579,27 @@ paths:
         "200": {description: Time entry rejected}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /analytics/operational.csv:
+    get:
+      tags: [Analytics]
+      operationId: exportOperationalAnalyticsCsv
+      summary: Export organization-scoped operational metrics as CSV
+      parameters:
+        - {name: organizationId, in: query, required: true, schema: {type: string}}
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}}
+      responses:
+        "200":
+          description: CSV export of the allowlisted operational metrics
+          headers:
+            Content-Disposition:
+              schema: {type: string}
+          content:
+            text/csv:
+              schema: {type: string}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Invalid reporting period or inactive organization}
   /analytics/operational:
     get:
       tags: [Analytics]
