@@ -36,3 +36,9 @@ export async function ensureIdentitySelectionIndexes(db:Db):Promise<void>{
  ];
  await Promise.all(specs.map(([name,key,options])=>db.collection(name).createIndex(key,options)));
 }
+
+export async function ensureAuditArchiveReceiptIndexes(db:Db):Promise<void>{
+ await db.collection("auditArchiveReceipts").createIndex({objectKey:1},{unique:true});
+ await db.collection("auditArchiveReceipts").createIndex({fromSequence:1,toSequence:1},{unique:true});
+ await db.collection("auditArchiveReceipts").createIndex({archivedAt:-1});
+}
