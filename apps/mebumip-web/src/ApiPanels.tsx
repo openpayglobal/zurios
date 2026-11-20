@@ -20,11 +20,17 @@ export function AuthPanel() {
   useEffect(() => { fetch(API_BASE + "/v1/auth/me", { credentials: "include" }).then((response) => setAuthenticated(response.ok)).catch(() => setAuthenticated(false)).finally(() => setChecking(false)); }, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset">("login");
+  const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset" | "admin-register">("login");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [recoveryMessage, setRecoveryMessage] = useState("");
+  const [platformInviteToken, setPlatformInviteToken] = useState("");
+  const [platformInviteEmail, setPlatformInviteEmail] = useState("");
+  const [platformInvitePassword, setPlatformInvitePassword] = useState("");
+  const [platformInviteName, setPlatformInviteName] = useState("");
+  const [acceptInviteMode, setAcceptInviteMode] = useState(false);
+  const [platformInviteMessage, setPlatformInviteMessage] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
@@ -62,6 +68,28 @@ export function AuthPanel() {
     } catch (cause) { setRecoveryMessage(cause instanceof Error ? cause.message : "Password reset failed."); }
     finally { setBusy(false); }
   }
+  async function registerInvitedPlatformAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setPlatformInviteMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/register-platform-admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: platformInviteToken, email: platformInviteEmail, password: platformInvitePassword, displayName: platformInviteName }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Administrator registration failed.");
+      setEmail(platformInviteEmail); setPassword(""); setPlatformInviteToken(""); setPlatformInvitePassword(""); setRecoveryMode("login");
+      setPlatformInviteMessage("Platform administrator account created. Sign in to continue.");
+    } catch (cause) { setPlatformInviteMessage(cause instanceof Error ? cause.message : "Administrator registration failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function acceptExistingPlatformAdmin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setPlatformInviteMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/admin-invitations/accept", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ token: platformInviteToken }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Invitation acceptance failed.");
+      setPlatformInviteToken(""); setPlatformInviteMessage("Platform administrator access activated as " + body.role + "."); setAcceptInviteMode(false); window.location.reload();
+    } catch (cause) { setPlatformInviteMessage(cause instanceof Error ? cause.message : "Invitation acceptance failed."); }
+    finally { setBusy(false); }
+  }
   async function logout() {
     await fetch(API_BASE + "/v1/auth/logout", { method: "POST", credentials: "include", headers: csrfHeaders() }).catch(() => undefined);
     setAuthenticated(false); window.location.reload();
@@ -69,8 +97,9 @@ export function AuthPanel() {
 
   return <section className="api-auth">
     {checking ? <span>Checking secure session…</span> : authenticated
-      ? <><span className="api-online">Authenticated secure session established</span><button type="button" onClick={logout}>Sign out</button></>
-      : recoveryMode === "login" ? <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button><button type="button" onClick={() => { setRecoveryEmail(email); setRecoveryMode("request"); setRecoveryMessage(""); }}>Forgot password?</button>{error && <span className="api-error">{error}</span>}{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
+      ? <><span className="api-online">Authenticated secure session established</span><button type="button" onClick={() => { setAcceptInviteMode((value) => !value); setPlatformInviteMessage(""); }}>Accept administrator invitation</button>{acceptInviteMode && <form onSubmit={acceptExistingPlatformAdmin}><input placeholder="Administrator invitation token" value={platformInviteToken} onChange={(event) => setPlatformInviteToken(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Accepting…" : "Accept invitation"}</button></form>}{platformInviteMessage && <span role="status">{platformInviteMessage}</span>}<button type="button" onClick={logout}>Sign out</button></>
+      : recoveryMode === "login" ? <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button><button type="button" onClick={() => { setRecoveryEmail(email); setRecoveryMode("request"); setRecoveryMessage(""); }}>Forgot password?</button><button type="button" onClick={() => { setRecoveryMode("admin-register"); setPlatformInviteMessage(""); }}>Register from administrator invitation</button>{error && <span className="api-error">{error}</span>}{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
+      : recoveryMode === "admin-register" ? <form onSubmit={registerInvitedPlatformAdmin}><div><strong>Register as a platform administrator</strong><small>Use the one-time invitation token sent to your email address.</small></div><input placeholder="Administrator invitation token" value={platformInviteToken} onChange={(event) => setPlatformInviteToken(event.target.value)} required/><input type="email" placeholder="Invited email address" value={platformInviteEmail} onChange={(event) => setPlatformInviteEmail(event.target.value)} required/><input placeholder="Full name" value={platformInviteName} onChange={(event) => setPlatformInviteName(event.target.value)} required/><input type="password" autoComplete="new-password" minLength={12} placeholder="Password (12+ characters)" value={platformInvitePassword} onChange={(event) => setPlatformInvitePassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Registering…" : "Create administrator account"}</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{platformInviteMessage && <span role="status">{platformInviteMessage}</span>}</form>
       : recoveryMode === "request" ? <form onSubmit={requestPasswordRecovery}><div><strong>Recover your password</strong><small>We will send a one-time reset token if this account exists.</small></div><input type="email" placeholder="Account email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Sending…" : "Send recovery email"}</button><button type="button" onClick={() => setRecoveryMode("reset")}>I already have a reset token</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
       : <form onSubmit={resetAccountPassword}><div><strong>Set a new password</strong><small>Paste the one-time token from your recovery email.</small></div><input placeholder="Password reset token" value={resetToken} onChange={(event) => setResetToken(event.target.value)} required/><input type="password" autoComplete="new-password" minLength={12} placeholder="New password (12+ characters)" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Resetting…" : "Reset password"}</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>}
   </section>;
