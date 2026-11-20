@@ -191,3 +191,8 @@ At the latest recorded checkpoint, MeBuMIP Phase 1 remains **In progress**. The 
 Outstanding closure gates include independently immutable audit archiving, safe key versioning/rotation and migration, production email configuration, production database least privilege and backup/restore evidence, and deployment-specific HTTPS/CORS/proxy/cookie verification. The repository validation and MeBuMIP Phase 1 workflows passed on commit 0506145297c3547ddc8f81f6130c264a3d803f4e (runs 44733364576 and 44733364512); see the product progress register for exact test summaries. Vercel checks remain blocked by the configured build-rate limit and are not treated as application CI evidence.
 
 No live Meta integration, production deployment, immutable archive provider configuration or Phase 1 closure is claimed here. Consult the [progress register](../products/zuri-mebumip/PROGRESS.md) for the latest evidence-based status.
+
+
+## Latest verification checkpoint — 2026-11-20
+
+The full repository CI passed on commit `b65cda422aaa18158cc00bf8774b7bf54d65870e` (run 44745084612): OpenAPI validation, route drift, monorepo typecheck, tests and build all passed. The test suites reported 49 tests (42 passed, 7 skipped, 0 failed). The MeBuMIP Phase 1 workflow also passed on the same commit (run 44745084508), including API and web typecheck, tests and builds. This verifies the code snapshot at that commit; production configuration and provider approvals remain separate gates.
