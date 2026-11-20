@@ -4,7 +4,7 @@ Fastify API workspace for Zuri MeBuMIP.
 
 ## Local configuration
 
-- `MONGODB_URI`: MongoDB connection URI.
+- `MONGODB_URI`: MongoDB connection URI. Production must use a replica set or sharded cluster; startup refuses a standalone topology because signed audit appends and backfills require transactions.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.
