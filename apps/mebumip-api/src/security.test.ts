@@ -45,3 +45,27 @@ test("audit events are HMAC signed and tampering is detected", () => {
   assert.equal(verifyAuditEvent({ ...event, action: "tenant.member.deleted" }), false);
   assert.equal(verifyAuditEvent(event, "a-different-signing-key"), false);
 });
+
+test("versioned audit key ring signs with the active key and verifies historical key IDs", () => {
+  const oldKey = "test-audit-signing-key-with-adequate-entropy";
+  const newKey = Buffer.alloc(32, 7).toString("hex");
+  delete process.env.AUDIT_SIGNING_KEYRING;
+  delete process.env.AUDIT_SIGNING_ACTIVE_KEY_ID;
+  process.env.AUDIT_SIGNING_KEY = oldKey;
+  const legacyEvent = createAuditEvent({ actorUserId: "u1", action: "legacy.audit", targetType: "test", outcome: "success", correlationId: "legacy-1" });
+  process.env.AUDIT_SIGNING_KEYRING = JSON.stringify({ legacy: Buffer.from(oldKey).toString("hex"), "audit-2026": newKey });
+  process.env.AUDIT_SIGNING_ACTIVE_KEY_ID = "audit-2026";
+  const event = createAuditEvent({ actorUserId: "u1", action: "versioned.audit", targetType: "test", outcome: "success", correlationId: "versioned-1" });
+  assert.equal((event.integrity as { algorithm: string }).algorithm, "HMAC-SHA256-v2");
+  assert.equal((event.integrity as { keyId: string }).keyId, "audit-2026");
+  assert.equal(verifyAuditEvent(event), true);
+  assert.equal(verifyAuditEvent(legacyEvent), true);
+  assert.equal(verifyAuditEvent({ ...event, integrity: { ...(event.integrity as object), keyId: "legacy" } }), false);
+  assert.equal(verifyAuditEvent({ ...event, action: "tampered.audit" }), false);
+  const manifest = signAuditExport([event as unknown as Record<string, unknown>], new Date().toISOString());
+  assert.equal(manifest.integrity.algorithm, "HMAC-SHA256-v2");
+  assert.equal(manifest.integrity.keyId, "audit-2026");
+  delete process.env.AUDIT_SIGNING_KEYRING;
+  delete process.env.AUDIT_SIGNING_ACTIVE_KEY_ID;
+});
+
