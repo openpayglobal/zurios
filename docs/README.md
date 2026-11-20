@@ -36,6 +36,15 @@ This directory is the authoritative entry point for approved ecosystem-wide spec
 - [Identity and Membership Data Model](./database/IDENTITY-MEMBERSHIP-DATA-MODEL.md) — users, tenants, memberships, sessions and indexes.
 - [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
 
+## Full Zuri OS baseline specifications
+
+- [Master Execution Plan](./project/ZURI-OS-MASTER-EXECUTION-PLAN.md) — work packages, sequence, governance, acceptance and release gates.
+- [Master Product Requirements Document](./product/ZURI-OS-MASTER-PRD-v1.0.md) — product outcomes, users, module catalogue, MVP boundary and requirements.
+- [Technical Architecture](./architecture/ZURI-OS-TECHNICAL-ARCHITECTURE-v1.0.md) — modular boundaries, trust zones, APIs, events, data and operations.
+- [MongoDB Database Blueprint](./database/ZURI-OS-MONGODB-DATABASE-BLUEPRINT-v1.0.md) — collections, tenancy, indexes, transactions, migrations and governance.
+- [UI/UX Design System](./ux/ZURI-OS-UI-UX-DESIGN-SYSTEM-v1.0.md) — app shell, navigation, reusable components, workflows and accessibility.
+- [Implementation Progress Register](./project/ZURI-OS-PROGRESS-REGISTER.md) — exact CI evidence, deployment state, blockers and release gates.
+
 ## Document control
 
 Every authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions and change history.
