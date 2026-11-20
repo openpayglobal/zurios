@@ -80,8 +80,33 @@ export interface AuditEventInput {
 
 type AuditEventPayload = Omit<AuditEventInput, "occurredAt"> & { occurredAt: Date };
 
-function auditPayload(event: AuditEventPayload): string {
+type AuditKeyRing={keys:Record<string,Buffer>;activeKeyId:string;legacyKey?:Buffer};
+function loadAuditKeyRing():AuditKeyRing|null{
+ const raw=process.env.AUDIT_SIGNING_KEYRING;
+ if(!raw)return null;
+ const parsed:unknown=JSON.parse(raw);
+ if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error("INVALID_AUDIT_SIGNING_KEYRING");
+ const keys=Object.create(null) as Record<string,Buffer>;
+ for(const [keyId,value] of Object.entries(parsed as Record<string,unknown>)){
+  if(!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId)||typeof value!=="string"||!/^[a-fA-F0-9]{64}$/.test(value))throw new Error("INVALID_AUDIT_SIGNING_KEYRING");
+  keys[keyId]=Buffer.from(value,"hex");
+ }
+ const activeKeyId=process.env.AUDIT_SIGNING_ACTIVE_KEY_ID??"";
+ if(!Object.hasOwn(keys,activeKeyId))throw new Error("AUDIT_ACTIVE_SIGNING_KEY_NOT_AVAILABLE");
+ const environmentLegacy=process.env.AUDIT_SIGNING_KEY?Buffer.from(process.env.AUDIT_SIGNING_KEY):undefined;
+ if(environmentLegacy&&keys.legacy&&!timingSafeEqual(environmentLegacy,keys.legacy))throw new Error("AUDIT_LEGACY_KEY_CONFIGURATION_CONFLICT");
+ const legacyKey=environmentLegacy??keys.legacy;
+ return {keys,activeKeyId,...(legacyKey?{legacyKey}:{})};
+}
+function legacyAuditSigningKey(explicit?:string):Buffer|undefined{
+ if(explicit)return Buffer.from(explicit);
+ const ring=loadAuditKeyRing();
+ if(process.env.AUDIT_SIGNING_KEY)return Buffer.from(process.env.AUDIT_SIGNING_KEY);
+ return ring?.legacyKey;
+}
+function auditPayload(event: AuditEventPayload,keyId?:string): string {
   return JSON.stringify({
+    ...(keyId?{keyId}:{}),
     actorUserId: event.actorUserId,
     action: event.action,
     targetType: event.targetType,
@@ -97,51 +122,35 @@ function auditPayload(event: AuditEventPayload): string {
 
 export function createAuditEvent(input: AuditEventInput) {
   const event: AuditEventPayload = { ...input, occurredAt: input.occurredAt ?? new Date() };
-  const signingKey = process.env.AUDIT_SIGNING_KEY;
-  const integrity = signingKey
-    ? { algorithm: "HMAC-SHA256" as const, signature: createHmac("sha256", signingKey).update(auditPayload(event)).digest("hex") }
-    : { algorithm: "unsigned" as const, signature: null };
-  // Deliberately no arbitrary request/body/token fields: audit records must not contain secrets.
-  return { ...event, integrity };
+  const ring=loadAuditKeyRing();
+  if(ring){
+   const keyId=ring.activeKeyId,key=ring.keys[keyId]!;
+   const integrity={algorithm:"HMAC-SHA256-v2" as const,keyId,signature:createHmac("sha256",key).update(auditPayload(event,keyId)).digest("hex")};
+   return {...event,integrity};
+  }
+  const signingKey=legacyAuditSigningKey();
+  const integrity=signingKey
+   ?{algorithm:"HMAC-SHA256" as const,signature:createHmac("sha256",signingKey).update(auditPayload(event)).digest("hex")}
+   :{algorithm:"unsigned" as const,signature:null};
+  return {...event,integrity};
 }
 
-export function verifyAuditEvent(event: Record<string, unknown>, signingKey = process.env.AUDIT_SIGNING_KEY): boolean {
-  if (!signingKey || !event.integrity || typeof event.integrity !== "object") return false;
-  const integrity = event.integrity as { algorithm?: unknown; signature?: unknown };
-  if (integrity.algorithm !== "HMAC-SHA256" || typeof integrity.signature !== "string" || !/^[a-f0-9]{64}$/.test(integrity.signature)) return false;
-  if (!(event.occurredAt instanceof Date) || typeof event.actorUserId !== "string" || typeof event.action !== "string" ||
-      typeof event.targetType !== "string" || typeof event.outcome !== "string" || typeof event.correlationId !== "string") return false;
-  const payload: AuditEventPayload = {
-    actorUserId: event.actorUserId, action: event.action, targetType: event.targetType,
-    ...(typeof event.targetId === "string" ? { targetId: event.targetId } : {}),
-    ...(typeof event.tenantId === "string" ? { tenantId: event.tenantId } : {}),
-    outcome: event.outcome as AuditEventInput["outcome"], correlationId: event.correlationId,
-    occurredAt: event.occurredAt,
-    ...(typeof event.sequence === "number" ? { sequence: event.sequence } : {}),
-    ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
-  };
-  const expected = createHmac("sha256", signingKey).update(auditPayload(payload)).digest();
-  const actual = Buffer.from(integrity.signature, "hex");
-  return actual.length === expected.length && timingSafeEqual(actual, expected);
-}
-
-export async function appendAuditEvent(db: Db, input: AuditEventInput) {
-  const counters = db.collection<{ _id: string; sequence: number }>("auditCounters");
-  const counter = await counters.findOneAndUpdate(
-    { _id: "global" },
-    { $inc: { sequence: 1 }, $setOnInsert: { createdAt: new Date() } },
-    { upsert: true, returnDocument: "after" },
-  );
-  if (!counter || !Number.isSafeInteger(counter.sequence) || counter.sequence < 1) throw new Error("AUDIT_SEQUENCE_ALLOCATION_FAILED");
-  const event = createAuditEvent({ ...input, sequence: counter.sequence });
-  await db.collection("auditEvents").insertOne(event as Document);
-  return event;
-}
-
-export function signAuditExport(events: Array<Record<string, unknown>>, generatedAt: string, signingKey = process.env.AUDIT_SIGNING_KEY) {
+export function verifyAuditEvent(event: Record<string, unknown>, signingKey?: string): boolean {
+ if(!event.integrity||typeof event.integrity!=="object")return false;
+ const integrity=event.integrity as {algorithm?:unknown;signature?:unknown;keyId?:unknown};
+ if(typeof integrity.signature!=="string"||!/^[a-f0-9]{64}$/.test(integrity.signature))return false;
+ if(!(event.occurredAt instanceof Date)||typeof event.actorUserId!=="string"||typeof event.action!=="string"||typeof event.targetType!=="string"||typeof event.outcome!=="string"||typeof event.correlationId!=="string")return faexport function signAuditExport(events: Array<Record<string, unknown>>, generatedAt: string, signingKey?: string) {
   const sequences = events.map((event) => Number(event.sequence)).filter((value) => Number.isSafeInteger(value));
   const manifest = { format: "zuri-mebumip-audit-export-v1", generatedAt, count: events.length, firstSequence: sequences.length ? Math.min(...sequences) : null, lastSequence: sequences.length ? Math.max(...sequences) : null };
-  if (!signingKey) return { ...manifest, integrity: { algorithm: "unsigned", signature: null } };
-  const payload = JSON.stringify({ ...manifest, eventSignatures: events.map((event) => { const integrity = event.integrity as { signature?: unknown } | undefined; return { id: String(event._id ?? ""), sequence: event.sequence ?? null, signature: typeof integrity?.signature === "string" ? integrity.signature : null }; }) });
-  return { ...manifest, integrity: { algorithm: "HMAC-SHA256", signature: createHmac("sha256", signingKey).update(payload).digest("hex") } };
+  const ring=loadAuditKeyRing();
+  if(ring){
+   const keyId=ring.activeKeyId,key=ring.keys[keyId]!;
+   const versionedManifest={...manifest,format:"zuri-mebumip-audit-export-v2"};
+   const payload=JSON.stringify({keyId,...versionedManifest,eventSignatures:events.map((event)=>{const integrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,signature:typeof integrity?.signature==="string"?integrity.signature:null};})});
+   return {...versionedManifest,integrity:{algorithm:"HMAC-SHA256-v2",keyId,signature:createHmac("sha256",key).update(payload).digest("hex")}};
+  }
+  const key=legacyAuditSigningKey(signingKey);
+  if(!key)return {...manifest,integrity:{algorithm:"unsigned",signature:null}};
+  const payload=JSON.stringify({...manifest,eventSignatures:events.map((event)=>{const integrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,signature:typeof integrity?.signature==="string"?integrity.signature:null};})});
+  return {...manifest,integrity:{algorithm:"HMAC-SHA256",signature:createHmac("sha256",key).update(payload).digest("hex")}};
 }
