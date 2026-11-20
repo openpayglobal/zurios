@@ -153,6 +153,18 @@ test("invitation acceptance and password login use active tenant membership", {s
   }
   assert.ok(repeatedAccessResponses.every(response=>response.statusCode===202&&response.json().message===accessRequest.json().message));
   assert.equal(await db.collection("access_requests").countDocuments({emailNormalized:"prospective@example.test",status:"pending"}),3);
+  const previousPrivacyUrl=process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL;
+  process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL="https://example.test/privacy";
+  const configuredPublicAuth=await app.inject({method:"GET",url:"/auth/public-config"});
+  assert.equal(configuredPublicAuth.json().privacyNoticeUrl,"https://example.test/privacy");
+  process.env.ACCESS_REQUESTS_ENABLED="false";
+  const disabledPublicAuth=await app.inject({method:"GET",url:"/auth/public-config"});
+  assert.equal(disabledPublicAuth.json().accessRequestsEnabled,false);
+  const disabledAccessRequest=await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"disabled@example.test",displayName:"Disabled User",organizationName:"Disabled Org"}});
+  assert.equal(disabledAccessRequest.statusCode,503);
+  process.env.ACCESS_REQUESTS_ENABLED="true";
+  if(previousPrivacyUrl===undefined)delete process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL;else process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL=previousPrivacyUrl;
+
 
 
   const platformLogin=await login(db,cfg,{email:"auth@example.test",password:newPassword,ipHash:"integration"});
