@@ -138,15 +138,21 @@ test("invitation acceptance and password login use active tenant membership", {s
   await app.register(authRoutes(db,cfg));
   await app.register(adminRoutes(db,cfg));
   const usersBeforeAccessRequest=await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"});
+  const tenantsBeforeAccessRequest=await db.collection("tenants").countDocuments({});
+  const membershipsBeforeAccessRequest=await db.collection("memberships").countDocuments({});
   const publicAuthConfig=await app.inject({method:"GET",url:"/auth/public-config"});
   assert.equal(publicAuthConfig.statusCode,200);
+  assert.equal(publicAuthConfig.headers["cache-control"],"no-store");
   assert.equal(publicAuthConfig.json().accessRequestsEnabled,true);
   const accessRequest=await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"prospective@example.test",displayName:"Prospective User",organizationName:"Prospective Org Ltd",requestNote:"We need a shared operating workspace."}});
   assert.equal(accessRequest.statusCode,202);
+  assert.equal(accessRequest.headers["cache-control"],"no-store");
   assert.equal(accessRequest.json().accepted,true);
   const storedAccessRequest=await db.collection("access_requests").findOne({emailNormalized:"prospective@example.test",status:"pending"});
   assert.ok(storedAccessRequest);
   assert.equal(await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"}),usersBeforeAccessRequest);
+  assert.equal(await db.collection("tenants").countDocuments({}),tenantsBeforeAccessRequest);
+  assert.equal(await db.collection("memberships").countDocuments({}),membershipsBeforeAccessRequest);
   const repeatedAccessResponses=[];
   for(let attempt=0;attempt<3;attempt++){
     repeatedAccessResponses.push(await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"prospective@example.test",displayName:"Prospective User",organizationName:"Prospective Org Ltd"}}));
