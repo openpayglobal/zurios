@@ -1,7 +1,8 @@
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
-import {coreCollections} from "./repositories.js";\nimport type {OrganizationDocument} from "./types.js";
+import {coreCollections} from "./repositories.js";
+import type {OrganizationDocument} from "./types.js";
 const schema=z.object({code:z.string().min(1).max(40).regex(/^[A-Za-z0-9._-]+$/),name:z.string().min(2).max(150),type:z.enum(["group","company","business_unit","department","branch"]),parentOrganizationId:z.string().optional()});
 export async function createOrganization(db:Db,tenantId:string,actorId:string,input:unknown,session?:ClientSession){
  const d=schema.parse(input),{parentOrganizationId,...rest}=d,c=coreCollections(db),parent=parentOrganizationId?await c.organizations.findOne({tenantId,organizationId:parentOrganizationId,status:"active"},session?{session}:{}):null;
