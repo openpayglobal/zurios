@@ -264,7 +264,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
     const parsed = z.union([
-      z.object({ code: z.string().regex(/^\\d{6}$/) }),
+      z.object({ code: z.string().regex(/^\d{6}$/) }),
       z.object({ recoveryCode: z.string().min(8).max(32) }),
     ]).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
