@@ -28,7 +28,7 @@ async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenan
 }
 type WorkspaceChoice={tenantId:string;slug:string;displayName:string;legalName:string;membershipId:string;roleKeys:string[];organizationIds:string[];locationIds:string[]};
 export async function listUserWorkspaces(db:Db,userId:string):Promise<WorkspaceChoice[]>{
- const c=coreCollections(db),memberships=await c.memberships.find({userId,status:"active"}).toArray();
+ const c=coreCollections(db),now=new Date(),memberships=await c.memberships.find({userId,status:"active",$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]}).toArray();
  if(!memberships.length)return [];
  const tenantIds=[...new Set(memberships.map(m=>m.tenantId))],roleIds=[...new Set(memberships.flatMap(m=>m.roleIds))];
  const [tenants,roles]=await Promise.all([
