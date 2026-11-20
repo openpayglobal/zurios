@@ -20,6 +20,11 @@ export function AuthPanel() {
   useEffect(() => { fetch(API_BASE + "/v1/auth/me", { credentials: "include" }).then((response) => setAuthenticated(response.ok)).catch(() => setAuthenticated(false)).finally(() => setChecking(false)); }, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset">("login");
+  const [recoveryEmail, setRecoveryEmail] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [recoveryMessage, setRecoveryMessage] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
@@ -36,6 +41,27 @@ export function AuthPanel() {
     } finally { setBusy(false); }
   }
 
+  async function requestPasswordRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setRecoveryMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/password/recovery", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: recoveryEmail }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Could not request recovery.");
+      setRecoveryMessage(body.message ?? "If the account exists, recovery instructions will be sent.");
+    } catch (cause) { setRecoveryMessage(cause instanceof Error ? cause.message : "Could not request recovery."); }
+    finally { setBusy(false); }
+  }
+
+  async function resetAccountPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setRecoveryMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/password/reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: resetToken, newPassword }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Password reset failed.");
+      setRecoveryMode("login"); setPassword(""); setNewPassword(""); setResetToken(""); setRecoveryMessage("Password reset successful. Sign in with your new password.");
+    } catch (cause) { setRecoveryMessage(cause instanceof Error ? cause.message : "Password reset failed."); }
+    finally { setBusy(false); }
+  }
   async function logout() {
     await fetch(API_BASE + "/v1/auth/logout", { method: "POST", credentials: "include", headers: csrfHeaders() }).catch(() => undefined);
     setAuthenticated(false); window.location.reload();
@@ -44,7 +70,9 @@ export function AuthPanel() {
   return <section className="api-auth">
     {checking ? <span>Checking secure session…</span> : authenticated
       ? <><span className="api-online">Authenticated secure session established</span><button type="button" onClick={logout}>Sign out</button></>
-      : <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button>{error && <span className="api-error">{error}</span>}</form>}
+      : recoveryMode === "login" ? <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button><button type="button" onClick={() => { setRecoveryEmail(email); setRecoveryMode("request"); setRecoveryMessage(""); }}>Forgot password?</button>{error && <span className="api-error">{error}</span>}{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
+      : recoveryMode === "request" ? <form onSubmit={requestPasswordRecovery}><div><strong>Recover your password</strong><small>We will send a one-time reset token if this account exists.</small></div><input type="email" placeholder="Account email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Sending…" : "Send recovery email"}</button><button type="button" onClick={() => setRecoveryMode("reset")}>I already have a reset token</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
+      : <form onSubmit={resetAccountPassword}><div><strong>Set a new password</strong><small>Paste the one-time token from your recovery email.</small></div><input placeholder="Password reset token" value={resetToken} onChange={(event) => setResetToken(event.target.value)} required/><input type="password" autoComplete="new-password" minLength={12} placeholder="New password (12+ characters)" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Resetting…" : "Reset password"}</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>}
   </section>;
 }
 
