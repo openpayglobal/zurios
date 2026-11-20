@@ -5,7 +5,7 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
-import { decryptMfaSecret, encryptMfaSecret, generateTotpSecret, verifyTotp } from "./mfa.js";
+import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
 
 const bootstrapSchema = z.object({
   bootstrapToken: z.string().min(32),
@@ -254,23 +254,57 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
     if (!user || typeof user.mfaPendingSecret !== "string" || !(user.mfaSetupExpiresAt instanceof Date) || user.mfaSetupExpiresAt.getTime() <= Date.now()) return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED_OR_EXPIRED" });
     if (!verifyTotp(decryptMfaSecret(user.mfaPendingSecret), parsed.data.code)) { await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enable.denied", "user", "denied"); return reply.code(400).send({ error: "MFA_CODE_INVALID" }); }
-    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret }, $unset: { mfaPendingSecret: "", mfaSetupExpiresAt: "" } });
+    const recoveryCodes = generateMfaRecoveryCodes();
+    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret, mfaRecoveryCodeHashes: recoveryCodes.map((code) => hashToken(normalizeMfaRecoveryCode(code))) }, $unset: { mfaPendingSecret: "", mfaSetupExpiresAt: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enabled", "user", "success");
-    return reply.send({ status: "mfa_enabled" });
+    return reply.send({ status: "mfa_enabled", recoveryCodes, recoveryCodesWarning: "Shown once. Store these codes securely; each code can be used once." });
   });
 
   app.post("/v1/auth/step-up", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
-    const parsed = z.object({ code: z.string().regex(/^\d{6}$/) }).safeParse(request.body);
+    const parsed = z.union([
+      z.object({ code: z.string().regex(/^\\d{6}$/) }),
+      z.object({ recoveryCode: z.string().min(8).max(32) }),
+    ]).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
-    if (!user || typeof user.mfaSecretEncrypted !== "string") return reply.code(403).send({ error: "MFA_REQUIRED" });
-    if (!verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code)) { await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId)); return reply.code(403).send({ error: "MFA_CODE_INVALID" }); }
+    if (!user) return reply.code(403).send({ error: "MFA_REQUIRED" });
+    let verified = false;
+    if ("code" in parsed.data && typeof user.mfaSecretEncrypted === "string") {
+      verified = verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code);
+    } else if ("recoveryCode" in parsed.data) {
+      const recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
+      const consumed = await db.collection("users").updateOne({ _id: user._id, mfaRecoveryCodeHashes: recoveryHash }, { $pull: { mfaRecoveryCodeHashes: recoveryHash } });
+      verified = consumed.modifiedCount === 1;
+    }
+    if (!verified) { await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId)); return reply.code(403).send({ error: "MFA_CODE_INVALID" }); }
     const stepUpUntil = new Date(Date.now() + 5 * 60_000);
     await db.collection("sessions").updateOne({ _id: resolved.sessionId }, { $set: { stepUpUntil } });
     await writeAudit(db, request, resolved.principal.userId, "auth.step_up.completed", "session", "success", String(resolved.sessionId));
     return reply.send({ status: "verified", stepUpUntil: stepUpUntil.toISOString() });
+  });
+
+  app.post("/v1/auth/mfa/reset", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return unauthorized(reply);
+    const parsed = z.object({ currentPassword: z.string().min(1).max(256), recoveryCode: z.string().min(8).max(32) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
+    if (!user || typeof user.passwordHash !== "string" || !(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) return reply.code(403).send({ error: "CURRENT_PASSWORD_INVALID" });
+    const recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
+    const consumed = await db.collection("users").updateOne(
+      { _id: user._id, mfaEnabled: true, mfaRecoveryCodeHashes: recoveryHash },
+      { $pull: { mfaRecoveryCodeHashes: recoveryHash }, $unset: { mfaSecretEncrypted: "", mfaEnabled: "", mfaEnabledAt: "", mfaRecoveryCodeHashes: "", mfaPendingSecret: "", mfaSetupExpiresAt: "" } },
+    );
+    if (consumed.modifiedCount !== 1) {
+      await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset.denied", "user", "denied");
+      return reply.code(403).send({ error: "MFA_RECOVERY_CODE_INVALID" });
+    }
+    const now = new Date();
+    await db.collection("sessions").updateMany({ userId: resolved.principal.userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "mfa_factor_reset" }, $unset: { stepUpUntil: "" } });
+    await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset", "user", "success");
+    return reply.send({ status: "mfa_reset", sessionsRevoked: true, note: "Sign in again and enroll a new authenticator. Recovery codes have been invalidated." });
   });
 
   app.post("/v1/auth/logout", async (request, reply) => {
