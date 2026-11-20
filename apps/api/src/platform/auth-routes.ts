@@ -3,11 +3,12 @@ import type {FastifyPluginAsync} from "fastify";
 import {z,ZodError} from "zod";
 import {createHash} from "node:crypto";
 import type {AuthConfig} from "./auth-service.js";
-import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin} from "./auth-service.js";
+import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
 const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64).optional()});
 const workspaceSelectionSchema=z.object({selectionToken:z.string().min(40).max(200),tenantId:z.string().min(1).max(128)});
 const workspaceSwitchSchema=z.object({tenantId:z.string().min(1).max(128)});
+const accessRequestSchema=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),organizationName:z.string().trim().min(2).max(160),requestNote:z.string().trim().max(500).optional()});
 const mfaSchema=z.object({challengeToken:z.string().min(20),code:z.string().min(6).max(64)});
 const refreshSchema=z.object({sessionId:z.string().min(1),refreshToken:z.string().min(20)});
 function statusFor(error:unknown):number{
@@ -27,6 +28,14 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    reply.header("Cache-Control","no-store");
    try{const body=loginSchema.parse(request.body);const ipHash=createHash("sha256").update(request.ip).digest("hex");if(body.tenantSlug)return await login(db,config,{email:body.email,password:body.password,tenantSlug:body.tenantSlug,ipHash});return await login(db,config,{email:body.email,password:body.password,ipHash});}
    catch(error){return failure(error,reply);}
+  });
+  app.post("/auth/access-requests",async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   try{
+    const body=accessRequestSchema.parse(request.body),ipHash=createHash("sha256").update(request.ip).digest("hex");
+    const result=await requestWorkspaceAccess(db,{...body,ipHash});
+    return reply.code(202).send(result);
+   }catch(error){return failure(error,reply);}
   });
   app.post("/auth/workspace/select",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
