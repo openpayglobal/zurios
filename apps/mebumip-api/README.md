@@ -8,7 +8,7 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
-- `AUDIT_SIGNING_KEY`: at least 32 characters; required in production. HMAC-SHA256 signs newly created audit events. Keep it in a secret manager and back it up separately from MongoDB.
+- `AUDIT_SIGNING_KEY`: at least 32 characters; required in production. HMAC-SHA256 signs newly created audit events, each with a monotonically allocated sequence number. The verification endpoint detects sequence gaps and the export endpoint includes a signed manifest. Keep it in a secret manager and back it up separately from MongoDB.
 - `RESEND_API_KEY` and `MAIL_FROM`: required in production for invitation and password-recovery delivery. The sender address must belong to a verified sending domain in Resend. Never commit these values.
 - `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
 - `SESSION_COOKIE_SAME_SITE`: `Strict`, `Lax` (default) or `None`; `None` is appropriate only for cross-site HTTPS deployments.
