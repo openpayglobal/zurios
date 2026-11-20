@@ -24,6 +24,15 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && (!value.RESEND_API_KEY || !value.MAIL_FROM)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["RESEND_API_KEY"], message: "RESEND_API_KEY and MAIL_FROM are required in production" });
   }
+  if (value.NODE_ENV === "production" && !value.MFA_ENCRYPTION_KEY) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEY"], message: "MFA_ENCRYPTION_KEY is required in production" });
+  }
+  if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
+  }
+  if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => /localhost|127\\.0\\.0\\.1/.test(origin))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must not include localhost" });
+  }
   if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });
   }
