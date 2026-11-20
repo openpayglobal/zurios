@@ -9,6 +9,7 @@ Fastify API workspace for Zuri MeBuMIP.
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
 - `AUDIT_SIGNING_KEY`: at least 32 characters; required in production. HMAC-SHA256 signs newly created audit events. Keep it in a secret manager and back it up separately from MongoDB.
+- `RESEND_API_KEY` and `MAIL_FROM`: required in production for invitation and password-recovery delivery. The sender address must belong to a verified sending domain in Resend. Never commit these values.
 - `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
@@ -42,6 +43,8 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/refresh`: rotates the current bearer token.
 - `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: list and revoke the authenticated user’s sessions.
 - `POST /v1/auth/password/change`: changes password and revokes other sessions.
+- `POST /v1/auth/password/recovery`: requests a generic, non-enumerating email recovery message.
+- `POST /v1/auth/password/reset`: consumes a hashed, 30-minute, one-time reset token and revokes all sessions.
 - `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
 - `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.\n- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
@@ -58,11 +61,11 @@ Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persist
 - `GET /v1/mac/audit-events/verify`: verifies HMAC signatures on the latest 500 records and reports unsigned/invalid counts.
 - `GET /v1/mac/audit-events/export`: paginated, bounded audit export with per-record integrity status; exports are not automatically archived.
 
-MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are returned once by the API for delivery through a trusted mail adapter; automated email delivery is not configured yet. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
+MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Tenant invitations are sent through the configured Resend adapter; raw invitation tokens are never returned by the API. Failed delivery revokes the pending invitation. Password recovery uses the same provider and does not reveal whether an email address exists. CI uses an in-memory test mail sink. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
 
 ## Current limitations — not production-ready
 
-This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and password recovery delivery (requires a configured mail provider), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
+This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and live Resend credentials and verified sender-domain configuration (the adapter is implemented, but delivery is not active until configured), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
 
