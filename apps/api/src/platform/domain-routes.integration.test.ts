@@ -55,7 +55,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "payments.intent.read","payments.intent.create","payments.refund.request",
    "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create",
    "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete",
-   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.read","workflows.task.approve"
+   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.read","workflows.task.approve","analytics.report.read"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -431,6 +431,16 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   assert.equal(projectEntries.statusCode,200);
   assert.equal(projectEntries.json().data[0].status,"approved");
 
+  await db.collection("erp_invoices").insertMany([
+   {tenantId:"tenant-a",organizationId:"org-a",invoiceId:"analytics-invoice-1",status:"issued",createdAt:now},
+   {tenantId:"tenant-a",organizationId:"org-b",invoiceId:"analytics-invoice-2",status:"issued",createdAt:now},
+   {tenantId:"tenant-b",organizationId:"org-secret",invoiceId:"analytics-invoice-3",status:"issued",createdAt:now}
+  ]);
+  const analytics=await app.inject({method:"GET",url:"/v1/analytics/operational?organizationId=org-a&from=2026-11-01T00%3A00%3A00.000Z&to=2026-11-30T23%3A59%3A59.999Z",headers});
+  assert.equal(analytics.statusCode,200);
+  assert.equal(analytics.json().metrics.invoices,1);
+  const analyticsDenied=await app.inject({method:"GET",url:"/v1/analytics/operational?organizationId=org-b&from=2026-11-01T00%3A00%3A00.000Z&to=2026-11-30T23%3A59%3A59.999Z",headers});
+  assert.equal(analyticsDenied.statusCode,403);
   const workflow=await app.inject({
    method:"POST",url:"/v1/workflows",headers:{...headers,"idempotency-key":"workflow-definition-api-001"},
    payload:{organizationId:"org-a",workflowId:"workflow-api-001",name:"Purchase approval",triggerType:"manual",version:1,status:"active",
