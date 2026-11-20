@@ -57,6 +57,8 @@ tags:
     description: Asset register, straight-line depreciation inputs and maintenance work orders
   - name: Project Management
     description: Organization-scoped projects, tasks and approved timesheets
+  - name: Supply Chain
+    description: Organization-scoped carrier shipments, tracking and proof-of-delivery lifecycle
   - name: Analytics
     description: Organization-scoped, period-bounded operational reporting metrics
   - name: Workflow Automation
@@ -1579,6 +1581,48 @@ paths:
         "200": {description: Time entry rejected}
         "403": {$ref: "#/components/responses/Forbidden"}
         "409": {$ref: "#/components/responses/Conflict"}
+  /shipments:
+    get:
+      tags: [Supply Chain]
+      operationId: listShipments
+      summary: List shipments in authorized organizations
+      responses:
+        "200": {description: Organization-scoped shipment records}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    post:
+      tags: [Supply Chain]
+      operationId: createShipment
+      summary: Create a planned shipment between active organization locations
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Shipment"}
+      responses:
+        "201": {description: Shipment created}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {description: Organization or shipment locations are invalid}
+  /shipments/{shipmentId}/status:
+    post:
+      tags: [Supply Chain]
+      operationId: updateShipmentStatus
+      summary: Advance a shipment through its guarded lifecycle
+      parameters:
+        - {name: shipmentId, in: path, required: true, schema: {type: string}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ShipmentStatusUpdate"}
+      responses:
+        "200": {description: Shipment status updated}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Shipment not found}
+        "409": {description: Version conflict or invalid status transition}
   /analytics/operational.csv:
     get:
       tags: [Analytics]
@@ -2307,6 +2351,31 @@ components:
         organizationId: {type: string}
         reason: {type: string, minLength: 10, maxLength: 1000}
         expectedVersion: {type: integer, minimum: 0}
+    Shipment:
+      type: object
+      required: [organizationId, shipmentId, referenceType, referenceId, carrierId, trackingNumber, originLocationId, destinationLocationId, expectedDeliveryAt]
+      properties:
+        organizationId: {type: string}
+        shipmentId: {type: string}
+        referenceType: {type: string, enum: [purchase_order, commerce_order, inventory_transfer]}
+        referenceId: {type: string}
+        carrierId: {type: string}
+        trackingNumber: {type: string, maxLength: 160}
+        originLocationId: {type: string}
+        destinationLocationId: {type: string}
+        expectedDeliveryAt: {type: string, format: date-time}
+        status: {type: string, enum: [planned]}
+        version: {type: integer, minimum: 0}
+    ShipmentStatusUpdate:
+      type: object
+      required: [organizationId, status, reason, occurredAt, expectedVersion]
+      properties:
+        organizationId: {type: string}
+        status: {type: string, enum: [dispatched, in_transit, delayed, delivered, cancelled]}
+        reason: {type: string, minLength: 5, maxLength: 1000}
+        occurredAt: {type: string, format: date-time}
+        expectedVersion: {type: integer, minimum: 0}
+        proofOfDeliveryRef: {type: string, maxLength: 500}
     WorkflowDefinition:
       type: object
       required: [organizationId, workflowId, name, triggerType, steps]
