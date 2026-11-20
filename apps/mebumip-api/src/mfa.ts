@@ -111,7 +111,7 @@ export function generateTotpCode(secret: string, now = Date.now()): string {
   return String(binary % 1_000_000).padStart(6, "0");
 }
 export function verifyTotp(secret: string, token: string, now = Date.now()): boolean {
-  if (!/^\\d{6}$/.test(token)) return false;
+  if (!/^\d{6}$/.test(token)) return false;
   for (let drift = -1; drift <= 1; drift++) {
     const expected = generateTotpCode(secret, now + drift * 30_000);
     if (timingSafeEqual(Buffer.from(expected), Buffer.from(token))) return true;
