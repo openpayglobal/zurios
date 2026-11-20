@@ -8,7 +8,9 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
 - `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.
-- `AUDIT_SIGNING_KEY`: at least 32 random characters; required in production and stored only in the secret manager. It HMAC-signs the append-only audit hash chain.\n- `AUDIT_SIGNING_KEY_ID`: active key identifier (defaults to `v1`).\n- `AUDIT_SIGNING_PREVIOUS_KEYS`: JSON object mapping prior key IDs to secrets (each at least 32 characters); retain old keys while events signed by them remain in the chain.
+- `AUDIT_SIGNING_KEY`: at least 32 random characters; required in production and stored only in the secret manager. It HMAC-signs the append-only audit hash chain.
+- `AUDIT_SIGNING_KEY_ID`: active key identifier (defaults to `v1`).
+- `AUDIT_SIGNING_PREVIOUS_KEYS`: JSON object mapping prior key IDs to secrets (each at least 32 characters); retain old keys while events signed by them remain in the chain.
 - `RESEND_API_KEY` and `MAIL_FROM`: trusted email provider credentials and verified sender address; both are mandatory in production. Invitation tokens are delivered by email and are never returned by the API. The test environment uses an in-memory sink only.
 - `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
 - `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
