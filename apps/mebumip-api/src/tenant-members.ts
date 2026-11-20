@@ -80,7 +80,6 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
     const parsed = acceptSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
-    const { hashToken } = await import("./security.js");
     const invitation = await db.collection("tenantInvitations").findOne({
       tokenHash: hashToken(parsed.data.token), acceptedAt: { $exists: false },
       revokedAt: { $exists: false }, expiresAt: { $gt: new Date() },
