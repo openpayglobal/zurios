@@ -11,7 +11,9 @@
     "lint": "turbo lint",
     "test": "turbo test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "docs:check": "node scripts/sync-docs-mirrors.mjs --check",
+    "docs:sync": "node scripts/sync-docs-mirrors.mjs --write"
   },
   "devDependencies": {
     "prettier": "^3.4.2",
