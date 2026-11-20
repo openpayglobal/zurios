@@ -68,6 +68,8 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(cookieStepUp.statusCode, 200);
   const macMembers = await app.inject({ method: "GET", url: "/v1/mac/tenants/" + String(tenant._id) + "/members", headers });
   assert.equal(macMembers.statusCode, 200);
+  const protectedTenantOwner = await app.inject({ method: "PATCH", url: "/v1/mac/tenants/" + String(tenant._id) + "/members/" + bootstrap.json().userId, headers, payload: { role: "viewer" } });
+  assert.equal(protectedTenantOwner.statusCode, 404);
   assert.ok(macMembers.json().members.some((member: { role: string }) => member.role === "tenant_owner"));
   clearTestMailOutbox();
   const macTenantInvite = await app.inject({ method: "POST", url: "/v1/mac/tenants/" + String(tenant._id) + "/invitations", headers, payload: { email: "mac-invite@example.test", role: "publisher" } });
@@ -94,6 +96,8 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(platformAdminRegistration.statusCode, 201);
   const createdPlatformAdmin = await db.collection("users").findOne({ normalizedEmail: "platform-admin@example.test" });
   assert.equal(createdPlatformAdmin?.platformRole, "platform_auditor");
+  const protectedPlatformOwner = await app.inject({ method: "PATCH", url: "/v1/mac/admins/" + bootstrap.json().userId, headers, payload: { role: "platform_admin" } });
+  assert.equal(protectedPlatformOwner.statusCode, 404);
   const duplicateAdminRegistration = await app.inject({ method: "POST", url: "/v1/auth/register-platform-admin", payload: { token: platformInviteToken, email: "platform-admin@example.test", password: "Integration-Platform-Admin-Password-2026!", displayName: "Platform Auditor" } });
   assert.equal(duplicateAdminRegistration.statusCode, 404);
 
