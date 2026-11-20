@@ -286,3 +286,15 @@ Every domain increment must ship all of the following together:
 - A green GitHub Actions job is necessary but not sufficient for production acceptance.
 - No module is marked complete until code, tests, operational controls, documentation and independent acceptance evidence all exist.
 - No credentials, customer records, live payment secrets or production data are committed.
+
+
+### 7.1 Operational analytics — initial API and dashboard increment
+
+The feature branch now includes an initial read-only operational analytics endpoint and web workspace:
+- `GET /v1/analytics/operational` accepts an organization ID and explicit ISO-8601 date bounds; the tenant is derived from the authenticated principal.
+- The API requires `analytics.report.read`, verifies the active organization and applies the normal organization-scoped ABAC decision before querying.
+- The service uses a fixed allowlist of operational counts (invoices/open invoices, purchase orders, employees/active employees, assets/active assets, open maintenance work orders, projects/active projects, CRM accounts/open opportunities, pending payment intents and payroll runs). It does not accept caller-provided MongoDB filters or aggregation pipelines.
+- The web workspace renders the metrics for the selected organization and period.
+- Replica-set integration tests cover tenant, organization and date-window isolation, plus API permission denial for an organization outside the caller's membership.
+
+**Explicit limitations:** this is an operational count dashboard, not a financial BI warehouse or statutory report. It does not yet calculate revenue, cash flow, margin, tax, inventory valuation or payroll statutory totals; it does not yet include POS sales because POS records need a verified organization linkage through terminal/location before they can be aggregated safely. Exports, scheduled reports, saved definitions, dimensional drill-down, data freshness SLAs and dashboard accessibility acceptance remain open.
