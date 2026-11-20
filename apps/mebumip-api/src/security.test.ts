@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { assertTenantAccess, createAuditEvent, verifyAuditEvent, hasPlatformPermission, hasTenantPermission, hashToken, newOpaqueToken } from "./security.js";
+import { assertTenantAccess, createAuditEvent, verifyAuditEvent, signAuditExport, hasPlatformPermission, hasTenantPermission, hashToken, newOpaqueToken } from "./security.js";
 import type { Principal } from "./security.js";
 
 const principal: Principal = {
