@@ -137,6 +137,8 @@ export function AdminData({ resource }: { resource: Resource }) {
   const [data, setData] = useState<ApiData | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [integrity, setIntegrity] = useState<{ valid: boolean; chainValid: boolean; checked: number; legacyUnchainedEvents: number; firstInvalidSequence: number | null } | null>(null);
+  const [integrityError, setIntegrityError] = useState("");
   useEffect(() => {
     const token = sessionStorage.getItem("mebumip_access_token");
     let active = true;
@@ -152,6 +154,20 @@ export function AdminData({ resource }: { resource: Resource }) {
     return () => { active = false; };
   }, [resource]);
 
+  useEffect(() => {
+    if (resource !== "audit") { setIntegrity(null); setIntegrityError(""); return; }
+    const token = sessionStorage.getItem("mebumip_access_token");
+    let active = true;
+    fetch(API_BASE + "/v1/mac/audit-events/verify", { credentials: "include", headers: token ? { Authorization: "Bearer " + token } : {} })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error("Audit integrity verification is unavailable.");
+        if (active) { setIntegrity(body as { valid: boolean; chainValid: boolean; checked: number; legacyUnchainedEvents: number; firstInvalidSequence: number | null }); setIntegrityError(""); }
+      })
+      .catch((cause) => { if (active) setIntegrityError(cause instanceof Error ? cause.message : "Could not verify audit integrity."); });
+    return () => { active = false; };
+  }, [resource]);
+
   if (loading) return <div className="api-data"><p>Loading live platform data…</p></div>;
   if (error) return <div className="api-data"><p>{error}</p></div>;
   if (!data) return null;
@@ -159,5 +175,5 @@ export function AdminData({ resource }: { resource: Resource }) {
   const items = data.items ?? [];
   if (resource === "admins") return <div className="api-data"><h3>Platform administrators · live API</h3>{items.length === 0 ? <p>No platform administrators found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Administrator</th><th>Role</th><th>Status</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.displayName ?? item.email ?? "")}<small>{String(item.email ?? "")}</small></td><td>{String(item.role ?? "")}</td><td>{String(item.status ?? "")}</td></tr>)}</tbody></table></div>}<p>Role and suspension changes are available through the audited, MFA-gated MAC API.</p></div>;
   if (resource === "tenants") return <div className="api-data"><h3>Business directory · live API</h3>{items.length === 0 ? <p>No tenant records found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Business</th><th>Slug</th><th>Status</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.name ?? "")}</td><td>{String(item.slug ?? "")}</td><td>{String(item.status ?? "")}</td></tr>)}</tbody></table></div>}</div>;
-  return <div className="api-data"><h3>Audit events · latest {items.length}</h3>{data.retention && <p>{data.retention}</p>}{items.length === 0 ? <p>No audit events found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Action</th><th>Actor</th><th>Outcome</th><th>Time</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item._id ?? index)}><td>{String(item.action ?? "")}</td><td>{String(item.actorUserId ?? "")}</td><td>{String(item.outcome ?? "")}</td><td>{item.occurredAt ? new Date(String(item.occurredAt)).toLocaleString() : ""}</td></tr>)}</tbody></table></div>}</div>;
+  return <div className="api-data"><h3>Audit events · latest {items.length}</h3>{data.retention && <p>{data.retention}</p>}{integrity && <p className={integrity.valid ? "api-online" : "api-error"}>Audit integrity: {integrity.valid ? "verified" : "attention required"} · {integrity.checked} chained events · {integrity.legacyUnchainedEvents} legacy unchained · {integrity.firstInvalidSequence ? "first invalid sequence " + integrity.firstInvalidSequence : ""}</p>}{integrityError && <p className="api-error">{integrityError}</p>}{items.length === 0 ? <p>No audit events found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Action</th><th>Actor</th><th>Outcome</th><th>Time</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item._id ?? index)}><td>{String(item.action ?? "")}</td><td>{String(item.actorUserId ?? "")}</td><td>{String(item.outcome ?? "")}</td><td>{item.occurredAt ? new Date(String(item.occurredAt)).toLocaleString() : ""}</td></tr>)}</tbody></table></div>}</div>;
 }
