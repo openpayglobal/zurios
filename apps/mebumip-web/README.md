@@ -1,28 +1,11 @@
-# Zuri MeBuMIP Web Workspace
+# Zuri MeBuMIP Web
 
-Standalone React/Vite application for Zuri MeBuMIP's MAC and MAD surfaces.
+React/Vite administration frontend for the standalone MeBuMIP workspace.
 
-## Development
+## Local development
 
-From the monorepo root:
+Run the API on port 4100 and the web app on port 5174. Set `VITE_MEBUMIP_API_BASE` to the API origin if it differs from `http://localhost:4100`.
 
-```bash
-pnpm install
-pnpm --filter @zuri/mebumip-web dev
-```
+The sign-in panel calls `POST /v1/auth/login` and stores the short-lived bearer token in browser session storage. Sign out revokes the session through the API. The dashboard reads live aggregates from `GET /v1/mad/overview`; the MAC business directory reads `GET /v1/mac/tenants`; and Security & Audit reads `GET /v1/mac/audit-events`. API authorization remains authoritative; frontend navigation is not a security boundary.
 
-Vite serves the app on port 5174. Production build:
-
-```bash
-pnpm --filter @zuri/mebumip-web build
-```
-
-## Current scope
-
-This is the Phase 1 administration shell. It contains:
-- MAD operational overview with clearly labelled placeholder/demo values.
-- MAC navigation surfaces for business directory, Meta connections, integrations, security and settings.
-- A–E objective register and Phase 0–7 roadmap.
-- Responsive desktop/mobile navigation.
-
-This shell is not yet connected to a backend, database, authentication provider or Meta API. No real customer data, credentials, or live connection status is represented. Do not deploy it as a production admin console until server-side authentication, platform RBAC, tenant isolation, audit logging, CSRF protections and API authorization are implemented and tested.
+Do not use persistent local storage for access tokens. Use HTTPS in every shared or production environment. Production deployment should consider a same-site, secure, HttpOnly cookie/BFF architecture to reduce JavaScript token exposure.
