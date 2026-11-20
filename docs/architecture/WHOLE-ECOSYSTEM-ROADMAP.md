@@ -310,6 +310,12 @@ The branch now includes an initial shipment lifecycle service and authenticated 
 - Enforce optimistic version checks and idempotent mutations; shipment state, audit event and outbox event commit in one MongoDB transaction.
 - Replica-set service tests cover location-scope rejection, replay, state transitions, missing delivery evidence and terminal-state protection; API tests cover create, dispatch, deliver and scoped listing.
 
-**Explicit limitations:** carrier master/onboarding, carrier API adapters, tracking webhooks/polling, route planning, freight cost/tax, customs documentation, shipment legs, partial delivery, returns and delivery exception workflows remain open. The current tracking number is recorded but is not yet verified with an external carrier.
+A provider-neutral carrier event ingestion foundation is now also implemented:
+- A normalized event contract and service accept a provider-specific signature verifier as a required dependency; signature verification occurs before any database write.
+- Events are bound to the shipment's tenant, organization, carrier and tracking number; optimistic version checks and lifecycle transitions are enforced.
+- Provider event IDs are deduplicated; shipment update, carrier event record, audit and outbox are committed in one MongoDB transaction.
+- Replica-set tests cover invalid signatures, carrier/shipment mismatch, idempotent replay, stale versions and atomic audit/outbox writes. Full monorepo CI passed in run #1190.
 
-The web application also includes a Shipment Tracking workspace for creation, status progression and delivery evidence capture; carrier API verification and live tracking remain future work.
+**Explicit limitations:** carrier master/onboarding, provider-specific adapters and signing formats, production secret-manager integration, live tracking webhooks/polling endpoints, carrier account provisioning, route planning, freight cost/tax, customs documentation, shipment legs, partial delivery, returns and delivery exception workflows remain open. The normalized service is an integration boundary; no live carrier is connected and no external carrier signature is accepted by a public route.
+
+The web application also includes a Shipment Tracking workspace for creation, status progression and delivery evidence capture; provider onboarding and live tracking remain future work.
