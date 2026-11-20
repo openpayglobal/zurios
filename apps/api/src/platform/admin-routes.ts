@@ -366,7 +366,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    const p=principal(request);
    try{
     const params=z.object({requestId:z.string().uuid()}).parse(request.params);
-    const body=z.object({status:z.enum(["reviewed","approved","declined"]),reason:z.string().trim().min(20).max(500)}).parse(request.body);
+    const body=reviewAccessRequestSchema.parse(request.body);
     return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.access-requests.review",async session=>{
      const result=await db.collection("access_requests").updateOne(
       {requestId:params.requestId,status:"pending"},
