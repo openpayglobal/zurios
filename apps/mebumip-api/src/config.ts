@@ -18,6 +18,9 @@ const envSchema = z.object({
 });
 
 const parsed = envSchema.superRefine((value, context) => {
+  if (value.SESSION_COOKIE_SAME_SITE === "None" && value.NODE_ENV !== "production") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["SESSION_COOKIE_SAME_SITE"], message: "SameSite=None requires production HTTPS cookies" });
+  }
   if (value.NODE_ENV === "production" && (!value.RESEND_API_KEY || !value.MAIL_FROM)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["RESEND_API_KEY"], message: "RESEND_API_KEY and MAIL_FROM are required in production" });
   }
