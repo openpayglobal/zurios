@@ -53,6 +53,9 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!hasPlatformPermission(resolved.principal, "platform:tenants:write")) {
       return reply.code(403).send({ error: "FORBIDDEN" });
     }
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
+      return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    }
     const schema = z.object({
       name: z.string().trim().min(2).max(160),
       slug: z.string().trim().min(3).max(48).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
