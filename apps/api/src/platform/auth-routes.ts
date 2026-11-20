@@ -26,7 +26,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   const requireAuth=authenticate(db,config);
   app.get("/auth/public-config",async(_request,reply)=>{
    reply.header("Cache-Control","no-store");
-   return {accessRequestsEnabled:process.env.ACCESS_REQUESTS_ENABLED==="true",privacyNoticeUrl:process.env.ACCESS_REQUESTS_PRIVACY_NOTICE_URL??null};
+   const enabled=config.accessRequestsEnabled===true;return {accessRequestsEnabled:enabled,privacyNoticeUrl:enabled?(config.accessRequestsPrivacyNoticeUrl??null):null};
   });
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
@@ -35,7 +35,7 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/auth/access-requests",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(process.env.ACCESS_REQUESTS_ENABLED!=="true")return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
+   if(config.accessRequestsEnabled!==true)return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
    try{
     const body=accessRequestSchema.parse(request.body),ipHash=createHash("sha256").update(request.ip).digest("hex");
     const result=await requestWorkspaceAccess(db,{email:body.email,displayName:body.displayName,organizationName:body.organizationName,...(body.requestNote?{requestNote:body.requestNote}:{}),ipHash});
