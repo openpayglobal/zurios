@@ -1,10 +1,11 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { ObjectId, type Db, type Document } from "mongodb";
+import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { config, corsOrigins } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
-import { createAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { appendAuditEvent } from "./audit-service.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
 import { sendPasswordRecoveryEmail } from "./mail.js";
 
@@ -119,10 +120,10 @@ export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise
 }
 
 async function writeAudit(db: Db, request: FastifyRequest, actorUserId: string, action: string, targetType: string, outcome: "success" | "denied" | "failure", targetId?: string) {
-  await db.collection("auditEvents").insertOne(createAuditEvent({
+  await appendAuditEvent(db, {
     actorUserId, action, targetType, outcome, correlationId: request.id,
     ...(targetId ? { targetId } : {}),
-  }) as Document);
+  });
 }
 
 function unauthorized(reply: FastifyReply) {
