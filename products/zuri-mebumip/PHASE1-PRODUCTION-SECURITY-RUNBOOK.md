@@ -21,7 +21,7 @@ Configure values through the deployment secret manager. Do not commit real value
 | `MONGODB_URI` | Production MongoDB connection | TLS enabled; private network access; least-privilege application user; backup/restore test |
 | `MONGODB_DATABASE` | Dedicated MeBuMIP database | Confirmed database boundary and ownership |
 | `AUDIT_SIGNING_KEY` | HMAC-SHA256 audit event signatures and signed export manifests | High-entropy secret stored outside MongoDB; restricted access; protected backup |
-| `MFA_ENCRYPTION_KEY` | AES-256-GCM encryption of TOTP secrets | 32 random bytes encoded as 64 hex characters; separate protected backup and recovery test |
+| `MFA_ENCRYPTION_KEY` | Legacy single-key fallback for existing MFA ciphertext | Retain only while legacy ciphertext remains; never replace without migration evidence |\n| `MFA_ENCRYPTION_KEYRING` | JSON map of versioned MFA key IDs to 32-byte hex keys | Active and previous keys are backed up, inventoried and access-controlled |\n| `MFA_ENCRYPTION_ACTIVE_KEY_ID` | Selects the key used for new MFA ciphertext | Must identify an entry in `MFA_ENCRYPTION_KEYRING`; old keys remain available for reads |
 | `RESEND_API_KEY` | Transactional email delivery | Key restricted to required sending capabilities and stored only in secret manager |
 | `MAIL_FROM` | Verified sender identity | Sender domain verified with the provider; test invitation and password recovery delivery |
 | `CORS_ORIGINS` | Browser origin allowlist | Exact HTTPS origins only; no wildcard and no localhost |
@@ -33,7 +33,7 @@ Generate random key material in a controlled operator environment, for example w
 
 ### Key continuity warning
 
-The current implementation uses a single configured audit signing key and a single configured MFA encryption key. Replacing either key without a versioned key-ring and migration process can make historical audit signatures unverifiable or existing MFA secrets undecryptable. **Do not rotate either key by simply replacing the environment variable.** Key-version metadata, old-key verification/decryption support, migration tooling, rollback procedures, and tested backups are required before routine rotation.
+The audit signer currently uses a single configured key; the MFA encryption implementation now supports versioned key identifiers and a key ring. For MFA, set `MFA_ENCRYPTION_KEYRING` to a JSON object mapping key IDs to 32-byte hex keys and `MFA_ENCRYPTION_ACTIVE_KEY_ID` to the key ID used for new ciphertext. Retain the prior key in the ring for decryption until all stored MFA ciphertext has been safely migrated and a recovery window has elapsed. Existing unversioned MFA ciphertext still requires its original key as `MFA_ENCRYPTION_KEY` or as the `legacy` entry in the key ring. Do not remove the old key merely because new writes use the active key. The audit signing key still requires a separate versioned-signature design before rotation; replacing `AUDIT_SIGNING_KEY` can make historical signatures unverifiable. **Do not rotate either key by simply replacing an environment variable.** Backup, migration, rollback and recovery tests remain required before production rotation.
 
 ## 3. Browser, proxy, and API deployment checks
 
