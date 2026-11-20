@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { appendAuditEvent } from "./security.js";
+import { appendAuditEvent, signAuditExport } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 import { config, corsOrigins } from "./config.js";
@@ -168,7 +168,9 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
     const events = await db.collection("auditEvents").find(filter).sort({ sequence: -1, _id: -1 }).limit(limit).toArray();
     const signed = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
-    return reply.send({ format: "zuri-mebumip-audit-export-v1", generatedAt: new Date().toISOString(), count: events.length, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: process.env.AUDIT_SIGNING_KEY ? "HMAC-SHA256" : "not_configured" }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
+    const generatedAt = new Date().toISOString();
+    const manifest = signAuditExport(events as Array<Record<string, unknown>>, generatedAt);
+    return reply.send({ manifest, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: process.env.AUDIT_SIGNING_KEY ? "HMAC-SHA256" : "not_configured" }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
   });
   app.get("/v1/mac/audit-events", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
