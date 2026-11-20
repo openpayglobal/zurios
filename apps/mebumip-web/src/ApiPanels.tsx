@@ -119,9 +119,16 @@ export function AdminData({ resource }: { resource: Resource }) {
       const response = await fetch(API_BASE + (action === "verify" ? "/v1/mac/audit-events/verify" : "/v1/mac/audit-events/export?limit=200"), { credentials: "include" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Audit operation failed.");
+      if (action === "export") {
+        const blob = new Blob([JSON.stringify(body, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url; link.download = "zuri-mebumip-audit-export.json"; link.click();
+        URL.revokeObjectURL(url);
+      }
       setAuditResult(action === "verify"
-        ? "Checked " + body.checked + " records: " + body.verified + " verified, " + body.unsigned + " unsigned, " + body.invalid + " invalid."
-        : "Prepared " + body.count + " records for export. Signed: " + body.integrity.signed + ". Unsigned or invalid: " + body.integrity.unsignedOrInvalid + ". " + body.archiveStatus + ".");
+        ? "Checked " + body.checked + " records: " + body.verified + " verified, " + body.unsigned + " unsigned, " + body.invalid + " invalid; sequence gaps: " + body.sequenceGaps + "."
+        : "Downloaded " + body.manifest.count + " records. Manifest signature: " + (body.manifest.integrity.signature ? "present" : "missing") + ". " + body.archiveStatus + ".");
     } catch (cause) {
       setAuditResult(cause instanceof Error ? cause.message : "Audit operation failed.");
     } finally { setAuditAction(""); }
