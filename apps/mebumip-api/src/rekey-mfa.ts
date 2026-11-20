@@ -28,14 +28,14 @@ try {
       if (typeof oldCiphertext !== "string") continue;
       summary.secretsScanned++;
       const oldKeyId = getMfaEncryptionKeyId(oldCiphertext);
+      const plaintext = decryptMfaSecret(oldCiphertext);
       if (oldKeyId === activeKeyId) {
         summary.alreadyCurrent++;
         continue;
       }
-      if (oldKeyId === "legacy") summary.legacy++;
+      if (oldKeyId === "legacy-unversioned") summary.legacy++;
       else summary.previousKey++;
-      // Verify decryption and the new ciphertext before attempting the conditional write.
-      const plaintext = decryptMfaSecret(oldCiphertext);
+      // Verify the new ciphertext before attempting the conditional write.
       const replacement = encryptMfaSecret(plaintext);
       if (decryptMfaSecret(replacement) !== plaintext || getMfaEncryptionKeyId(replacement) !== activeKeyId) {
         throw new Error("MFA_REKEY_VERIFICATION_FAILED");
