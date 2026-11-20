@@ -70,7 +70,6 @@ type WorkspaceLoginResult = {mfaRequired:true;challengeToken:string}|Awaited<Ret
 export function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug:string;ipHash?:string}):Promise<TenantLoginResult>;
 export function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:undefined;ipHash?:string}):Promise<WorkspaceLoginResult>;
 export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:string;ipHash?:string}):Promise<TenantLoginResult|WorkspaceLoginResult>{
-email:string;password:string;tenantSlug?:string;ipHash?:string}){
  const email=normalizeEmail(input.email);await enforceLoginRateLimit(db,email,input.ipHash??"unknown");
  const c=coreCollections(db),user=await c.users.findOne({emailNormalized:email}),now=new Date();
  if(user?.lockedUntil&&user.lockedUntil>now)throw new Error("INVALID_CREDENTIALS");
@@ -90,8 +89,7 @@ email:string;password:string;tenantSlug?:string;ipHash?:string}){
   return {mfaRequired:false as const,...await completeLogin(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
  }
  if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId})};
- return await issueWorkspaceSelection(db,user.userId);
-}
+ return issueWorkspaceSelection(db,user.userId);
 }
 export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:string,code:string):Promise<Awaited<ReturnType<typeof completeLogin>>|Awaited<ReturnType<typeof issueWorkspaceSelection>>>{
  const verified=await jwtVerify(challengeToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});
