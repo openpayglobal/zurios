@@ -282,3 +282,6 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **Additional access-control and archive regression coverage (2026-11-20):** added integration assertions for access-request rate limiting (three pending submissions per email/IP hour with a non-enumerating acknowledgement), idempotent MAC review replay without duplicate provisioning, and archive preparation rejection of invalid ranges and sequence gaps. On commit `d22b5a705d751595070533367a6b189677fca147`, both OpenAPI lint steps, route drift, typecheck and test steps passed in repository CI run 44747048754; the build was still running. MeBuMIP Phase 1 run 44747048522 passed API typecheck, API tests, API build and web typecheck; the web build was still running.
+
+
+**Latest complete verification (2026-11-20):** repository CI run 44747048754 passed both OpenAPI 3.1 lint checks, route drift (32 paths, 20 idempotent mutations, 20 shared Zod request schemas), monorepo typecheck, tests and build. The three workspace test suites reported 52 tests (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44747048522 passed API typecheck, all 23 API tests (23 passed, 0 skipped, 0 failed), API build, web typecheck and web build. No outstanding code-check failures remain on commit `d22b5a705d751595070533367a6b189677fca147`.
