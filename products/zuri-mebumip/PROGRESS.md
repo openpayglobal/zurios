@@ -183,3 +183,15 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Refresh rotates both the session token and CSRF token. Logout, password recovery and MFA factor reset clear browser cookies. Production startup rejects non-HTTPS CORS origins.
 - Updated CORS to allow the CSRF header and the MAC/MAD web client to use credentialed cookie sessions, discover existing sessions through `/v1/auth/me`, and send the CSRF header on logout. Fixed the unauthenticated dashboard 401 handling to avoid a reload loop.
 - Cookie/session changes have not yet completed a fresh CI run, and the new cookie/CSRF flow still needs explicit database-backed integration coverage before production acceptance. Existing passing run #272 predates this cookie implementation.
+
+
+**Tamper-evident audit chain implementation — 2026-11-20:**
+
+- Added transactional audit append service. Each new event receives a monotonically allocated sequence, previous-event hash, SHA-256 event hash and HMAC-SHA256 signature over a canonical payload. Sequence allocation and insertion occur in one MongoDB transaction.
+- Routed authentication, invitation/membership and MAC tenant/administrator audit writes through the signed append service.
+- Added unique sparse indexes for audit sequence and event hash, plus a MAC verification endpoint that checks sequence continuity, predecessor links and signatures.
+- Production configuration now requires `AUDIT_SIGNING_KEY`; it must be secret-managed and included in a controlled key-rotation plan. Development/test uses a clearly non-production fallback unless a test key is supplied.
+- Added MongoDB-backed concurrent append and tamper-detection assertions. The verifier explicitly reports legacy unchained audit records instead of treating them as verified.
+- **Important migration boundary:** audit records created before this change have no sequence/hash/signature. They remain unverified until a dry-run/apply backfill is designed and approved. No historical audit rewrite or production migration has been run.
+- **Still open:** controlled legacy audit backfill, independent WORM/object-lock archive and restore verification, database role restrictions preventing update/delete, key rotation/escrow procedure and independent security review. The signing key protects new event integrity but does not alone make MongoDB storage immutable.
+- Fresh CI is required for this increment; prior passing workflows predate the signed-chain code.
