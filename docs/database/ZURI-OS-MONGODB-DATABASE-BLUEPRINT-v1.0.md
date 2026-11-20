@@ -94,7 +94,13 @@ Every tenant-owned query must include `tenantId` derived from authenticated memb
 | `feature_flags` | platform/tenant | Feature release controls |
 | `audit_events` | tenant/platform | Append-only audit facts |
 
-### 4.2 Core business and catalogue
+#### Identity and multi-membership invariant
+
+The `users` collection is global to Zuri identity; do not create one user document per tenant. The `memberships` collection models each user-to-tenant relationship and carries independent status, validity window, roles and optional organization/location scopes. A user may have many active memberships. Session records are tenant-bound and must reference the selected membership. Membership revocation invalidates only sessions bound to that membership; it does not delete the global user or unrelated memberships.
+
+Workspace selection challenges are short-lived, purpose-bound and single-use. Index their identifier uniquely and expire them with a TTL index. Listing choices must filter active tenants and memberships within their validity window.
+
+## 4.2 Core business and catalogue
 
 | Collection | Purpose |
 |---|---|
