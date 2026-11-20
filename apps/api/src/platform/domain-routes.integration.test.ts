@@ -55,7 +55,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    "payments.intent.read","payments.intent.create","payments.refund.request",
    "commerce.product.read","commerce.product.create","commerce.order.read","commerce.order.create",
    "assets.asset.read","assets.asset.create","assets.work_order.read","assets.work_order.create","assets.work_order.complete",
-   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.approve"
+   "projects.project.read","projects.project.create","projects.task.create","projects.time_entry.read","projects.time_entry.submit","projects.time_entry.approve","workflows.definition.read","workflows.definition.create","workflows.run.read","workflows.run.start","workflows.task.read","workflows.task.approve"
   ];
   await db.collection("roles").insertOne({tenantId:"tenant-a",roleId:"inventory-role",key:"inventory.manager",permissionKeys:permissions,status:"active"});
   await db.collection("memberships").insertOne({
@@ -78,7 +78,7 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
    tenantId:"tenant-a",policyId:"inventory-allow-"+index,key:"inventory-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"inventory-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
-  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve","projects.project.read","projects.time_entry.read","projects.time_entry.approve","workflows.definition.read","workflows.run.read","workflows.task.approve"].map((action,index)=>({
+  await db.collection("policies").insertMany(["hr.leave.approve","hr.leave.read","payroll.run.read","payroll.run.approve","projects.project.read","projects.time_entry.read","projects.time_entry.approve","workflows.definition.read","workflows.run.read","workflows.task.read","workflows.task.approve"].map((action,index)=>({
    tenantId:"tenant-a",policyId:"manager-allow-"+index,key:"manager-allow-"+index,effect:"allow",priority:0,
    subject:{userId:"hr-manager-user"},resource:{},actions:[action],conditions:{},status:"active"
   })));
@@ -454,6 +454,10 @@ test("Inventory API enforces tenant, organization, location, ABAC and idempotenc
   const workflowRuns=await app.inject({method:"GET",url:"/v1/workflow-runs",headers:managerHeaders});
   assert.equal(workflowRuns.statusCode,200);
   assert.equal(workflowRuns.json().data.length,1);
+  const workflowTasks=await app.inject({method:"GET",url:"/v1/workflow-tasks",headers:managerHeaders});
+  assert.equal(workflowTasks.statusCode,200);
+  assert.equal(workflowTasks.json().data.length,1);
+  assert.equal(workflowTasks.json().data[0].taskId,"workflow-run-api-001-finance-review");
   const selfWorkflowApproval=await app.inject({
    method:"POST",url:"/v1/workflow-tasks/workflow-run-api-001-finance-review/approve",headers:{...headers,"idempotency-key":"workflow-self-approve-api"},
    payload:{organizationId:"org-a",reason:"Requester cannot approve their own workflow task",expectedVersion:0}
