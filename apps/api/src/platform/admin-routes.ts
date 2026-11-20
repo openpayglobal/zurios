@@ -16,7 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
-import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema} from "./admin-schemas.js";
+import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
 type MutationResult={statusCode:number;body:unknown};
