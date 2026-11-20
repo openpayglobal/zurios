@@ -211,9 +211,21 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       await completeLock();
       return reply.code(201).send({ status: "bootstrapped", userId: String(userId), note: "Owner created. Sign in to obtain a session." });
     } catch (error) {
-      await releaseLock();
-      if ((error as { code?: number }).code === 11000 || (error instanceof Error && error.message === "PLATFORM_ALREADY_BOOTSTRAPPED")) {
+      if (error instanceof Error && error.message === "PLATFORM_ALREADY_BOOTSTRAPPED") {
+        await completeLock();
         return reply.code(409).send({ error: "PLATFORM_ALREADY_BOOTSTRAPPED" });
+      }
+      if ((error as { code?: number }).code === 11000) {
+        const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern ?? {};
+        if (keyPattern.platformRole) {
+          await completeLock();
+          return reply.code(409).send({ error: "PLATFORM_ALREADY_BOOTSTRAPPED" });
+        }
+        await releaseLock();
+        if (keyPattern.normalizedEmail) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED" });
+        if (keyPattern.slug) return reply.code(409).send({ error: "TENANT_SLUG_ALREADY_REGISTERED" });
+      } else {
+        await releaseLock();
       }
       throw error;
     }
