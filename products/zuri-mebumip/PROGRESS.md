@@ -223,3 +223,14 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 - Full monorepo CI **#1310** passed on the same head: MongoDB replica set, OpenAPI validation, route drift, monorepo typecheck, tests and build.
 - This confirms the backfill CLI, keyring support, MAC audit integrity display and latest documentation compile and pass the dedicated and monorepo CI suites.
 - Production audit backfill, WORM archive provisioning, restricted DB roles and external archive verification remain unperformed.
+
+
+**Signed audit archive bundle — 2026-11-20:**
+
+- Added a signed archive exporter that refuses to export unless the entire audit chain verifies and no legacy unchained events remain.
+- The bundle includes all sequenced events plus an HMAC-signed manifest containing the event count, sequence range, generated time and first/last event hashes.
+- Added an offline archive verifier that validates the manifest signature, every event signature, sequence continuity and hash links using the current/previous signing keyring.
+- Added CLI commands `audit:archive` and `audit:archive:verify`; export uses restrictive file permissions and refuses to overwrite an existing file.
+- Integration tests verify successful export and reject a tampered archive.
+- **Storage boundary:** the exporter creates a verifiable file; it does not provide WORM retention. Operations must place the verified bundle into a separately administered object-lock store with retention/deletion controls, then test restore. No cloud archive provider or production bucket has been configured.
+- This archive exporter and verifier are newer than the passing #362/#1310 runs and require fresh CI.
