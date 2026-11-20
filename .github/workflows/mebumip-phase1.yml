@@ -1,0 +1,38 @@
+name: Zuri MeBuMIP Phase 1 verification
+
+on:
+  push:
+    branches:
+      - feat/zuri-mebumip-foundation
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/mebumip-api/**"
+      - "apps/mebumip-web/**"
+      - "products/zuri-mebumip/**"
+      - ".github/workflows/mebumip-phase1.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: API typecheck
+        run: pnpm --filter @zuri/mebumip-api typecheck
+      - name: API tests
+        run: pnpm --filter @zuri/mebumip-api test
+      - name: API build
+        run: pnpm --filter @zuri/mebumip-api build
+      - name: Web typecheck
+        run: pnpm --filter @zuri/mebumip-web typecheck
+      - name: Web build
+        run: pnpm --filter @zuri/mebumip-web build
