@@ -303,7 +303,7 @@ The feature branch now includes an initial read-only operational analytics endpo
 ### 7.2 Supply chain and logistics — initial shipment lifecycle
 
 The branch now includes an initial shipment lifecycle service and authenticated API:
-- Create planned shipments between two active locations in the same tenant and organization.
+- Create planned shipments between two active locations in the same tenant and organization, and require the referenced purchase order, commerce order or inventory transfer to belong to that same tenant/organization.
 - List shipments only in organizations authorized for the caller.
 - Advance shipments through guarded states: planned → dispatched → in transit/delayed → delivered, with cancellation allowed only before terminal completion.
 - Require proof-of-delivery reference when marking a shipment delivered.
