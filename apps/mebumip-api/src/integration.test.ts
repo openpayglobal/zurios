@@ -160,6 +160,13 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(auditExport.json().integrity.unsignedOrInvalid, 0);
   assert.equal(auditExport.json().manifest.integrity.algorithm, "HMAC-SHA256");
   assert.equal(String(auditExport.json().manifest.integrity.signature).length, 64);
+  const exportPageOne = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=1", headers });
+  assert.equal(exportPageOne.statusCode, 200);
+  const exportCursor = exportPageOne.json().nextCursor as string;
+  assert.ok(exportCursor);
+  const exportPageTwo = await app.inject({ method: "GET", url: "/v1/mac/audit-events/export?limit=1&before=" + exportCursor, headers });
+  assert.equal(exportPageTwo.statusCode, 200);
+  assert.notEqual(String(exportPageOne.json().events[0]._id), String(exportPageTwo.json().events[0]._id));
   const firstSequence = await appendAuditEvent(db, { actorUserId: "integration", action: "test.audit.sequence.first", targetType: "test", outcome: "success", correlationId: randomUUID() });
   await appendAuditEvent(db, { actorUserId: "integration", action: "test.audit.sequence.second", targetType: "test", outcome: "success", correlationId: randomUUID() });
   await db.collection("auditEvents").deleteOne({ sequence: firstSequence.sequence });
