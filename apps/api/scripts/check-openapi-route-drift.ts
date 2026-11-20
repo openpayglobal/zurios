@@ -39,8 +39,11 @@ for(const bodyContract of allBodyContracts){
  if(!reference)failures.push(`Missing OpenAPI requestBody reference for ${bodyContract.method.toUpperCase()} ${bodyContract.path}`);
  else if(reference[1]!==bodyContract.schemaName)failures.push(`Request schema mismatch for ${bodyContract.path}: expected ${bodyContract.schemaName}, found ${reference[1]}`);
  const schemaBlock=componentSchemaBlock(bodyContract.schemaName);
- const propertiesSection=schemaBlock.split("      properties:\n")[1]??"";
- const properties=[...propertiesSection.matchAll(/^        ([A-Za-z0-9_]+):/gm)].map(([,name])=>name);
+ const schemaLines=schemaBlock.split("\n");
+ const propertiesStart=schemaLines.findIndex(line=>line==="      properties:");
+ const properties=propertiesStart<0?[]:schemaLines.slice(propertiesStart+1)
+  .map(line=>line.match(/^        ([A-Za-z0-9_]+):/)?.[1])
+  .filter((name):name is string=>name!==undefined);
  const requiredMatch=schemaBlock.match(/^      required:\s*\[([^\]]*)\]/m);
  const required=(requiredMatch?.[1]??"").split(",").map(value=>value.trim()).filter(Boolean);
  const zodShape=bodyContract.schema.shape as Record<string,{isOptional:()=>boolean}>;
