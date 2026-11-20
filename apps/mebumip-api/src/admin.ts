@@ -300,7 +300,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const sequenced = events.filter((event) => Number.isSafeInteger(event.sequence)).sort((left, right) => Number(left.sequence) - Number(right.sequence));
     let sequenceGaps = 0;
     for (let index = 1; index < sequenced.length; index += 1) if (Number(sequenced[index]!.sequence) !== Number(sequenced[index - 1]!.sequence) + 1) sequenceGaps += 1;
-    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, sequenceGaps, integrity: process.env.AUDIT_SIGNING_KEY ? "hmac_sha256_sequenced" : "signing_key_not_configured", scope: "latest_500_events", note: "Sequence gaps can indicate missing or failed writes and require investigation; signatures do not replace restricted database roles or independent immutable archives." });
+    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, sequenceGaps, integrity: process.env.AUDIT_SIGNING_KEYRING ? "hmac_sha256_v2_key_ring" : process.env.AUDIT_SIGNING_KEY ? "hmac_sha256_legacy" : "signing_key_not_configured", scope: "latest_500_events", note: "Sequence gaps can indicate missing or failed writes and require investigation; signatures do not replace restricted database roles or independent immutable archives." });
   });
 
   app.get("/v1/mac/audit-events/archive", async (request, reply) => {
@@ -338,7 +338,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const signed = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
     const generatedAt = new Date().toISOString();
     const manifest = signAuditExport(events as Array<Record<string, unknown>>, generatedAt);
-    return reply.send({ manifest, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: process.env.AUDIT_SIGNING_KEY ? "HMAC-SHA256" : "not_configured" }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
+    return reply.send({ manifest, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: manifest.integrity.algorithm }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
   });
   app.get("/v1/mac/audit-events", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
