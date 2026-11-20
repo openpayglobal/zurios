@@ -2,13 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { MongoClient, ObjectId } from "mongodb";
-import { registerAuthRoutes } from "./auth.js";
-import { registerTenantMemberRoutes } from "./tenant-members.js";
-import { ensureMeBuMIPIndexes } from "./database.js";
 import { hashToken, newOpaqueToken } from "./security.js";
-import { normalizeMfaRecoveryCode } from "./mfa.js";
 import { hashPassword } from "./passwords.js";
 
+process.env.NODE_ENV = "test";
+const { registerAuthRoutes } = await import("./auth.js");
+const { registerTenantMemberRoutes } = await import("./tenant-members.js");
+const { ensureMeBuMIPIndexes } = await import("./database.js");
+const { normalizeMfaRecoveryCode } = await import("./mfa.js");
+const { clearTestMailOutbox, getTestMailOutbox } = await import("./mail.js");
 const mongoUri = process.env.MONGODB_TEST_URI;
 
 test("MongoDB-backed invitation lifecycle is tenant-isolated, one-time, and audited", {
@@ -22,6 +24,7 @@ test("MongoDB-backed invitation lifecycle is tenant-isolated, one-time, and audi
     await client.connect();
     await db.command({ ping: 1 });
     await ensureMeBuMIPIndexes(db);
+    clearTestMailOutbox();
     registerAuthRoutes(app, db);
     registerTenantMemberRoutes(app, db);
 
@@ -75,14 +78,19 @@ test("MongoDB-backed invitation lifecycle is tenant-isolated, one-time, and audi
       payload: { email: "new-member@example.test", role: "viewer" },
     });
     assert.equal(invitationResponse.statusCode, 201);
-    const invitation = invitationResponse.json() as { invitationToken: string; invitationId: string };
-    assert.ok(invitation.invitationToken.length >= 40);
+    const invitation = invitationResponse.json() as { invitationId: string; delivery: string };
+    assert.equal(invitation.delivery, "test_sink");
+    assert.equal("invitationToken" in (invitationResponse.json() as Record<string, unknown>), false);
+    const invitationEmail = getTestMailOutbox().find((message) => message.to === "new-member@example.test");
+    assert.ok(invitationEmail);
+    const invitationToken = invitationEmail.text.match(/Invitation token: ([A-Za-z0-9]+)/)?.[1];
+    assert.ok(invitationToken && invitationToken.length >= 40);
 
     const registration = await app.inject({
       method: "POST",
       url: "/v1/auth/register",
       payload: {
-        token: invitation.invitationToken,
+        token: invitationToken,
         email: "new-member@example.test",
         password: "a-secure-integration-password",
         displayName: "New Member",
@@ -102,7 +110,7 @@ test("MongoDB-backed invitation lifecycle is tenant-isolated, one-time, and audi
       method: "POST",
       url: "/v1/auth/register",
       payload: {
-        token: invitation.invitationToken,
+        token: invitationToken,
         email: "new-member@example.test",
         password: "a-secure-integration-password",
         displayName: "New Member",
