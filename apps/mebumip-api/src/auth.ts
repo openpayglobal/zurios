@@ -186,6 +186,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       tokenHash: hashToken(token),
       createdAt: now,
       expiresAt,
+      userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256),
+      ipHash: hashToken(request.ip || "unknown"),
     });
     await writeAudit(db, request, String(user._id), "auth.session.created", "session", "success");
     setSessionCookies(reply, token);
@@ -224,8 +226,8 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
   app.get("/v1/auth/sessions", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
-    const sessions = await db.collection("sessions").find({ userId: resolved.principal.userId, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { projection: { createdAt: 1, expiresAt: 1 } }).sort({ createdAt: -1 }).limit(50).toArray();
-    return reply.send({ items: sessions.map((session) => ({ id: String(session._id), createdAt: session.createdAt, expiresAt: session.expiresAt, current: String(session._id) === String(resolved.sessionId) })) });
+    const sessions = await db.collection("sessions").find({ userId: resolved.principal.userId, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } }, { projection: { createdAt: 1, expiresAt: 1, userAgent: 1 } }).sort({ createdAt: -1 }).limit(50).toArray();
+    return reply.send({ items: sessions.map((session) => ({ id: String(session._id), createdAt: session.createdAt, expiresAt: session.expiresAt, userAgent: session.userAgent ?? "Unknown device", current: String(session._id) === String(resolved.sessionId) })) });
   });
 
   app.delete("/v1/auth/sessions/:sessionId", async (request, reply) => {
@@ -248,7 +250,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       { _id: resolved.sessionId, revokedAt: { $exists: false } },
       { $set: { revokedAt: now, rotatedAt: now } },
     );
-    await db.collection("sessions").insertOne({ userId: resolved.principal.userId, tokenHash: hashToken(token), createdAt: now, expiresAt });
+    await db.collection("sessions").insertOne({ userId: resolved.principal.userId, tokenHash: hashToken(token), createdAt: now, expiresAt, userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256), ipHash: hashToken(request.ip || "unknown") });
     await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
     setSessionCookies(reply, token);
     return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString() });
