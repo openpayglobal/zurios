@@ -60,6 +60,21 @@ test("Workflow approvals support assigned multi-approver tasks and requester sep
   await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-002-finance-review",decision:"approved",reason:"Finance review completed and documented",expectedVersion:0},"approver-b","workflow-sequential-approval-2");
   const completedSequentialRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-002"});
   assert.equal(completedSequentialRun.status,"completed");
+  await createWorkflowDefinition(db,{
+   tenantId,organizationId:"org-workflows-a",workflowId:"workflow-003",name:"Rejected procurement approval",
+   triggerType:"manual",steps:[
+    {stepId:"manager-review",stepType:"approval",assigneeUserIds:["approver-a"],requiredApprovals:1},
+    {stepId:"finance-review",stepType:"approval",assigneeUserIds:["approver-b"],requiredApprovals:1}
+   ],version:1,status:"active"
+  },"workflow-admin","workflow-definition-003");
+  await startWorkflowRun(db,{
+   tenantId,organizationId:"org-workflows-a",runId:"workflow-run-003",workflowId:"workflow-003",context:{purchaseOrderId:"PO-003"}
+  },"requester-user","workflow-run-start-003");
+  await decideWorkflowTask(db,{tenantId,organizationId:"org-workflows-a",taskId:"workflow-run-003-manager-review",decision:"rejected",reason:"Rejected because the procurement request lacks supporting evidence",expectedVersion:0},"approver-a","workflow-sequential-rejection");
+  sequentialTasks=await db.collection<any>("workflow_tasks").find({tenantId,runId:"workflow-run-003"}).sort({stepIndex:1}).toArray();
+  assert.deepEqual(sequentialTasks.map(task=>task.status),["rejected","cancelled"]);
+  const rejectedRun=await db.collection<any>("workflow_runs").findOne({tenantId,runId:"workflow-run-003"});
+  assert.equal(rejectedRun.status,"rejected");
  }finally{
   await db.dropDatabase();await client.close();
  }
