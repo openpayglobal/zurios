@@ -8,7 +8,7 @@ import {
   Users, Waypoints, Workflow, X
 } from "lucide-react";
 
-type Section = "dashboard" | "objectives" | "tenants" | "administrators" | "connections" | "integrations" | "security" | "settings";
+type Section = "dashboard" | "objectives" | "tenants" | "administrators" | "sessions" | "connections" | "integrations" | "security" | "settings";
 type Objective = { id: string; title: string; phase: string; status: string; description: string; icon: typeof Facebook };
 
 const objectives: Objective[] = [
@@ -35,6 +35,7 @@ const nav: { id: Section; label: string; icon: typeof LayoutDashboard; group: st
   { id: "objectives", label: "Objectives & roadmap", icon: Gauge, group: "MAD · MONITORING" },
   { id: "tenants", label: "Business directory", icon: Building2, group: "MAC · CONTROL" },
   { id: "administrators", label: "Administrators", icon: Users, group: "MAC · GOVERNANCE" },
+  { id: "sessions", label: "Sessions", icon: LockKeyhole, group: "MAC · GOVERNANCE" },
   { id: "connections", label: "Meta connections", icon: Plug, group: "MAC · CONTROL" },
   { id: "integrations", label: "API integrations", icon: Workflow, group: "MAC · CONTROL" },
   { id: "security", label: "Security & audit", icon: ShieldCheck, group: "MAC · GOVERNANCE" },
@@ -104,6 +105,7 @@ function App() {
 
           {section === "tenants" && <AdminData resource="tenants" />}
           {section === "administrators" && <AdminData resource="admins" />}
+          {section === "sessions" && <AdminData resource="sessions" />}
           {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Facebook, Instagram, advertising and WhatsApp connection flows will be enabled in their respective delivery phases. No customer credentials or Meta tokens are configured in this development shell." phase="Phases 2–4 · Objectives A–C"/>}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
           {section === "security" && <AdminData resource="audit" />}
