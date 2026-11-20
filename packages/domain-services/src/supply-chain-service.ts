@@ -8,6 +8,15 @@ export async function createShipment(db:Db,input:unknown,actorId:string,key:stri
  return runIdempotentMutation(db,{tenantId:shipment.tenantId,actorId,operation:"supply_chain.shipment.create",key,request:shipment},async session=>{
   const locations=await db.collection<any>("locations").find({tenantId:shipment.tenantId,organizationId:shipment.organizationId,locationId:{$in:[shipment.originLocationId,shipment.destinationLocationId]},status:"active"},{session}).toArray();
   if(locations.length!==2)throw new Error("SHIPMENT_LOCATION_SCOPE_INVALID");
+  let referenceExists=false;
+  if(shipment.referenceType==="purchase_order"){
+   referenceExists=Boolean(await db.collection("erp_purchase_orders").findOne({tenantId:shipment.tenantId,organizationId:shipment.organizationId,orderNumber:shipment.referenceId},{session,projection:{_id:1}}));
+  }else if(shipment.referenceType==="commerce_order"){
+   referenceExists=Boolean(await db.collection("commerce_orders").findOne({tenantId:shipment.tenantId,organizationId:shipment.organizationId,orderId:shipment.referenceId},{session,projection:{_id:1}}));
+  }else{
+   referenceExists=Boolean(await db.collection("inventory_stock_ledger").findOne({tenantId:shipment.tenantId,movementId:shipment.referenceId,movementType:"transfer"},{session,projection:{_id:1}}));
+  }
+  if(!referenceExists)throw new Error("SHIPMENT_REFERENCE_NOT_FOUND");
   const now=new Date();
   await db.collection("supply_chain_shipments").insertOne({...shipment,_id:shipment.tenantId+":"+shipment.shipmentId,createdAt:now,updatedAt:now,createdBy:actorId},{session});
   await auditDomainMutation(db,session,shipment.tenantId,actorId,"supply_chain.shipment.created","shipment",shipment.shipmentId,{organizationId:shipment.organizationId,referenceType:shipment.referenceType,referenceId:shipment.referenceId,carrierId:shipment.carrierId,trackingNumber:shipment.trackingNumber});
