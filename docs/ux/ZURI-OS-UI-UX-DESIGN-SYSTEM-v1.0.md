@@ -46,6 +46,12 @@ The same design system serves owner dashboards, POS terminals, inventory workspa
 ### 3.3 Context selector
 The active context must be explicit. Switching tenant/branch invalidates or refreshes scoped caches and resets stale selections. The UI must never imply that changing the visible selector itself grants access; the server remains authoritative.
 
+### 3.3 Sign-in and workspace selection
+
+Sign-in asks for the user's global credentials, not a workspace slug. After credentials and required MFA succeed, show a workspace chooser containing only active memberships for that identity. Display the workspace name and the user's role; visually identify the active workspace in the app shell and provide a switcher among the same authorized choices. A workspace switch must announce the new context and must not reuse stale data from the prior tenant.
+
+If the user has no active memberships, show an explicit invitation/access-request state. Do not auto-create a workspace or membership. The exact public request and approval workflow is specified separately and remains subject to product-owner approval.
+
 ## 4. Navigation and information architecture
 
 Primary product navigation:
