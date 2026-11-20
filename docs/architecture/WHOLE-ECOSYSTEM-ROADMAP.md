@@ -310,11 +310,13 @@ The branch now includes an initial shipment lifecycle service and authenticated 
 - Enforce optimistic version checks and idempotent mutations; shipment state, audit event and outbox event commit in one MongoDB transaction.
 - Replica-set service tests cover location-scope rejection, replay, state transitions, missing delivery evidence and terminal-state protection; API tests cover create, dispatch, deliver and scoped listing.
 
-A provider-neutral carrier event ingestion foundation is now also implemented:
-- A normalized event contract and service accept a provider-specific signature verifier as a required dependency; signature verification occurs before any database write.
-- Events are bound to the shipment's tenant, organization, carrier and tracking number; optimistic version checks and lifecycle transitions are enforced.
+A provider-neutral carrier event ingestion foundation is now also implemented and hardened:
+- A normalized strict event contract and service accept a provider-specific signature verifier as a required dependency; the verifier receives the complete normalized event (tenant, organization, shipment, status, timestamp, reason and proof-of-delivery) before any database write.
+- External carrier payloads do not supply internal MongoDB shipment versions. The service reads the authoritative persisted version and applies an optimistic compare-and-set update.
+- Events are bound to the shipment's tenant, organization, carrier and tracking number; out-of-order event timestamps and illegal lifecycle transitions are rejected.
 - Provider event IDs are deduplicated; shipment update, carrier event record, audit and outbox are committed in one MongoDB transaction.
-- Replica-set tests cover invalid signatures, carrier/shipment mismatch, idempotent replay, stale versions and atomic audit/outbox writes. Full monorepo CI passed in run #1190.
+- API startup initializes unique tenant/shipment and tenant/carrier/provider-event indexes plus shipment lookup and event-history indexes.
+- Contract and replica-set tests cover proof-of-delivery requirements, rejection of unknown/internal fields, full signature-verifier input, invalid signatures, carrier/shipment mismatch, idempotent replay, stale events, index uniqueness and atomic audit/outbox writes. Full monorepo CI passed in run #1215.
 
 **Explicit limitations:** carrier master/onboarding, provider-specific adapters and signing formats, production secret-manager integration, live tracking webhooks/polling endpoints, carrier account provisioning, route planning, freight cost/tax, customs documentation, shipment legs, partial delivery, returns and delivery exception workflows remain open. The normalized service is an integration boundary; no live carrier is connected and no external carrier signature is accepted by a public route.
 
