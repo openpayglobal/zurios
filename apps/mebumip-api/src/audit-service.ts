@@ -155,6 +155,7 @@ export async function planAuditChainBackfill(db: Db): Promise<{
   legacyCount: number;
   sequencedCount: number;
   maximumSupported: number;
+  invalidLegacyCount: number;
   applyAllowed: boolean;
   reason: string | null;
   oldestLegacyAt: string | null;
@@ -170,15 +171,26 @@ export async function planAuditChainBackfill(db: Db): Promise<{
     { sequence: { $exists: false } },
     { sort: { occurredAt: -1, _id: -1 }, projection: { occurredAt: 1 } },
   );
+  const sample = await db.collection("auditEvents").find(
+    { sequence: { $exists: false } },
+    { projection: { occurredAt: 1, outcome: 1 } },
+  ).limit(5_001).toArray();
+  const invalidLegacyCount = sample.filter((event) =>
+    !(event.occurredAt instanceof Date) ||
+    !["success", "denied", "failure"].includes(String(event.outcome))
+  ).length;
   const reason = sequencedCount > 0 && legacyCount > 0
     ? "LEGACY_AND_SEQUENCED_EVENTS_MIXED: backfill must run before new chain writes"
     : legacyCount > 5_000
       ? "BACKFILL_LIMIT_EXCEEDED: split historical records into an approved maintenance migration"
-      : null;
+      : invalidLegacyCount > 0
+        ? "LEGACY_EVENTS_INVALID: inspect timestamps and outcomes before migration"
+        : null;
   return {
     legacyCount,
     sequencedCount,
     maximumSupported: 5_000,
+    invalidLegacyCount,
     applyAllowed: reason === null && legacyCount > 0,
     reason,
     oldestLegacyAt: oldest?.occurredAt instanceof Date ? oldest.occurredAt.toISOString() : null,
