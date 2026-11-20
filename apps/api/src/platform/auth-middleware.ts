@@ -16,6 +16,16 @@ export function authenticate(db:Db,config:AuthConfig){
    const userId=payload.sub,tenantId=payload.tenantId,membershipId=payload.membershipId,sessionId=payload.sessionId;
    if(typeof userId!=="string"||typeof tenantId!=="string"||typeof membershipId!=="string"||typeof sessionId!=="string")throw new Error("INVALID_ACCESS_CLAIMS");
    const c=coreCollections(db),now=new Date();
+   if(tenantId==="platform"&&membershipId==="platform"){
+    const [platformSession,platformUser,platformPermissions]=await Promise.all([
+     c.sessions.findOne({tenantId:"platform",sessionId,userId,revokedAt:{$exists:false},expiresAt:{$gt:now},membershipId:"platform"}),
+     c.users.findOne({userId,status:"active"}),
+     platformPermissionsForUser(db,userId,now)
+    ]);
+    if(!platformSession||!platformUser||!platformPermissions.length)throw new Error("INACTIVE_PLATFORM_PRINCIPAL");
+    request.principal={userId,tenantId:"platform",membershipId:"platform",sessionId,organizationIds:[],locationIds:[],roleKeys:[],permissions:[],platformPermissions,emergencyGrantIds:[],attributes:{}};
+    return;
+   }
    const [session,tenant,user,membership]=await Promise.all([
     c.sessions.findOne({tenantId,sessionId,userId,revokedAt:{$exists:false},expiresAt:{$gt:now}}),
     c.tenants.findOne({tenantId,status:"active"}),
