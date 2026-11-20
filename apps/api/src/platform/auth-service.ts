@@ -13,10 +13,10 @@ async function issueAccessToken(config:AuthConfig,claims:{userId:string;tenantId
  return new SignJWT({tenantId:claims.tenantId,membershipId:claims.membershipId,sessionId:claims.sessionId,permissions:claims.permissions})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime(`${config.accessTokenTtlSeconds}s`).sign(key(config));
 }
-async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string}){
+async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;tenantId?:string;membershipId?:string}){
  const challengeId=randomUUID(),now=new Date();
- await db.collection("auth_challenges").insertOne({challengeId,userId:claims.userId,tenantId:claims.tenantId,membershipId:claims.membershipId,createdAt:now,expiresAt:new Date(now.getTime()+5*60_000)});
- return new SignJWT({purpose:"mfa",challengeId,tenantId:claims.tenantId,membershipId:claims.membershipId})
+ await db.collection("auth_challenges").insertOne({challengeId,userId:claims.userId,...(claims.tenantId?{tenantId:claims.tenantId}:{}),...(claims.membershipId?{membershipId:claims.membershipId}:{}),createdAt:now,expiresAt:new Date(now.getTime()+5*60_000)});
+ return new SignJWT({purpose:"mfa",challengeId,...(claims.tenantId?{tenantId:claims.tenantId}:{}),...(claims.membershipId?{membershipId:claims.membershipId}:{})})
   .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime("5m").sign(key(config));
 }
 async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string}){
@@ -26,13 +26,61 @@ async function completeLogin(db:Db,config:AuthConfig,claims:{userId:string;tenan
  await appendAuditEvent(db,{tenantId:claims.tenantId,actor:{userId:claims.userId},action:"auth.login",resourceType:"session",resourceId:session.sessionId,outcome:"success",metadata:{method:"password+mfa-if-enabled"}});
  return {accessToken,refreshToken:session.refreshToken,sessionId:session.sessionId,expiresAt:session.expiresAt,tokenType:"Bearer" as const};
 }
+type WorkspaceChoice={tenantId:string;slug:string;displayName:string;legalName:string;membershipId:string;roleKeys:string[];organizationIds:string[];locationIds:string[]};
+export async function listUserWorkspaces(db:Db,userId:string):Promise<WorkspaceChoice[]>{
+ const c=coreCollections(db),memberships=await c.memberships.find({userId,status:"active"}).toArray();
+ if(!memberships.length)return [];
+ const tenantIds=[...new Set(memberships.map(m=>m.tenantId))],roleIds=[...new Set(memberships.flatMap(m=>m.roleIds))];
+ const [tenants,roles]=await Promise.all([
+  c.tenants.find({tenantId:{$in:tenantIds},status:"active"}).toArray(),
+  c.roles.find({tenantId:{$in:tenantIds},roleId:{$in:roleIds},status:"active"}).toArray()
+ ]);
+ const tenantById=new Map(tenants.map(t=>[t.tenantId,t]));
+ const roleKeysByTenantAndId=new Map(roles.map(r=>[r.tenantId+"|"+r.roleId,r.key]));
+ return memberships.flatMap(m=>{
+  const tenant=tenantById.get(m.tenantId);if(!tenant)return [];
+  return [{tenantId:tenant.tenantId,slug:tenant.slug,displayName:tenant.displayName,legalName:tenant.legalName,membershipId:m.membershipId,roleKeys:m.roleIds.map(id=>roleKeysByTenantAndId.get(m.tenantId+"|"+id)).filter((v):v is string=>Boolean(v)),organizationIds:m.organizationIds,locationIds:m.locationIds}];
+ });
+}
+async function issueWorkspaceSelection(db:Db,config:AuthConfig,userId:string){
+ const workspaces=await listUserWorkspaces(db,userId),selectionId=randomUUID(),now=new Date();
+ const selectionToken=await new SignJWT({purpose:"workspace_selection",selectionId})
+  .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(userId).setIssuedAt().setExpirationTime("5m").sign(key(config));
+ await db.collection("workspace_selection_challenges").insertOne({selectionId,userId,createdAt:now,expiresAt:new Date(now.getTime()+5*60_000)});
+ return {workspaceSelectionRequired:true as const,selectionToken,workspaces};
+}
+export async function selectWorkspace(db:Db,config:AuthConfig,selectionToken:string,tenantId:string){
+ const verified=await jwtVerify(selectionToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]}),claims=verified.payload,now=new Date();
+ if(claims.purpose!=="workspace_selection"||typeof claims.sub!=="string"||typeof claims.selectionId!=="string")throw new Error("WORKSPACE_SELECTION_INVALID");
+ const c=coreCollections(db),[user,tenant,membership]=await Promise.all([
+  c.users.findOne({userId:claims.sub,status:"active"}),
+  c.tenants.findOne({tenantId,status:"active"}),
+  c.memberships.findOne({tenantId,userId:claims.sub,status:"active"})
+ ]);
+ if(!user||!tenant||!membership)throw new Error("WORKSPACE_ACCESS_DENIED");
+ const consumed=await db.collection("workspace_selection_challenges").updateOne({selectionId:claims.selectionId,userId:claims.sub,usedAt:{$exists:false},expiresAt:{$gt:now}},{$set:{usedAt:now}});
+ if(!consumed.modifiedCount)throw new Error("WORKSPACE_SELECTION_REPLAYED_OR_EXPIRED");
+ return completeLogin(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId});
+}
+export async function switchWorkspace(db:Db,config:AuthConfig,input:{userId:string;tenantId:string;sessionId:string;targetTenantId:string}){
+ const c=coreCollections(db),[currentSession,targetTenant,targetMembership]=await Promise.all([
+  c.sessions.findOne({tenantId:input.tenantId,sessionId:input.sessionId,userId:input.userId,revokedAt:{$exists:false},expiresAt:{$gt:new Date()}}),
+  c.tenants.findOne({tenantId:input.targetTenantId,status:"active"}),
+  c.memberships.findOne({tenantId:input.targetTenantId,userId:input.userId,status:"active"})
+ ]);
+ if(!currentSession)throw new Error("SESSION_INVALID");
+ if(!targetTenant||!targetMembership)throw new Error("WORKSPACE_ACCESS_DENIED");
+ const next=await completeLogin(db,config,{userId:input.userId,tenantId:targetTenant.tenantId,membershipId:targetMembership.membershipId});
+ await logout(db,input.tenantId,input.sessionId,input.userId);
+ return next;
+}
 async function enforceLoginRateLimit(db:Db,email:string,ipHash:string){
  const bucket=Math.floor(Date.now()/60_000),keyValue=createHash("sha256").update(email+"|"+ipHash+"|"+bucket).digest("hex"),collection=db.collection("auth_rate_limits");
  await collection.updateOne({key:keyValue},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((bucket+2)*60_000)}},{upsert:true});
  const row=await collection.findOne({key:keyValue});
  if((row?.count??0)>10)throw new Error("AUTH_RATE_LIMITED");
 }
-export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug:string;ipHash?:string}){
+export async function login(db:Db,config:AuthConfig,input:{email:string;password:string;tenantSlug?:string;ipHash?:string}){
  const email=normalizeEmail(input.email);await enforceLoginRateLimit(db,email,input.ipHash??"unknown");
  const c=coreCollections(db),user=await c.users.findOne({emailNormalized:email}),now=new Date();
  if(user?.lockedUntil&&user.lockedUntil>now)throw new Error("INVALID_CREDENTIALS");
@@ -42,13 +90,17 @@ export async function login(db:Db,config:AuthConfig,input:{email:string;password
   throw new Error("INVALID_CREDENTIALS");
  }
  if(user.status!=="active"||!user.emailVerifiedAt)throw new Error("INVALID_CREDENTIALS");
- const tenant=await c.tenants.findOne({slug:input.tenantSlug,status:"active"});
- if(!tenant)throw new Error("INVALID_CREDENTIALS");
- const membership=await c.memberships.findOne({tenantId:tenant.tenantId,userId:user.userId,status:"active"});
- if(!membership)throw new Error("INVALID_CREDENTIALS");
  await c.users.updateOne({userId:user.userId},{$set:{failedLoginCount:0,updatedAt:now},$unset:{lockedUntil:""}});
- if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
- return {mfaRequired:false as const,...await completeLogin(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
+ if(input.tenantSlug){
+  const tenant=await c.tenants.findOne({slug:input.tenantSlug,status:"active"});
+  if(!tenant)throw new Error("INVALID_CREDENTIALS");
+  const membership=await c.memberships.findOne({tenantId:tenant.tenantId,userId:user.userId,status:"active"});
+  if(!membership)throw new Error("INVALID_CREDENTIALS");
+  if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
+  return {mfaRequired:false as const,...await completeLogin(db,config,{userId:user.userId,tenantId:tenant.tenantId,membershipId:membership.membershipId})};
+ }
+ if(user.mfaEnabled)return {mfaRequired:true as const,challengeToken:await issueMfaChallenge(db,config,{userId:user.userId})};
+ return {mfaRequired:false as const,...await issueWorkspaceSelection(db,config,user.userId)};
 }
 export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:string,code:string){
  const verified=await jwtVerify(challengeToken,key(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});
@@ -64,11 +116,14 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
   const recoveryHash=hashRecoveryCode(code),result=await c.users.updateOne({userId:user.userId,mfaRecoveryCodeHashes:recoveryHash},{$pull:{mfaRecoveryCodeHashes:recoveryHash}});
   if(!result.modifiedCount)throw new Error("INVALID_MFA_CODE");
  }
- const membership=await c.memberships.findOne({tenantId:claims.tenantId,membershipId:claims.membershipId,userId:user.userId,status:"active"});
- if(!membership)throw new Error("ACTIVE_MEMBERSHIP_REQUIRED");
+ if(typeof claims.tenantId==="string"&&typeof claims.membershipId==="string"){
+  const membership=await c.memberships.findOne({tenantId:claims.tenantId,membershipId:claims.membershipId,userId:user.userId,status:"active"});
+  if(!membership)throw new Error("ACTIVE_MEMBERSHIP_REQUIRED");
+ }
  const consumed=await db.collection("auth_challenges").updateOne({challengeId:claims.challengeId,userId:user.userId,usedAt:{$exists:false},expiresAt:{$gt:new Date()}},{$set:{usedAt:new Date()}});
  if(!consumed.modifiedCount)throw new Error("MFA_CHALLENGE_ALREADY_USED");
- return completeLogin(db,config,{userId:user.userId,tenantId:claims.tenantId,membershipId:claims.membershipId});
+ if(typeof claims.tenantId==="string"&&typeof claims.membershipId==="string")return completeLogin(db,config,{userId:user.userId,tenantId:claims.tenantId,membershipId:claims.membershipId});
+ return issueWorkspaceSelection(db,config,user.userId);
 }
 export async function beginMfaEnrollment(db:Db,userId:string,config:AuthConfig){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active"});if(!user)throw new Error("ACTIVE_USER_REQUIRED");
