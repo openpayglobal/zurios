@@ -48,7 +48,7 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
 - `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.\n- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
-Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persisted. Passwords use salted scrypt hashes.
+Browser sessions are issued as `HttpOnly` session cookies with a separate session-bound CSRF cookie; state-changing cookie-authenticated requests must send `x-csrf-token`. Cookies use `SameSite=Lax`, `Secure` in production, and a bounded max age. The API retains bearer-token compatibility for trusted non-browser clients; production login does not return the bearer token in JSON. Only a SHA-256 session token hash is persisted. Passwords use salted scrypt hashes.
 
 ## MAC and MAD endpoints
 
@@ -65,7 +65,7 @@ MAC is the privileged control plane. MAD is a read-only monitoring surface. All 
 
 ## Current limitations — not production-ready
 
-This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and live Resend credentials and verified sender-domain configuration (the adapter is implemented, but delivery is not active until configured), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
+This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and live Resend credentials and verified sender-domain configuration (the adapter is implemented, but delivery is not active until configured), device metadata and production proxy/origin review, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
 
