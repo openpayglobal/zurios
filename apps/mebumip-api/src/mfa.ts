@@ -94,6 +94,18 @@ function configuredMfaEncryptionService() {
   });
 }
 
+
+export function getMfaEncryptionKeyId(encoded: string): string {
+  const parts = encoded.split(".");
+  if (parts.length === 5 && parts[0] === "v2" && /^[a-zA-Z0-9_-]{1,64}$/.test(parts[1] ?? "")) return parts[1]!;
+  if (parts.length === 3) return "legacy";
+  throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
+}
+
+export function getActiveMfaEncryptionKeyId(): string {
+  return config.MFA_ENCRYPTION_ACTIVE_KEY_ID ?? (config.MFA_ENCRYPTION_KEY ? "legacy" : "");
+}
+
 export function encryptMfaSecret(secret: string): string {
   return configuredMfaEncryptionService().encrypt(secret);
 }
