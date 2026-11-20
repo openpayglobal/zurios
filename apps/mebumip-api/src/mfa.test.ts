@@ -25,6 +25,7 @@ test("MFA key ring encrypts with active key and decrypts retained previous keys"
   assert.equal(rotatingService.decrypt(previousCiphertext), "totp-secret");
   assert.equal(rotatingService.decrypt(currentCiphertext), "new-secret");
   assert.throws(() => createMfaEncryptionService({ keys: { old: oldKey }, activeKeyId: "missing" }), /MFA_ACTIVE_ENCRYPTION_KEY_NOT_AVAILABLE/);
+  assert.throws(() => createMfaEncryptionService({ keys: {}, activeKeyId: "toString" }), /MFA_ACTIVE_ENCRYPTION_KEY_NOT_AVAILABLE/);
   assert.throws(() => createMfaEncryptionService({ keys: { old: oldKey }, activeKeyId: "old" }).decrypt("v2.unknown.a.b.c"), /MFA_ENCRYPTION_KEY_ID_NOT_AVAILABLE/);
 });
 
