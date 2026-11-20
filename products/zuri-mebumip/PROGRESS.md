@@ -104,8 +104,8 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 | Trusted email delivery | Blocked on provider configuration | No mail provider or SMTP/API credentials have been selected/configured. Invitation delivery and password recovery must remain disabled until a trusted provider and secret-managed configuration are supplied. |
 | MFA recovery and factor reset | Implementation added; verification pending | Ten one-time codes are generated on MFA enable; only hashes are stored; recovery-code step-up consumes atomically; reset requires password plus unused code and revokes sessions. Unit tests added for generation/normalization. Database-backed route tests and CI remain pending. |
 | Audit immutability/archive | In progress | Existing append-style audit writes and pagination remain. Hash-chain/tamper evidence, restrictive DB roles, signed archive/export and retention governance are not implemented. |
-| Database-backed integration tests | Not started | Need MongoDB-backed tests for bootstrap/login/session, invitation acceptance/replay, MFA gates and cross-tenant denial. |
-| API/web verification | Not verified | CI workflow is committed. Latest observed commit checks are Vercel failures caused by the project's build-rate limit; no passing GitHub Actions typecheck/test/build evidence was retrieved. Local verification remains unavailable in this environment. |
+| Database-backed integration tests | Foundation implemented; CI passed | MongoDB-backed Fastify test covers cross-tenant denial, invitation creation/registration/replay, membership and audit persistence, single-use MFA recovery and factor reset/session revocation. Broader bootstrap/login/session lifecycle and exhaustive tenant-isolation matrix remain. |
+| API/web verification | GitHub Actions passed; deployment checks blocked | Dedicated MeBuMIP workflow passed API typecheck/tests/build and web typecheck/build. Full monorepo CI passed OpenAPI validation, route-drift check, typecheck, tests and build. Vercel deployment checks still fail due to the project's build-rate limit; no deployment was performed. |
 | MAC administrator lifecycle | Partially implemented | Added administrator directory and MFA-gated, audited role/status update API; owner account is protected; suspension revokes sessions and removes platform-role access. Admin creation/invitation and interactive role/suspension controls remain. |
 | Production session/security architecture | Not complete | Current browser bearer token remains in sessionStorage. Production needs HttpOnly Secure SameSite cookie/BFF, CSRF/origin policy, proxy trust review, device/session metadata, recovery delivery, secrets rotation and deployment security review. |
 
@@ -126,3 +126,14 @@ Any scope reduction, phase reordering, data-model change, new Meta permission, o
 **Verification state:** implementation committed to the new branch; remote workflow results still need to be observed. Trusted email provider integration, audit tamper-evidence/archive, secure production browser session architecture, backup/restore, independent security review and production deployment remain open. Phase 1 remains **In progress**.
 
 **Objective traceability:** objectives A–E remain intentionally deferred to their planned Meta integration phases; no Meta credentials or live integrations were introduced by this security-hardening increment.
+
+
+**Verified CI evidence — 2026-11-20, PR #13 head `918433d8c5763fbbdae4523e01170e7fe18e25e4`:**
+
+- MeBuMIP Phase 1 verification run #203 passed: https://github.com/openpayglobal/zurios/actions/runs/44707839261
+- Full monorepo CI run #1227 passed: https://github.com/openpayglobal/zurios/actions/runs/44707839188
+- The MongoDB replica set now advertises the runner-mapped `127.0.0.1:27017` address, avoiding unresolvable container hostnames.
+- Atomic recovery-code consumption/reset uses a MongoDB update pipeline and filters on the correctly scoped `$$codeHash` variable; the route-level test confirms successful one-time consumption, replay rejection and factor reset.
+- The monorepo CI additionally caught and fixed literal escaped newlines in `packages/core-platform/src/location-service.ts` and a nested-schema parsing bug in the OpenAPI drift checker. OpenAPI drift validation now passes with 30 paths, 19 idempotent mutations and 19 shared Zod request schemas.
+
+**Release status remains unchanged:** PR #13 is open and unmerged. Vercel checks remain rate-limited; trusted email provider configuration, audit immutability/archive controls, secure production browser sessions, backup/restore drill and independent security review remain outstanding. No production deployment or migration has been run.
