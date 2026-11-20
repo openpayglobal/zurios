@@ -46,7 +46,7 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(cookieMe.statusCode, 200);
   const cookieCsrfDenied = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader }, payload: { code: "000000" } });
   assert.equal(cookieCsrfDenied.statusCode, 401);
-  const cookieCsrfAllowed = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader, "x-csrf-token": decodeURIComponent(csrfCookie.split("=").slice(1).join("=")) }, payload: { code: "000000" } });
+  const cookieCsrfAllowed = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader, "x-csrf-token": decodeURIComponent(csrfCookie) }, payload: { code: "000000" } });
   assert.notEqual(cookieCsrfAllowed.statusCode, 401);
   const headers = { authorization: "Bearer " + token };
   const me = await app.inject({ method: "GET", url: "/v1/auth/me", headers });
