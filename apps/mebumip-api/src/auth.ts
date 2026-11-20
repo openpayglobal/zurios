@@ -246,16 +246,20 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     }
 
     const token = newOpaqueToken();
+    const csrfToken = newOpaqueToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
     await db.collection("sessions").insertOne({
       userId: String(user._id),
       tokenHash: hashToken(token),
+      csrfTokenHash: hashToken(csrfToken),
       createdAt: now,
       expiresAt,
     });
+    setSessionCookies(reply, token, csrfToken, expiresAt);
     await writeAudit(db, request, String(user._id), "auth.session.created", "session", "success");
-    return reply.send({ accessToken: token, tokenType: "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } });
+    const response = { tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } };
+    return reply.send(config.NODE_ENV === "production" ? response : { ...response, accessToken: token });
   });
 
   app.post("/v1/auth/register", async (request, reply) => {
@@ -308,12 +312,14 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
     const token = newOpaqueToken();
+    const csrfToken = newOpaqueToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
     const sessions = db.collection("sessions");
     const newSession = await sessions.insertOne({
       userId: resolved.principal.userId,
       tokenHash: hashToken(token),
+      csrfTokenHash: hashToken(csrfToken),
       createdAt: now,
       expiresAt,
       rotatedFromSessionId: String(resolved.sessionId),
@@ -336,7 +342,9 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       );
       throw error;
     }
-    return reply.send({ accessToken: token, tokenType: "Bearer", expiresAt: expiresAt.toISOString() });
+    setSessionCookies(reply, token, csrfToken, expiresAt);
+    const response = { tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString() };
+    return reply.send(config.NODE_ENV === "production" ? response : { ...response, accessToken: token });
   });
 
   app.post("/v1/auth/password/change", async (request, reply) => {
@@ -520,6 +528,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved) return unauthorized(reply);
     await db.collection("sessions").updateOne({ _id: resolved.sessionId, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
     await writeAudit(db, request, resolved.principal.userId, "auth.session.revoked", "session", "success", String(resolved.sessionId));
+    clearSessionCookies(reply);
     return reply.code(204).send();
   });
 }
