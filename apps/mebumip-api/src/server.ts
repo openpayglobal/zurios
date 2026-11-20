@@ -7,6 +7,8 @@ import { config, corsOrigins } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerAdminRoutes } from "./admin.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
+import { registerDatabaseRateLimit } from "./rate-limit.js";
+import { registerTenantMemberRoutes } from "./tenant-members.js";
 
 const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) => {
   const supplied = request.headers["x-correlation-id"];
@@ -61,7 +63,9 @@ if (config.MONGODB_URI) {
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
     await ensureMeBuMIPIndexes(db);
+    registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
+    registerTenantMemberRoutes(app, db);
     registerAdminRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
