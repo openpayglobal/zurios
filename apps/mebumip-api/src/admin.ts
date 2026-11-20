@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { createAuditEvent } from "./security.js";
+import { appendAuditEvent } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 import { config, corsOrigins } from "./config.js";
@@ -137,11 +137,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (parsed.data.status === "suspended") {
       await db.collection("sessions").updateMany({ userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "platform_admin_suspended" } });
     }
-    await db.collection("auditEvents").insertOne(createAuditEvent({
+    await appendAuditEvent(db, {
       actorUserId: resolved.principal.userId, action: "platform.admin.updated", targetType: "platform_admin", targetId: userId,
       outcome: "success", correlationId: request.id,
       metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) },
-    }));
+    });
     return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
   });
 
