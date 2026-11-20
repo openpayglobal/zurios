@@ -310,7 +310,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const limit = Math.min(500, Math.max(1, Number.parseInt(query.limit ?? "200", 10) || 200));
     if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
     const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
-    const events = await db.collection("auditEvents").find(filter).sort({ sequence: -1, _id: -1 }).limit(limit).toArray();
+    const events = await db.collection("auditEvents").find(filter).sort({ _id: -1 }).limit(limit).toArray();
     const signed = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
     const generatedAt = new Date().toISOString();
     const manifest = signAuditExport(events as Array<Record<string, unknown>>, generatedAt);
