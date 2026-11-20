@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { resolvePrincipal } from "./auth.js";
-import { createAuditEvent, hasTenantPermission, TENANT_ROLES, type TenantRole } from "./security.js";
+import { createAuditEvent, hashToken, hasTenantPermission, TENANT_ROLES, type TenantRole } from "./security.js";
 
 const invitationSchema = z.object({
   email: z.string().email().max(254),
@@ -60,7 +60,6 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     const pending = await db.collection("tenantInvitations").findOne({ tenantId, email, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
     if (pending) return reply.code(409).send({ error: "INVITATION_ALREADY_PENDING" });
     const token = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
-    const { hashToken } = await import("./security.js");
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
     const inserted = await db.collection("tenantInvitations").insertOne({
@@ -90,7 +89,7 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
     if (!user || user.normalizedEmail !== invitation.email) return reply.code(403).send({ error: "INVITATION_EMAIL_MISMATCH" });
     if (!TENANT_ROLES.includes(invitation.role as TenantRole) || invitation.role === "tenant_owner") return reply.code(400).send({ error: "INVITATION_ROLE_INVALID" });
-    const membership = await db.collection("memberships").updateOne(
+    await db.collection("memberships").updateOne(
       { tenantId: invitation.tenantId, userId: resolved.principal.userId },
       { $set: { role: invitation.role, status: "active", updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
       { upsert: true },
