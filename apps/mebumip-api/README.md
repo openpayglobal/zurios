@@ -7,7 +7,8 @@ Fastify API workspace for Zuri MeBuMIP.
 - `MONGODB_URI`: MongoDB connection URI.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
-- `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.\n- `RESEND_API_KEY` and `MAIL_FROM`: trusted email provider credentials and verified sender address; both are mandatory in production. Invitation tokens are delivered by email and are never returned by the API. The test environment uses an in-memory sink only.
+- `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.
+- `RESEND_API_KEY` and `MAIL_FROM`: trusted email provider credentials and verified sender address; both are mandatory in production. Invitation tokens are delivered by email and are never returned by the API. The test environment uses an in-memory sink only.
 - `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
 - `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
 - `CORS_ORIGINS`: comma-separated exact web origins.
@@ -41,9 +42,12 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/logout`: revokes the current bearer session.
 - `POST /v1/auth/refresh`: rotates the current bearer token.
 - `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: list and revoke the authenticated user’s sessions.
-- `POST /v1/auth/password/change`: changes password and revokes other sessions.\n- `POST /v1/auth/password/recovery`: sends a short-lived, one-time reset token to the account email without revealing whether an address exists.\n- `POST /v1/auth/password/reset`: consumes the token once, changes the password, revokes all active sessions and records an audit event.
+- `POST /v1/auth/password/change`: changes password and revokes other sessions.
+- `POST /v1/auth/password/recovery`: sends a short-lived, one-time reset token to the account email without revealing whether an address exists.
+- `POST /v1/auth/password/reset`: consumes the token once, changes the password, revokes all active sessions and records an audit event.
 - `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
-- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.\n- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
+- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.
+- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
 Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persisted. Passwords use salted scrypt hashes.
 
