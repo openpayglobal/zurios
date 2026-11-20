@@ -5,5 +5,5 @@ export async function isFeatureEnabled(db:Db,tenantId:string,key:string,environm
  const flag=await coreCollections(db).featureFlags.findOne({tenantId,key});
  if(!flag||!flag.enabled||!flag.environments.includes(environment))return false;
  if(!flag.rules.length)return true;
- return flag.rules.some(rule=>Object.entries(rule).every(([k,v])=>Object.hasOwn(context,k)&&context[k]===v));
+ return flag.rules.some(rule=>Object.entries(rule).every(([k,v])=>Object.prototype.hasOwnProperty.call(context,k)&&context[k]===v));
 }

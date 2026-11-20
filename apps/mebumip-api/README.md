@@ -4,11 +4,18 @@ Fastify API workspace for Zuri MeBuMIP.
 
 ## Local configuration
 
-- `MONGODB_URI`: MongoDB connection URI.
+- `MONGODB_URI`: MongoDB connection URI. Production must use a replica set or sharded cluster; startup refuses a standalone topology because signed audit appends and backfills require transactions.
 - `MONGODB_DATABASE`: database name (defaults to `zuri_mebumip`).
 - `PLATFORM_BOOTSTRAP_TOKEN`: one-time platform owner bootstrap secret, at least 32 characters. Supply through a deployment secret manager; never commit it.
-- `MFA_ENCRYPTION_KEY`: optional 32-byte AES-256 key encoded as 64 hexadecimal characters. Required to enable TOTP MFA; keep it in a secret manager and back it up securely.
-- `SESSION_TTL_HOURS`: bearer session lifetime, 1–168 hours (defaults to 24).
+- `MFA_ENCRYPTION_KEY`: 32-byte AES-256 key encoded as 64 hexadecimal characters; required in production and must be stored/backed up in a secret manager.
+- `AUDIT_SIGNING_KEY`: at least 32 random characters; required in production and stored only in the secret manager. It HMAC-signs the append-only audit hash chain.
+- `AUDIT_SIGNING_KEY_ID`: active key identifier (defaults to `v1`).
+- `AUDIT_SIGNING_PREVIOUS_KEYS`: JSON object mapping prior key IDs to secrets (each at least 32 characters); retain old keys while events signed by them remain in the chain.
+- `RESEND_API_KEY` and `MAIL_FROM`: trusted email provider credentials and verified sender address; both are mandatory in production. Invitation tokens are delivered by email and are never returned by the API. The test environment uses an in-memory sink only.
+- `MONGODB_TEST_URI`: optional MongoDB replica-set URI for database-backed API integration tests. The Phase 1 GitHub Actions workflow configures this automatically.
+- `SESSION_TTL_HOURS`: session lifetime, 1–168 hours (defaults to 24).
+- `SESSION_COOKIE_SAME_SITE`: `strict`, `lax` (default) or `none`; `none` requires Secure cookies.
+- `SESSION_COOKIE_DOMAIN`: optional cookie domain for a shared first-party deployment. If the frontend and API are on separate sites, use `SESSION_COOKIE_SAME_SITE=none`, HTTPS and a verified exact CORS origin.
 - `CORS_ORIGINS`: comma-separated exact web origins.
 
 The API binds to `API_HOST` / `API_PORT` (defaults `0.0.0.0:4100`). Liveness is available without a database; readiness stays unavailable until MongoDB indexes and route registration succeed.
@@ -41,10 +48,13 @@ Bootstrap creates the first platform owner, the company tenant and its tenant-ow
 - `POST /v1/auth/refresh`: rotates the current bearer token.
 - `GET /v1/auth/sessions` and `DELETE /v1/auth/sessions/:sessionId`: list and revoke the authenticated user’s sessions.
 - `POST /v1/auth/password/change`: changes password and revokes other sessions.
+- `POST /v1/auth/password/recovery`: sends a short-lived, one-time reset token to the account email without revealing whether an address exists.
+- `POST /v1/auth/password/reset`: consumes the token once, changes the password, revokes all active sessions and records an audit event.
 - `POST /v1/auth/mfa/setup` (with current password) and `/v1/auth/mfa/enable`: configure TOTP MFA. Enrollment confirmation expires after 15 minutes.
-- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.\n- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
+- `POST /v1/auth/step-up`: verifies TOTP or consumes one single-use recovery code for a five-minute privileged-action window.
+- `POST /v1/auth/mfa/reset`: requires current password plus an unused recovery code, disables the factor and revokes all sessions so the user must re-enroll. MFA enablement returns ten recovery codes once; only their hashes are stored.
 
-Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persisted. Passwords use salted scrypt hashes.
+In development/test the API returns a bearer token for local tooling. In production it returns no bearer token: the session is held in an HttpOnly cookie, paired with a separate CSRF cookie and `x-csrf-token` header on unsafe cookie-authenticated requests. `GET /v1/auth/csrf` returns the current session-bound CSRF token to an allowed credentialed frontend when the CSRF cookie is not readable across origins. Cookie-authenticated state changes also require an exact configured HTTPS Origin. Bearer clients remain supported for non-browser integrations. Only SHA-256 token and CSRF hashes are persisted. Passwords use salted scrypt hashes.
 
 ## MAC and MAD endpoints
 
@@ -53,12 +63,44 @@ Send `Authorization: Bearer <accessToken>`. Only a SHA-256 token hash is persist
 - `GET /v1/mac/admins`: platform administrator directory read.
 - `PATCH /v1/mac/admins/:userId`: platform-owner-only role/status updates for existing platform administrators; requires recent MFA step-up. The platform owner is immutable through this route. Suspending an administrator revokes their active sessions.
 - `POST /v1/mac/tenants`: create a tenant and assign an existing active user as tenant owner; requires platform tenant-write permission and writes an audit event.
-- `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded.
+- `GET /v1/mac/audit-events`: latest audit events, with sensitive fields excluded and chain metadata included.
+- `GET /v1/mac/audit-events/verify`: checks sequence continuity, previous-hash links and HMAC signatures; it reports any legacy events not yet backfilled.
 
-MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are returned once by the API for delivery through a trusted mail adapter; automated email delivery is not configured yet. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`.
+MAC is the privileged control plane. MAD is a read-only monitoring surface. All routes perform server-side authorization; hiding a UI link is not a security control. Tenant member routes are available under `/v1/tenants/:tenantId/members` and `/v1/tenants/:tenantId/invitations`; invited new users register through `/v1/auth/register`, while existing users accept through `/v1/tenant-invitations/accept`. Membership changes and invitations require recent MFA step-up. Invitation tokens are hashed at rest and delivered only to the requested recipient through the configured Resend adapter; when delivery is unavailable the invitation is revoked and the API fails closed with 503. Password recovery uses the same provider, a 30-minute token lifetime and single-use database consumption. The test environment uses a non-network mail sink. Invited users without an account can register through `/v1/auth/register`; existing users can accept the invitation after signing in. A MongoDB-backed fixed-window rate limiter applies stricter policies to bootstrap, login and MFA verification, plus a general API policy. Audit events have no TTL deletion policy and can be paginated using `limit` and `before`. New writes use a transactionally allocated sequence, previous-event hash and HMAC signature. Existing legacy events without chain fields are reported as unverified until a controlled backfill is completed.
 
 ## Current limitations — not production-ready
 
-This is an implementation foundation, not a complete identity/security programme. Before public launch, add email verification and password recovery delivery (requires a configured mail provider), session device metadata, MFA recovery codes and factor reset, stricter audit immutability/export controls, backup/restore verification, security review and database-backed integration tests. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
+This is an implementation foundation, not a complete identity/security programme. MFA recovery codes and factor reset are implemented and covered by both unit tests and the new MongoDB-backed route test. Before public launch, configure and verify the production sender domain and credentials, add email verification, session device metadata, stricter audit immutability/export controls, backup/restore verification and independent security review. The MongoDB-backed integration test covers tenant isolation, invitation acceptance/replay, audit persistence and MFA recovery/reset; broader auth lifecycle and exhaustive cross-tenant matrix coverage remain required. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
+
+
+## Audit-chain backfill
+
+Legacy audit events written before the signed-chain release are not silently treated as verified. The utility defaults to a no-write dry-run:
+
+```sh
+pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+After a verified database backup, maintenance window and explicit approval, the bounded apply is:
+
+```sh
+AUDIT_CHAIN_BACKFILL_APPLY=true pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+The apply supports up to 5,000 legacy events in one transaction and refuses to run when legacy and already-sequenced events are mixed. That conflict means new chain writes have already started before historical backfill; stop and prepare a separately reviewed reconciliation plan rather than forcing the migration. Always inspect the final `verifyAuditChain` result. No production backfill is run by CI or automatically at API startup.
+
+
+## Signed audit archive export
+
+After the audit chain verifies cleanly and all legacy events are backfilled, export a signed bundle to a new file:
+
+```sh
+AUDIT_ARCHIVE_OUTPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive
+AUDIT_ARCHIVE_FILE=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify
+```
+
+The exporter refuses an invalid or incomplete chain, writes with restrictive file permissions and does not overwrite an existing file. The manifest is HMAC-signed and includes sequence range, event count and chain boundary hashes; every event retains its own signature and key identifier. Offline verification requires the current and previous audit signing keyring.
+
+**This creates a verifiable export, not WORM storage.** Operations must upload the verified bundle to an independently administered object-lock store (for example, an S3 bucket with versioning and Object Lock Compliance retention), enforce retention/deletion restrictions, test restore and retain signing keys. No cloud archive provider, credentials or production bucket has been configured by this change.

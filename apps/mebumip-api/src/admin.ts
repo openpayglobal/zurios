@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { createAuditEvent } from "./security.js";
+import { appendAuditEvent, verifyAuditChain } from "./audit-service.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission } from "./security.js";
 
@@ -75,11 +75,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
         tenantId: String(tenantResult.insertedId), userId: String(owner._id),
         role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
       });
-      await db.collection("auditEvents").insertOne(createAuditEvent({
+      await appendAuditEvent(db, {
         actorUserId: resolved.principal.userId, action: "platform.tenant.created",
         targetType: "tenant", targetId: String(tenantResult.insertedId),
         outcome: "success", correlationId: request.id,
-      }));
+      });
     } catch (error) {
       await db.collection("memberships").deleteOne({ tenantId: String(tenantResult.insertedId) });
       await db.collection("tenants").deleteOne({ _id: tenantResult.insertedId });
@@ -124,12 +124,22 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (parsed.data.status === "suspended") {
       await db.collection("sessions").updateMany({ userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "platform_admin_suspended" } });
     }
-    await db.collection("auditEvents").insertOne(createAuditEvent({
+    await appendAuditEvent(db, {
       actorUserId: resolved.principal.userId, action: "platform.admin.updated", targetType: "platform_admin", targetId: userId,
       outcome: "success", correlationId: request.id,
       metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) },
-    }));
+    });
     return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
+  });
+
+  app.get("/v1/mac/audit-events/verify", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) {
+      return reply.code(403).send({ error: "FORBIDDEN" });
+    }
+    const integrity = await verifyAuditChain(db);
+    return reply.send({ ...integrity, checkedAt: new Date().toISOString() });
   });
 
   app.get("/v1/mac/audit-events", async (request, reply) => {
@@ -143,7 +153,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (query.before && !ObjectId.isValid(query.before)) return reply.code(400).send({ error: "INVALID_CURSOR" });
     const filter = query.before ? { _id: { $lt: new ObjectId(query.before) } } : {};
     const events = await db.collection("auditEvents")
-      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1 } })
+      .find(filter, { projection: { actorUserId: 1, action: 1, targetType: 1, targetId: 1, tenantId: 1, outcome: 1, correlationId: 1, occurredAt: 1, sequence: 1, previousHash: 1, eventHash: 1, signature: 1, signatureKeyId: 1 } })
       .sort({ _id: -1 }).limit(limit + 1).toArray();
     const hasMore = events.length > limit;
     if (hasMore) events.pop();

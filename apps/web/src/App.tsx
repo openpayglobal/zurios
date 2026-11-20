@@ -10,10 +10,11 @@ declare global {
  interface ImportMeta { readonly env: ImportMetaEnv }
 }
 
-const API_BASE=import.meta.env.VITE_API_BASE_URL??"";
+const API_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api.vercel.app";
 type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"tenants";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
 type Session={accessToken:string;refreshToken:string;sessionId:string};
+type WorkspaceOption={tenantId:string;slug:string;displayName:string;legalName:string;membershipId:string;roleKeys:string[];organizationIds:string[];locationIds:string[]};
 const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:string;platform?:string}>= [
  {id:"overview",label:"Overview",icon:Grid2X2,permission:"platform.admin.overview.read"},
  {id:"organizations",label:"Organizations",icon:Building2,permission:"platform.organizations.read"},
@@ -54,7 +55,10 @@ export default function App(){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [viewData,setViewData]=useState<Record<string,unknown>>({});
- const [tenantSlug,setTenantSlug]=useState("platform");
+ const [workspaceOptions,setWorkspaceOptions]=useState<WorkspaceOption[]>([]);
+ const [workspaceSelectionToken,setWorkspaceSelectionToken]=useState("");
+ const [availableWorkspaces,setAvailableWorkspaces]=useState<WorkspaceOption[]>([]);
+ const [workspaceMenuOpen,setWorkspaceMenuOpen]=useState(false);
  const [email,setEmail]=useState("");
  const [password,setPassword]=useState("");
  const [challengeToken,setChallengeToken]=useState("");
@@ -63,8 +67,8 @@ export default function App(){
  const [mobileNav,setMobileNav]=useState(false);
  const refreshPromise=useRef<Promise<string>|null>(null);
 
- const saveSession=useCallback((value:Session)=>{setSession(value);setError("");setNotice("");},[]);
- const clearSession=useCallback(()=>{setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");},[]);
+ const saveSession=useCallback((value:Session)=>{setSession(value);setError("");setNotice("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");},[]);
+ const clearSession=useCallback(()=>{setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);},[]);
  const refreshAccessToken=useCallback(async()=>{
   if(!session)throw new Error("Your session has expired. Sign in again.");
   if(!refreshPromise.current){
@@ -94,8 +98,12 @@ export default function App(){
  },[session,refreshAccessToken,clearSession]);
 
  const loadPrincipal=useCallback(async()=>{
-  try{const result=await api<{principal:Principal}>("/auth/me");setPrincipal(result.principal);}
-  catch(e){setError(e instanceof Error?e.message:"Unable to load identity.");}
+  try{
+   const result=await api<{principal:Principal}>("/auth/me");
+   setPrincipal(result.principal);
+   const workspaceResult=await api<{workspaces:WorkspaceOption[]}>("/auth/workspaces");
+   setAvailableWorkspaces(workspaceResult.workspaces);
+  }catch(e){setError(e instanceof Error?e.message:"Unable to load identity.");}
  },[api]);
  useEffect(()=>{if(session&&!principal)void loadPrincipal();},[session,principal,loadPrincipal]);
 
@@ -124,10 +132,11 @@ export default function App(){
  const login=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password,tenantSlug})});
+   const response=await fetch(API_BASE+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
    const result=await response.json();
    if(!response.ok)throw new Error(result.error??"Sign-in failed.");
    if(result.mfaRequired){setChallengeToken(result.challengeToken);setNotice("Enter the current authenticator code to finish signing in.");}
+   else if(result.workspaceSelectionRequired){setWorkspaceOptions(result.workspaces??[]);setWorkspaceSelectionToken(result.selectionToken??"");}
    else saveSession(result as Session);
   }catch(e){setError(e instanceof Error?e.message:"Sign-in failed.");}
   finally{setBusy(false);}
@@ -137,8 +146,30 @@ export default function App(){
   try{
    const response=await fetch(API_BASE+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA verification failed.");
-   saveSession(result as Session);setChallengeToken("");setMfaCode("");
+   if(result.workspaceSelectionRequired){setWorkspaceOptions(result.workspaces??[]);setWorkspaceSelectionToken(result.selectionToken??"");}
+   else saveSession(result as Session);
+   setChallengeToken("");setMfaCode("");
   }catch(e){setError(e instanceof Error?e.message:"MFA verification failed.");}
+  finally{setBusy(false);}
+ };
+ const selectWorkspace=async(tenantId:string)=>{
+  if(!workspaceSelectionToken)return;
+  setBusy(true);setError("");
+  try{
+   const response=await fetch(API_BASE+"/auth/workspace/select",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({selectionToken:workspaceSelectionToken,tenantId})});
+   const result=await response.json();
+   if(!response.ok)throw new Error(result.error??"Workspace selection failed.");
+   saveSession(result as Session);
+  }catch(e){setError(e instanceof Error?e.message:"Workspace selection failed.");}
+  finally{setBusy(false);}
+ };
+ const switchToWorkspace=async(tenantId:string)=>{
+  if(!session||tenantId===principal?.tenantId){setWorkspaceMenuOpen(false);return;}
+  setBusy(true);setError("");
+  try{
+   const result=await api<Session>("/auth/workspace/switch",{method:"POST",body:JSON.stringify({tenantId})});
+   setPrincipal(null);setViewData({});setView("overview");setWorkspaceMenuOpen(false);saveSession(result);
+  }catch(e){setError(e instanceof Error?e.message:"Unable to switch workspace.");}
   finally{setBusy(false);}
  };
  const logout=async()=>{
@@ -158,7 +189,7 @@ export default function App(){
     <div className="mb-8 flex items-center justify-center gap-3"><div className="rounded-2xl border border-cyan-200/20 bg-cyan-200/10 p-3 text-cyan-100"><Command size={25}/></div><div><p className="text-lg font-semibold tracking-[.18em]">ZURI OS</p><p className="text-[10px] uppercase tracking-[.22em] text-slate-500">Unified operating platform</p></div></div>
     <Panel className="p-7 md:p-8">
      {challengeToken? <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Multi-factor authentication</p><h1 className="mt-2 text-2xl font-semibold">Verify your identity</h1><p className="mt-2 text-sm leading-6 text-slate-400">Enter the current code from your authenticator app.</p></div><ErrorBanner message={error}/><form onSubmit={verifyMfa} className="space-y-4"><Input label="Authenticator code or recovery code" value={mfaCode} onChange={setMfaCode} placeholder="000000" required/><Button type="submit" disabled={busy}>{busy?"Verifying…":"Verify and continue"} <ArrowRight size={15}/></Button><button type="button" onClick={()=>{setChallengeToken("");setMfaCode("");}} className="ml-3 text-xs text-slate-500 hover:text-slate-300">Back to sign in</button></form></>:
-     <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Secure workspace access</p><h1 className="mt-2 text-2xl font-semibold">Sign in to Zuri OS</h1><p className="mt-2 text-sm leading-6 text-slate-400">Use your Zuri OS identity and choose the tenant workspace you are entering.</p></div><ErrorBanner message={error}/><form onSubmit={login} className="space-y-4"><Input label="Tenant workspace slug" value={tenantSlug} onChange={setTenantSlug} placeholder="platform" required/><Input label="Email address" value={email} onChange={setEmail} type="email" placeholder="you@organization.com" required/><Input label="Password" value={password} onChange={setPassword} type="password" placeholder="Your password" required/><Button type="submit" disabled={busy}>{busy?"Signing in…":"Sign in securely"} <ArrowRight size={15}/></Button></form><div className="mt-6 flex items-center gap-2 border-t border-white/[0.07] pt-5 text-[11px] text-slate-500"><LockKeyhole size={14}/> Credentials are sent only to your configured Zuri OS API.</div></>}
+     workspaceSelectionToken? <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Workspace access</p><h1 className="mt-2 text-2xl font-semibold">Choose your workspace</h1><p className="mt-2 text-sm leading-6 text-slate-400">Your Zuri identity can belong to more than one workspace. Choose where you want to continue.</p></div><ErrorBanner message={error}/>{workspaceOptions.length? <div className="space-y-3">{workspaceOptions.map(workspace=><button key={workspace.membershipId} type="button" disabled={busy} onClick={()=>void selectWorkspace(workspace.tenantId)} className="w-full rounded-xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-cyan-200/30 hover:bg-cyan-200/[0.06] disabled:opacity-50"><span className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-100">{workspace.displayName||workspace.legalName}</span><ArrowRight size={16} className="text-cyan-200"/></span><span className="mt-1 block text-xs text-slate-500">{workspace.roleKeys.join(" · ")||"Workspace member"}</span></button>)}</div>:<div className="rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm leading-6 text-slate-400">Your Zuri identity does not have an active workspace membership yet. Accept a workspace invitation or ask a workspace administrator to grant access.</div>}<button type="button" onClick={()=>{setWorkspaceSelectionToken("");setWorkspaceOptions([]);setPassword("");}} className="mt-5 text-xs text-slate-500 hover:text-slate-300">Back to sign in</button></> : <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Secure workspace access</p><h1 className="mt-2 text-2xl font-semibold">Sign in to Zuri OS</h1><p className="mt-2 text-sm leading-6 text-slate-400">Use your Zuri OS identity. You can choose among all workspaces you are authorized to access after signing in.</p></div><ErrorBanner message={error}/><form onSubmit={login} className="space-y-4"><Input label="Email address" value={email} onChange={setEmail} type="email" placeholder="you@organization.com" required/><Input label="Password" value={password} onChange={setPassword} type="password" placeholder="Your password" required/><Button type="submit" disabled={busy}>{busy?"Signing in…":"Sign in securely"} <ArrowRight size={15}/></Button></form><div className="mt-6 flex items-center gap-2 border-t border-white/[0.07] pt-5 text-[11px] text-slate-500"><LockKeyhole size={14}/> Credentials are sent only to your configured Zuri OS API.</div></>}
     </Panel>
     <p className="mt-5 text-center text-[10px] text-slate-600">OIPTECH / ODEL Developers · Governed by default</p>
    </div>
@@ -225,7 +256,7 @@ export default function App(){
  return <div className="min-h-screen bg-[#091321] text-slate-100">
   <aside className={cn("fixed inset-y-0 left-0 z-30 flex w-72 flex-col border-r border-white/[0.07] bg-[#0d1929] transition-transform xl:translate-x-0",mobileNav?"translate-x-0":"-translate-x-full")}>
    <div className="flex h-[76px] items-center gap-3 border-b border-white/[0.07] px-6"><div className="rounded-xl border border-cyan-300/20 bg-cyan-300/10 p-2 text-cyan-200"><Command size={21}/></div><div><p className="font-semibold tracking-[.16em]">ZURI OS</p><p className="text-[10px] uppercase tracking-[.2em] text-slate-500">Operating platform</p></div><button className="ml-auto text-slate-500 xl:hidden" onClick={()=>setMobileNav(false)}><X size={18}/></button></div>
-   <div className="px-4 pt-6"><p className="px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-slate-500">Active workspace</p><div className="mt-3 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] p-3"><div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-cyan-300/20 to-blue-500/20 text-cyan-200"><Blocks size={18}/></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{principal.tenantId}</p><p className="text-[11px] text-slate-500">{principal.platformPermissions?.length?"Platform operator":"Tenant workspace"}</p></div><ChevronDown size={15} className="text-slate-500"/></div></div>
+   <div className="px-4 pt-6"><p className="px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-slate-500">Active workspace</p><button type="button" onClick={()=>setWorkspaceMenuOpen(value=>!value)} aria-expanded={workspaceMenuOpen} className="mt-3 flex w-full items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] p-3 text-left hover:border-cyan-200/20"><div className="grid h-9 w-9 place-items-center rounded-lg bg-gradient-to-br from-cyan-300/20 to-blue-500/20 text-cyan-200"><Blocks size={18}/></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-medium">{availableWorkspaces.find(w=>w.tenantId===principal.tenantId)?.displayName??principal.tenantId}</p><p className="text-[11px] text-slate-500">{principal.platformPermissions?.length?"Platform operator":"Tenant workspace"}</p></div><ChevronDown size={15} className={cn("text-slate-500 transition",workspaceMenuOpen&&"rotate-180")}/></button>{workspaceMenuOpen&&<div className="mt-2 space-y-1 rounded-xl border border-white/[0.08] bg-[#101e30] p-2">{availableWorkspaces.map(workspace=><button key={workspace.membershipId} type="button" disabled={busy} onClick={()=>void switchToWorkspace(workspace.tenantId)} className={cn("w-full rounded-lg px-3 py-2 text-left text-xs transition hover:bg-white/[0.06]",workspace.tenantId===principal.tenantId?"text-cyan-100":"text-slate-300")}><span className="block truncate font-medium">{workspace.displayName||workspace.legalName}</span><span className="mt-1 block text-[10px] text-slate-500">{workspace.roleKeys.join(" · ")||"Member"}</span></button>)}</div>}</div>
    <nav className="mt-7 flex-1 space-y-1 overflow-y-auto px-4"><p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[.2em] text-slate-500">Administration</p>{allowedNavigation.map(item=>{const Icon=item.icon;return <button key={item.id} onClick={()=>{setView(item.id);setMobileNav(false);}} className={cn("flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left text-sm transition",view===item.id?"border-cyan-300/15 bg-cyan-300/[0.08] text-cyan-100":"border-transparent text-slate-400 hover:bg-white/[0.04] hover:text-slate-200")}><Icon size={17}/>{item.label}</button>;})}</nav>
    <div className="m-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-4"><div className="flex items-center gap-2 text-xs text-slate-300"><ShieldCheck size={15}/> Governed workspace</div><p className="mt-2 break-all text-[11px] leading-5 text-slate-500">{principal.userId}</p><button onClick={logout} className="mt-3 flex items-center gap-2 text-xs text-slate-400 hover:text-rose-200"><LogOut size={14}/> Sign out</button></div>
   </aside>

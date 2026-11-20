@@ -24,7 +24,7 @@ await app.register(cors, {
   origin: corsOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["content-type", "authorization", "x-correlation-id"],
+  allowedHeaders: ["content-type", "authorization", "x-correlation-id", "x-csrf-token"],
 });
 
 app.get("/health/live", async () => ({
@@ -62,6 +62,10 @@ if (config.MONGODB_URI) {
     await mongo.connect();
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
+    const topology = await db.admin().command({ hello: 1 }) as { setName?: string; msg?: string };
+    if (config.NODE_ENV === "production" && !topology.setName && topology.msg !== "isdbgrid") {
+      throw new Error("MONGODB_REPLICA_SET_REQUIRED_FOR_TRANSACTIONAL_AUDIT");
+    }
     await ensureMeBuMIPIndexes(db);
     registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
