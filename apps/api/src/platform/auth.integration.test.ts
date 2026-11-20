@@ -143,6 +143,13 @@ test("invitation acceptance and password login use active tenant membership", {s
   const storedAccessRequest=await db.collection("access_requests").findOne({emailNormalized:"prospective@example.test",status:"pending"});
   assert.ok(storedAccessRequest);
   assert.equal(await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"}),usersBeforeAccessRequest);
+  const repeatedAccessResponses=[];
+  for(let attempt=0;attempt<3;attempt++){
+    repeatedAccessResponses.push(await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"prospective@example.test",displayName:"Prospective User",organizationName:"Prospective Org Ltd"}}));
+  }
+  assert.ok(repeatedAccessResponses.every(response=>response.statusCode===202&&response.json().message===accessRequest.json().message));
+  assert.equal(await db.collection("access_requests").countDocuments({emailNormalized:"prospective@example.test",status:"pending"}),3);
+
 
   const platformLogin=await login(db,cfg,{email:"auth@example.test",password:newPassword,ipHash:"integration"});
   if(platformLogin.mfaRequired||!platformLogin.workspaceSelectionRequired)throw new Error("Expected workspace selection for platform operator");
