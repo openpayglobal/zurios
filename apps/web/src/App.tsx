@@ -13,7 +13,8 @@ declare global {
 const API_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api.vercel.app";
 type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"tenants";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
-type Session={accessToken:string;refreshToken:string;sessionId:string};\ntype WorkspaceOption={tenantId:string;slug:string;displayName:string;legalName:string;membershipId:string;roleKeys:string[];organizationIds:string[];locationIds:string[]};
+type Session={accessToken:string;refreshToken:string;sessionId:string};
+type WorkspaceOption={tenantId:string;slug:string;displayName:string;legalName:string;membershipId:string;roleKeys:string[];organizationIds:string[];locationIds:string[]};
 const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:string;platform?:string}>= [
  {id:"overview",label:"Overview",icon:Grid2X2,permission:"platform.admin.overview.read"},
  {id:"organizations",label:"Organizations",icon:Building2,permission:"platform.organizations.read"},
@@ -54,7 +55,10 @@ export default function App(){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  const [viewData,setViewData]=useState<Record<string,unknown>>({});
- const [workspaceOptions,setWorkspaceOptions]=useState<WorkspaceOption[]>([]);\n const [workspaceSelectionToken,setWorkspaceSelectionToken]=useState("");\n const [availableWorkspaces,setAvailableWorkspaces]=useState<WorkspaceOption[]>([]);\n const [workspaceMenuOpen,setWorkspaceMenuOpen]=useState(false);
+ const [workspaceOptions,setWorkspaceOptions]=useState<WorkspaceOption[]>([]);
+ const [workspaceSelectionToken,setWorkspaceSelectionToken]=useState("");
+ const [availableWorkspaces,setAvailableWorkspaces]=useState<WorkspaceOption[]>([]);
+ const [workspaceMenuOpen,setWorkspaceMenuOpen]=useState(false);
  const [email,setEmail]=useState("");
  const [password,setPassword]=useState("");
  const [challengeToken,setChallengeToken]=useState("");
