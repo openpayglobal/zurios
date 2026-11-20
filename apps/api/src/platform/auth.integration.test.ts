@@ -7,6 +7,7 @@ import {provisionTenant,setTenantStatus,createUser,createMembership,runCoreMigra
 import {issueInvitation,acceptInvitation,login,beginMfaEnrollment,confirmMfaEnrollment,verifyMfaLogin,disableMfa,refreshLogin,issuePasswordReset,resetPassword,logout,selectWorkspace,switchWorkspace} from "./auth-service.js";
 import {totpCode} from "./auth-crypto.js";
 import {authRoutes} from "./auth-routes.js";
+import {adminRoutes} from "./admin-routes.js";
 const uri=process.env.MONGODB_TEST_URI;
 test("invitation acceptance and password login use active tenant membership", {skip:!uri}, async()=>{
  const client=new MongoClient(uri!);await client.connect();
@@ -25,11 +26,13 @@ test("invitation acceptance and password login use active tenant membership", {s
   const secondTenant=await provisionTenant(db,"test",{slug:"auth-test-second",legalName:"Second Auth Test Ltd",displayName:"Second Auth Workspace"});
   await setTenantStatus(db,secondTenant.tenantId,"active","test");
   const secondMembership=await createMembership(db,secondTenant.tenantId,"test",{userId:user.userId});
+  const platformGrant={grantId:"pog-"+randomUUID(),userId:user.userId,permissionKeys:["platform.tenants.read","platform.tenants.provision"],status:"active",reason:"Integration test platform operator access grant",createdBy:"test",createdAt:new Date(),updatedAt:new Date(),validFrom:new Date()};
+  await db.collection("platform_operator_grants").insertOne(platformGrant);
   const cfg={issuer:"https://identity.example.test",audience:"zuri-api-test",jwtSecret:randomBytes(32).toString("base64url"),accessTokenTtlSeconds:900,sessionTtlSeconds:3600,mfaEncryptionKey:randomBytes(32).toString("base64")};
   const workspaceLogin=await login(db,cfg,{email:"AUTH@example.test",password,ipHash:"integration"});
   assert.equal(workspaceLogin.mfaRequired,false);
   if(workspaceLogin.mfaRequired||!("workspaceSelectionRequired" in workspaceLogin)||!workspaceLogin.workspaceSelectionRequired)throw new Error("Expected workspace selection");
-  assert.equal(workspaceLogin.workspaces.length,2);
+  assert.equal(workspaceLogin.workspaces.length,3);
   assert.equal("accessToken" in workspaceLogin,false);
   const secondChoice=workspaceLogin.workspaces.find(choice=>choice.tenantId===secondTenant.tenantId);
   assert.ok(secondChoice);
@@ -48,6 +51,18 @@ test("invitation acceptance and password login use active tenant membership", {s
   const currentWorkspaceSession=await db.collection("sessions").findOne({sessionId:switched.sessionId,tenantId:tenant.tenantId});
   assert.equal(currentWorkspaceSession?.revokedAt,undefined);
 
+  const platformChoice=workspaceLogin.workspaces.find(choice=>choice.tenantId==="platform");
+  assert.ok(platformChoice);
+  const platformSession=await selectWorkspace(db,cfg,workspaceLogin.selectionToken,"platform");
+  const platformSessionDoc=await db.collection("sessions").findOne({tenantId:"platform",sessionId:platformSession.sessionId,membershipId:"platform"});
+  assert.ok(platformSessionDoc);
+  const platformRefreshed=await refreshLogin(db,cfg,"platform",platformSession.sessionId,platformSession.refreshToken);
+  assert.ok(platformRefreshed.accessToken);
+  const switchedFromPlatform=await switchWorkspace(db,cfg,{userId:user.userId,tenantId:"platform",membershipId:"platform",sessionId:platformRefreshed.sessionId},secondTenant.tenantId);
+  assert.ok(switchedFromPlatform.accessToken);
+  const platformSessionRevoked=await db.collection("sessions").findOne({tenantId:"platform",sessionId:platformSession.sessionId});
+  assert.ok(platformSessionRevoked?.revokedAt);
+
   const result=await login(db,cfg,{email:"AUTH@example.test",password,tenantSlug:tenant.slug,ipHash:"integration"});
   assert.equal(result.mfaRequired,false);
   if(result.mfaRequired)throw new Error("Unexpected MFA challenge");
@@ -62,7 +77,7 @@ test("invitation acceptance and password login use active tenant membership", {s
   if(!neutralMfaAttempt.mfaRequired)throw new Error("Expected workspace-neutral MFA challenge");
   const verifiedNeutralMfa=await verifyMfaLogin(db,cfg,neutralMfaAttempt.challengeToken,recovery.recoveryCodes[2]!);
   if(!("workspaceSelectionRequired" in verifiedNeutralMfa)||!verifiedNeutralMfa.workspaceSelectionRequired)throw new Error("MFA must complete before workspace selection");
-  assert.equal(verifiedNeutralMfa.workspaces.length,2);
+  assert.equal(verifiedNeutralMfa.workspaces.length,3);
   const selectedAfterMfa=await selectWorkspace(db,cfg,verifiedNeutralMfa.selectionToken,tenant.tenantId);
   assert.ok(selectedAfterMfa.accessToken);
 
@@ -107,6 +122,7 @@ test("invitation acceptance and password login use active tenant membership", {s
 
   const app=Fastify();
   await app.register(authRoutes(db,cfg));
+  await app.register(adminRoutes(db,cfg));
   const usersBeforeAccessRequest=await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"});
   const accessRequest=await app.inject({method:"POST",url:"/auth/access-requests",payload:{email:"prospective@example.test",displayName:"Prospective User",organizationName:"Prospective Org Ltd",requestNote:"We need a shared operating workspace."}});
   assert.equal(accessRequest.statusCode,202);
@@ -115,6 +131,18 @@ test("invitation acceptance and password login use active tenant membership", {s
   assert.ok(storedAccessRequest);
   assert.equal(await db.collection("users").countDocuments({emailNormalized:"prospective@example.test"}),usersBeforeAccessRequest);
 
+  const platformLogin=await login(db,cfg,{email:"auth@example.test",password:newPassword,ipHash:"integration"});
+  if(platformLogin.mfaRequired||!platformLogin.workspaceSelectionRequired)throw new Error("Expected workspace selection for platform operator");
+  const platformLoginSession=await selectWorkspace(db,cfg,platformLogin.selectionToken,"platform");
+  const platformMe=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+platformLoginSession.accessToken}});
+  assert.equal(platformMe.statusCode,200);
+  assert.equal(platformMe.json().principal.tenantId,"platform");
+  const macQueue=await app.inject({method:"GET",url:"/platform/admin/access-requests?status=pending",headers:{authorization:"Bearer "+platformLoginSession.accessToken}});
+  assert.equal(macQueue.statusCode,200);
+  const platformSwitch=await app.inject({method:"POST",url:"/auth/workspace/switch",headers:{authorization:"Bearer "+platformLoginSession.accessToken},payload:{tenantId:tenant.tenantId}});
+  assert.equal(platformSwitch.statusCode,200);
+  const oldPlatformMe=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+platformLoginSession.accessToken}});
+  assert.equal(oldPlatformMe.statusCode,401);
   const routeLogin=await app.inject({method:"POST",url:"/auth/login",payload:{email:"auth@example.test",password:newPassword,tenantSlug:tenant.slug}});
   assert.equal(routeLogin.statusCode,200);
   const routeBody=routeLogin.json() as {accessToken:string;sessionId:string};
