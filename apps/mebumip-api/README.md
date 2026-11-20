@@ -71,3 +71,20 @@ MAC is the privileged control plane. MAD is a read-only monitoring surface. All 
 This is an implementation foundation, not a complete identity/security programme. MFA recovery codes and factor reset are implemented and covered by both unit tests and the new MongoDB-backed route test. Before public launch, configure and verify the production sender domain and credentials, add email verification, session device metadata, stricter audit immutability/export controls, backup/restore verification and independent security review. The MongoDB-backed integration test covers tenant isolation, invitation acceptance/replay, audit persistence and MFA recovery/reset; broader auth lifecycle and exhaustive cross-tenant matrix coverage remain required. Tenant-specific business and Meta routes remain disabled until every handler resolves tenant scope from the verified principal and enforces tenant permissions.
 
 Never log or return password hashes, bootstrap secrets, access tokens, Meta credentials, message content or raw authorization headers.
+
+
+## Audit-chain backfill
+
+Legacy audit events written before the signed-chain release are not silently treated as verified. The utility defaults to a no-write dry-run:
+
+```sh
+pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+After a verified database backup, maintenance window and explicit approval, the bounded apply is:
+
+```sh
+AUDIT_CHAIN_BACKFILL_APPLY=true pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+The apply supports up to 5,000 legacy events in one transaction and refuses to run when legacy and already-sequenced events are mixed. That conflict means new chain writes have already started before historical backfill; stop and prepare a separately reviewed reconciliation plan rather than forcing the migration. Always inspect the final `verifyAuditChain` result. No production backfill is run by CI or automatically at API startup.
