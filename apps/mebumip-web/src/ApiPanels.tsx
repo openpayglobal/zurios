@@ -51,6 +51,10 @@ export function AdminData({ resource }: { resource: Resource }) {
   const [loading, setLoading] = useState(true);
   const [auditAction, setAuditAction] = useState("");
   const [auditResult, setAuditResult] = useState("");
+  const [stepUpCode, setStepUpCode] = useState("");
+  const [stepUpMessage, setStepUpMessage] = useState("");
+  const [stepUpBusy, setStepUpBusy] = useState(false);
+  const [adminBusy, setAdminBusy] = useState("");
   useEffect(() => {
     const token = sessionStorage.getItem("mebumip_access_token");
     if (!token) { setLoading(false); setError("Sign in above to view protected platform data."); return; }
@@ -72,7 +76,38 @@ export function AdminData({ resource }: { resource: Resource }) {
   if (!data) return null;
   if (resource === "overview" && data.platform && data.integrations) return <div className="api-data"><h3>Live platform aggregates</h3><div className="api-stats"><span><b>{data.platform.tenants}</b>Tenants</span><span><b>{data.platform.activeUsers}</b>Active users</span><span><b>{data.platform.activeSessions}</b>Active sessions</span><span><b>{data.integrations.connectedMetaAccounts}</b>Meta connections</span><span><b>{data.integrations.pendingWebhookEvents}</b>Pending webhooks</span></div></div>;
   const items = data.items ?? [];
-  if (resource === "admins") return <div className="api-data"><h3>Platform administrators · live API</h3>{items.length === 0 ? <p>No platform administrators found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Administrator</th><th>Role</th><th>Status</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.displayName ?? item.email ?? "")}<small>{String(item.email ?? "")}</small></td><td>{String(item.role ?? "")}</td><td>{String(item.status ?? "")}</td></tr>)}</tbody></table></div>}<p>Role and suspension changes are available through the audited, MFA-gated MAC API.</p></div>;
+  async function verifyAdminStepUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = sessionStorage.getItem("mebumip_access_token");
+    if (!token) { setStepUpMessage("Sign in first."); return; }
+    setStepUpBusy(true); setStepUpMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "MFA verification failed.");
+      setStepUpCode(""); setStepUpMessage("MFA verified. Privileged MAC actions are enabled for five minutes.");
+    } catch (cause) { setStepUpMessage(cause instanceof Error ? cause.message : "MFA verification failed."); }
+    finally { setStepUpBusy(false); }
+  }
+
+  async function updatePlatformAdmin(userId: string, changes: { role?: string; status?: string }) {
+    const token = sessionStorage.getItem("mebumip_access_token");
+    if (!token) { setStepUpMessage("Sign in first."); return; }
+    setAdminBusy(userId); setStepUpMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/mac/admins/" + encodeURIComponent(userId), { method: "PATCH", headers: { authorization: "Bearer " + token, "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before changing administrators." : body.error ?? "Administrator update failed.");
+      setData((current) => current ? { ...current, items: (current.items ?? []).map((item) => String(item.id) === userId ? { ...item, role: body.role, status: body.status } : item) } : current);
+      setStepUpMessage("Administrator record updated and audited.");
+    } catch (cause) { setStepUpMessage(cause instanceof Error ? cause.message : "Administrator update failed."); }
+    finally { setAdminBusy(""); }
+  }
+  if (resource === "admins") return <div className="api-data"><h3>Platform administrators · live API</h3>
+    <form className="api-auth" onSubmit={verifyAdminStepUp}><div><strong>Privileged action verification</strong><small>Enter the current six-digit authenticator code. Verification lasts five minutes.</small></div><input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="6-digit MFA code" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required/><button type="submit" disabled={stepUpBusy}>{stepUpBusy ? "Verifying…" : "Verify MFA"}</button></form>
+    {stepUpMessage && <p role="status">{stepUpMessage}</p>}
+    {items.length === 0 ? <p>No platform administrators found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Administrator</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>{items.map((item, index) => { const id = String(item.id ?? ""); const protectedOwner = item.status === "protected"; return <tr key={id || index}><td>{String(item.displayName ?? item.email ?? "")}<small>{String(item.email ?? "")}</small></td><td>{String(item.role ?? "")}</td><td>{String(item.status ?? "")}</td><td>{protectedOwner ? "Protected owner" : <div className="api-admin-actions"><button type="button" disabled={adminBusy === id} onClick={() => void updatePlatformAdmin(id, { role: "platform_admin" })}>Make admin</button><button type="button" disabled={adminBusy === id} onClick={() => void updatePlatformAdmin(id, { status: item.status === "suspended" ? "active" : "suspended" })}>{item.status === "suspended" ? "Reactivate" : "Suspend"}</button></div>}</td></tr>; })}</tbody></table></div>}
+    <p>New administrator invitations and account creation remain pending. Every role or status change requires platform-owner authorization, MFA step-up and audit logging.</p></div>;
   if (resource === "tenants") return <div className="api-data"><h3>Business directory · live API</h3>{items.length === 0 ? <p>No tenant records found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Business</th><th>Slug</th><th>Status</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item.id ?? index)}><td>{String(item.name ?? "")}</td><td>{String(item.slug ?? "")}</td><td>{String(item.status ?? "")}</td></tr>)}</tbody></table></div>}</div>;
   async function runAuditAction(action: "verify" | "export") {
     const token = sessionStorage.getItem("mebumip_access_token");
