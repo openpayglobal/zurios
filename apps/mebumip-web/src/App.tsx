@@ -106,10 +106,11 @@ function App() {
           {section === "tenants" && <AdminData resource="tenants" />}
           {section === "administrators" && <AdminData resource="admins" />}
           {section === "sessions" && <AdminData resource="sessions" />}
+          {section === "settings" && <AdminData resource="settings" />}
           {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Facebook, Instagram, advertising and WhatsApp connection flows will be enabled in their respective delivery phases. No customer credentials or Meta tokens are configured in this development shell." phase="Phases 2–4 · Objectives A–C"/>}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
           {section === "security" && <AdminData resource="audit" />}
-          {section === "settings" && <EmptyState icon={Settings2} title="Platform settings" detail="Global configuration, feature flags, integration policy and service settings will be managed here by explicitly authorized platform administrators." phase="Phase 1 foundation"/>}
+          
 
           <footer><span>© 2026 Blockchain Innovations LTD</span><span>Zuri MeBuMIP · Development foundation · Not connected to Meta</span></footer>
         </div>
