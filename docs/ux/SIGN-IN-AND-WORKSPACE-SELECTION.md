@@ -55,3 +55,10 @@ The access request form is separate from login. It collects only the minimum inf
 ## Acceptance
 
 The user never has to remember a workspace slug to sign in. A person with two memberships can enter either workspace from the same identity. Switching workspaces does not require creating another account. Request access is not a self-service privilege escalation path.
+
+
+## Implementation checkpoint — 2026-11-20
+
+The Zuri OS browser now presents a public “Request Zuri OS access” flow separate from sign-in. The form collects email, name, organization and optional context. The public endpoint returns a non-enumerating 202 acknowledgement, applies IP/email rate limits, stores a pending review item and writes an audit event. It does not create a user, tenant, role or membership.
+
+Authenticated users with active membership receive a one-time workspace selection token only after password and any required MFA checks. The chooser includes the platform administration context only when a valid platform operator grant exists. MAC reviewers can mark an access request reviewed, approve or decline it; approval records a decision only and does not automatically provision a tenant or membership.
