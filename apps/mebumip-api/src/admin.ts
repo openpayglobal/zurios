@@ -151,7 +151,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
     const parsed = z.object({ role: z.enum(["tenant_admin", "publisher", "advertiser", "support_agent", "viewer"]).optional(), status: z.enum(["active", "suspended"]).optional() }).refine((value) => value.role !== undefined || value.status !== undefined).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
-    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" } }, { $set: { ...parsed.data, updatedAt: new Date() } });
+    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" }, status: { $in: ["active", "suspended"] } }, { $set: { ...parsed.data, updatedAt: new Date() } });
     if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
     await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.membership.updated", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id, metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) } });
     return reply.send({ status: "updated" });
@@ -164,7 +164,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
     const { tenantId, userId } = request.params as { tenantId: string; userId: string };
     if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
-    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" }, status: "active" }, { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } });
+    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" }, status: { $in: ["active", "suspended"] } }, { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } });
     if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
     await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.membership.removed", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id });
     return reply.code(204).send();
