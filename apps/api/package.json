@@ -11,7 +11,8 @@
     "openapi:check": "tsx scripts/check-openapi-route-drift.ts",
     "bootstrap:platform-operator": "tsx scripts/bootstrap-platform-operator.ts",
     "test": "tsx --test src/platform/*.test.ts src/platform/*.integration.test.ts",
-    "abac:backfill": "tsx scripts/backfill-abac-policies.ts"
+    "abac:backfill": "tsx scripts/backfill-abac-policies.ts",
+    "webhooks:worker": "tsx scripts/run-webhook-worker.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
