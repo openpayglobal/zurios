@@ -180,6 +180,19 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
+  app.delete("/v1/mac/admin-invitations/:invitationId", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    if (resolved.principal.platformRole !== "platform_owner") return reply.code(403).send({ error: "PLATFORM_OWNER_REQUIRED" });
+    if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const { invitationId } = request.params as { invitationId: string };
+    if (!ObjectId.isValid(invitationId)) return reply.code(400).send({ error: "INVALID_INVITATION_ID" });
+    const revokedAt = new Date();
+    const result = await db.collection("platformAdminInvitations").updateOne({ _id: new ObjectId(invitationId), acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt, revokedBy: resolved.principal.userId } });
+    if (!result.matchedCount) return reply.code(404).send({ error: "PENDING_PLATFORM_ADMIN_INVITATION_NOT_FOUND" });
+    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.revoked", targetType: "platform_admin_invitation", targetId: invitationId, outcome: "success", correlationId: request.id });
+    return reply.code(204).send();
+  });
   app.post("/v1/mac/admin-invitations/accept", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
