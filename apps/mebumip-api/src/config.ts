@@ -11,9 +11,14 @@ const envSchema = z.object({
   PLATFORM_BOOTSTRAP_TOKEN: z.string().min(32).optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
   AUDIT_SIGNING_KEY: z.string().min(32).optional(),
+  RESEND_API_KEY: z.string().min(10).optional(),
+  MAIL_FROM: z.string().email().optional(),
 });
 
 const parsed = envSchema.superRefine((value, context) => {
+  if (value.NODE_ENV === "production" && (!value.RESEND_API_KEY || !value.MAIL_FROM)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["RESEND_API_KEY"], message: "RESEND_API_KEY and MAIL_FROM are required in production" });
+  }
   if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });
   }
