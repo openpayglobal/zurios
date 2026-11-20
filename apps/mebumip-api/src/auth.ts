@@ -435,6 +435,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       { $set: { revokedAt: now, revokeReason: "password_recovered" }, $unset: { stepUpUntil: "" } },
     );
     await writeAudit(db, request, userId, "auth.password.recovered", "user", "success");
+    clearSessionCookies(reply);
     return reply.send({ status: "password_reset", sessionsRevoked: true });
   });
 
@@ -520,6 +521,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const now = new Date();
     await db.collection("sessions").updateMany({ userId: resolved.principal.userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "mfa_factor_reset" }, $unset: { stepUpUntil: "" } });
     await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset", "user", "success");
+    clearSessionCookies(reply);
     return reply.send({ status: "mfa_reset", sessionsRevoked: true, note: "Sign in again and enroll a new authenticator. Recovery codes have been invalidated." });
   });
 
