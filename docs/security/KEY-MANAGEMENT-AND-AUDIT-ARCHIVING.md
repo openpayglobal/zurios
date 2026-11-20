@@ -12,6 +12,8 @@ This standard converts established security guidance into implementable controls
 Primary references:
 - [OWASP Secrets Management Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html) — secret lifecycle, gradual rotation, versioning, access, auditing and revocation.
 - [NIST SP 800-57 Part 1 Rev. 5](https://csrc.nist.gov/pubs/sp/800/57/pt1/r5/final) — key inventory, protection, lifecycle, backup, recovery and key management.
+- [NIST SP 800-63-4](https://www.nist.gov/publications/nist-sp-800-63-4-digital-identity-guidelines) and [SP 800-63B-4](https://csrc.nist.gov/pubs/sp/800/63/B/4/final) — current digital identity and authenticator guidance (finalized July/August 2025); use risk-appropriate requirements and do not claim conformance without assessment.
+- [OWASP ASVS 5.0.0](https://asvs.owasp.org/) — current stable application-security verification standard, published 30 May 2025; use its versioned requirements as a testable control catalogue.
 - [OWASP ASVS 5.0 — V7 Session Management](https://github.com/OWASP/ASVS/blob/master/5.0/en/0x16-V7-Session-Management.md) — server-side session controls and invalidation.
 - [OWASP ASVS 5.0 — V16 Security Logging and Error Handling](https://github.com/OWASP/ASVS/blob/master/5.0/en/0x25-V16-Security-Logging-and-Error-Handling.md) — security event inventory, privacy and log integrity.
 - [AWS S3 Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html) — one implementation example for versioned WORM storage, retention and legal holds. This is not an approved ZURI provider selection.
