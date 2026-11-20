@@ -56,6 +56,10 @@ Browser sessions are issued as `HttpOnly` session cookies with a separate sessio
 
 - `GET /v1/mad/overview`: authenticated platform metrics read; read-only aggregates only.
 - `GET /v1/mac/tenants`: platform tenant directory read.
+- `GET /v1/mac/tenants/:tenantId/members`: MAC member and pending-invitation directory.
+- `POST /v1/mac/tenants/:tenantId/invitations`: MFA-gated email invitation.
+- `PATCH /v1/mac/tenants/:tenantId/members/:userId` and `DELETE /v1/mac/tenants/:tenantId/members/:userId`: MFA-gated membership role/status/removal controls; tenant owners are protected.
+- `DELETE /v1/mac/tenants/:tenantId/invitations/:invitationId`: MFA-gated invitation revocation.
 - `GET /v1/mac/admins`: platform administrator directory read.
 - `GET /v1/mac/admin-invitations` and `POST /v1/mac/admin-invitations`: list/create MFA-gated, email-delivered platform administrator invitations.
 - `POST /v1/mac/admin-invitations/accept` and `DELETE /v1/mac/admin-invitations/:invitationId`: existing-user acceptance and audited invitation revocation.
