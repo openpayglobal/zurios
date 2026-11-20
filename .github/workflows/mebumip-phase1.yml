@@ -16,6 +16,22 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      MONGODB_URI: mongodb://127.0.0.1:27017
+      MFA_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      AUDIT_SIGNING_KEY: mebumip-ci-audit-signing-key-with-test-only-entropy
+      PLATFORM_BOOTSTRAP_TOKEN: mebumip-ci-bootstrap-token-test-only-2026
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
