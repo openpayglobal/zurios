@@ -8,7 +8,7 @@ import {
   Users, Waypoints, Workflow, X
 } from "lucide-react";
 
-type Section = "dashboard" | "objectives" | "tenants" | "connections" | "integrations" | "security" | "settings";
+type Section = "dashboard" | "objectives" | "tenants" | "administrators" | "connections" | "integrations" | "security" | "settings";
 type Objective = { id: string; title: string; phase: string; status: string; description: string; icon: typeof Facebook };
 
 const objectives: Objective[] = [
@@ -34,6 +34,7 @@ const nav: { id: Section; label: string; icon: typeof LayoutDashboard; group: st
   { id: "dashboard", label: "Master Dashboard", icon: LayoutDashboard, group: "MAD · MONITORING" },
   { id: "objectives", label: "Objectives & roadmap", icon: Gauge, group: "MAD · MONITORING" },
   { id: "tenants", label: "Business directory", icon: Building2, group: "MAC · CONTROL" },
+  { id: "administrators", label: "Administrators", icon: Users, group: "MAC · GOVERNANCE" },
   { id: "connections", label: "Meta connections", icon: Plug, group: "MAC · CONTROL" },
   { id: "integrations", label: "API integrations", icon: Workflow, group: "MAC · CONTROL" },
   { id: "security", label: "Security & audit", icon: ShieldCheck, group: "MAC · GOVERNANCE" },
@@ -102,6 +103,7 @@ function App() {
           {section === "objectives" && <><div className="section-head"><div><h2>Objective delivery register</h2><p>Search and review the complete A–E scope.</p></div><div className="search"><Search size={15}/><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search objectives"/></div></div><div className="objective-grid">{filtered.map((item) => <ObjectiveCard key={item.id} item={item}/>)}</div><div className="panel phase-panel"><div className="panel-head"><div><h3>Full implementation roadmap</h3><p>Phase gates and current delivery status</p></div></div>{phases.map((phase) => <div className="phase-row" key={phase[0]}><div className="phase-number">{phase[0]}</div><div className="phase-copy"><strong>{phase[1]}</strong><small>{phase[3]}</small></div><Status>{phase[2]}</Status></div>)}</div></>}
 
           {section === "tenants" && <AdminData resource="tenants" />}
+          {section === "administrators" && <AdminData resource="admins" />}
           {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Facebook, Instagram, advertising and WhatsApp connection flows will be enabled in their respective delivery phases. No customer credentials or Meta tokens are configured in this development shell." phase="Phases 2–4 · Objectives A–C"/>}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
           {section === "security" && <AdminData resource="audit" />}
