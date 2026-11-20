@@ -275,7 +275,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       verified = verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code);
     } else if ("recoveryCode" in parsed.data) {
       const recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
-      const consumed = await db.collection<{ mfaRecoveryCodeHashes?: string[] } & Document>("users").updateOne({ _id: user._id, mfaRecoveryCodeHashes: recoveryHash }, { $pull: { mfaRecoveryCodeHashes: recoveryHash } });
+      const consumed = await db.collection<{ mfaRecoveryCodeHashes: string[] } & Document>("users").updateOne({ _id: user._id, mfaRecoveryCodeHashes: recoveryHash }, { $pull: { mfaRecoveryCodeHashes: recoveryHash } });
       verified = consumed.modifiedCount === 1;
     }
     if (!verified) { await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId)); return reply.code(403).send({ error: "MFA_CODE_INVALID" }); }
