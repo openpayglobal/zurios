@@ -87,20 +87,20 @@ function hasRecentStepUp(stepUpUntil: Date | undefined): boolean {
 }
 
 /**
- * Meta connection routes are deliberately absent unless the complete provider and
- * token-vault configuration is present. No route accepts or returns provider tokens.
+ * Tenant read/disconnect routes remain available without provider credentials.
+ * OAuth and Page discovery return a controlled 503 until provider/keyring config is present.
+ * No route accepts or returns provider tokens.
  */
 export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: MetaRouteDependencies = {}): void {
   const configured = configuredServices(dependencies);
-  if (!configured) {
-    app.log.info("Meta integration routes disabled: provider and token-vault configuration is incomplete");
-    return;
-  }
-  const states = new MetaOAuthStateService(db, {
+  if (!configured) app.log.info("Meta provider actions unavailable: provider and token-vault configuration is incomplete");
+  const states = configured ? new MetaOAuthStateService(db, {
     redirectUri: configured.redirectUri,
     allowInsecureLocalhost: configured.allowInsecureLocalhost,
-  });
-  const { oauth, graph, vault } = configured;
+  }) : null;
+  const oauth = configured?.oauth;
+  const graph = configured?.graph;
+  const vault = configured?.vault;
 
   app.addHook("onRequest", async (request, reply) => {
     if ((request.routeOptions.url ?? "").includes("/meta/")) {
@@ -118,6 +118,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
     if (!hasRecentStepUp(resolved.stepUpUntil)) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    if (!configured || !states || !oauth) return reply.code(503).send({ error: "META_NOT_CONFIGURED" });
     const parsed = startSchema.safeParse(request.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
     const scopes = [...new Set(parsed.data.scopes ?? META_PAGES_INSTAGRAM_SCOPES)] as MetaOAuthScope[];
@@ -136,6 +137,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
   });
 
   app.get("/v1/meta/oauth/callback", async (request, reply) => {
+    if (!configured || !states || !oauth || !vault) return reply.code(503).send({ error: "META_NOT_CONFIGURED" });
     const parsed = callbackSchema.safeParse(request.query);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_OAUTH_CALLBACK" });
     const pending = await states.getPendingContext(parsed.data.state);
@@ -223,6 +225,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
     if (!hasRecentStepUp(resolved.stepUpUntil)) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    if (!configured || !vault || !graph) return reply.code(503).send({ error: "META_NOT_CONFIGURED" });
     try {
       const result = await discoverMetaPages(db, vault, graph, {
         tenantId,
@@ -252,29 +255,29 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
     if (!hasRecentStepUp(resolved.stepUpUntil)) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    const existing = await db.collection("metaConnections").findOne({ tenantId, connectionId, status: "connected" });
+    if (!existing) return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
     let remoteRevocation: "succeeded" | "failed" | "not_attempted" = "not_attempted";
-    try {
-      const connection = await db.collection<{ providerUserId: string }>("metaConnections")
-        .findOne({ tenantId, connectionId, status: "connected" }, { projection: { providerUserId: 1 } });
-      if (!connection) return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
-      const accessToken = await getMetaAccessToken(db, vault, tenantId, connectionId);
-      const result = await graph.request<{ success?: boolean } | boolean>(`${connection.providerUserId}/permissions`, {
-        accessToken,
-        method: "DELETE",
-        retry: false,
-      });
-      remoteRevocation = result === true || (typeof result === "object" && result.success === true) ? "succeeded" : "failed";
-    } catch (error) {
-      if (error instanceof Error && error.message === "META_CONNECTION_NOT_FOUND") return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
-      if (error instanceof Error && (error.message === "META_CONNECTION_TOKEN_EXPIRED" || error.message === "META_CONNECTION_DATA_ACCESS_EXPIRED")) {
-        remoteRevocation = "not_attempted";
-      } else {
-        remoteRevocation = "failed";
-        request.log.warn({
-          errorName: error instanceof Error ? error.name : "UnknownError",
-          providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
-          correlationId: request.id,
-        }, "Meta remote permission revocation failed; local token will still be erased");
+    if (graph && vault && typeof existing.providerUserId === "string") {
+      try {
+        const accessToken = await getMetaAccessToken(db, vault, tenantId, connectionId);
+        const result = await graph.request<{ success?: boolean } | boolean>(existing.providerUserId + "/permissions", {
+          accessToken,
+          method: "DELETE",
+          retry: false,
+        });
+        remoteRevocation = result === true || (typeof result === "object" && result.success === true) ? "succeeded" : "failed";
+      } catch (error) {
+        if (error instanceof Error && (error.message === "META_CONNECTION_TOKEN_EXPIRED" || error.message === "META_CONNECTION_DATA_ACCESS_EXPIRED")) {
+          remoteRevocation = "not_attempted";
+        } else {
+          remoteRevocation = "failed";
+          request.log.warn({
+            errorName: error instanceof Error ? error.name : "UnknownError",
+            providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
+            correlationId: request.id,
+          }, "Meta remote permission revocation failed; local token will still be erased");
+        }
       }
     }
     await revokeMetaConnection(db, tenantId, connectionId, resolved.principal.userId, request.id, remoteRevocation);
