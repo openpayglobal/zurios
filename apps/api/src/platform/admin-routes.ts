@@ -482,7 +482,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     });
    }catch(error){return fail(error,reply);}
   });
-  app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.read")},async(request,reply)=>{
+  app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(request,reply)=>{
    try{
     let topology={replicaSet:false,writablePrimary:false,transactionsAvailable:false};
     try{
