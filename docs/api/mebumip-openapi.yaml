@@ -122,6 +122,7 @@ paths:
         - {name: error, in: query, required: false, schema: {type: string, maxLength: 128}}
         - {name: error_description, in: query, required: false, schema: {type: string, maxLength: 2048}}
       responses:
+        "303": {description: Browser OAuth navigation is returned to the configured Zuri frontend with non-secret connection status metadata}
         "201":
           description: Provider identity validated and encrypted connection created
           content:
