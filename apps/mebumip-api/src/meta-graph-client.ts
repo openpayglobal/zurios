@@ -108,7 +108,7 @@ export class MetaGraphClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
-  private readonly appSecret?: string;
+  private readonly appSecret: string | undefined;
   private readonly requireAppSecretProof: boolean;
   private readonly sleep: (milliseconds: number) => Promise<void>;
 
