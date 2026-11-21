@@ -121,7 +121,9 @@ export class MetaOAuthService {
     if (!/^v\d+\.\d+$/.test(options.version)) throw new Error("META_GRAPH_API_VERSION_INVALID");
     const redirect = new URL(options.redirectUri);
     const localhost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
-    if (redirect.username || redirect.password || redirect.hash || (redirect.protocol !== "https:" && !(options.allowInsecureLocalhost && localhost))) throw new Error("META_REDIRECT_URI_INVALID");
+    const secureTransport = redirect.protocol === "https:";
+    const permittedLocalHttp = redirect.protocol === "http:" && options.allowInsecureLocalhost === true && localhost;
+    if (redirect.username || redirect.password || redirect.hash || (!secureTransport && !permittedLocalHttp)) throw new Error("META_REDIRECT_URI_INVALID");
     if (options.loginConfigId !== undefined && !/^[A-Za-z0-9_-]{4,128}$/.test(options.loginConfigId)) throw new Error("META_LOGIN_CONFIG_ID_INVALID");
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 10_000;
