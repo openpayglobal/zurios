@@ -88,3 +88,29 @@ Vercel KMS `signJWT` can mint short-lived service tokens from the API deployment
 - No deployment was created or promoted.
 - The KMS workload identity resource is created but not yet consumed by application code.
 - PR #16 remains a draft architecture checkpoint; this branch is the next implementation increment.
+
+
+## Central Zuri OS MAC inventory surface — 2026-11-21
+
+- Added `GET /platform/admin/infrastructure` to the Zuri OS API. It is guarded by the existing platform permission gate and returns only non-secret metadata.
+- Added the MAC navigation item and Infrastructure & Secrets screen in `apps/web/src/App.tsx`.
+- The screen displays Vercel KMS issuer/key IDs, database topology checks, existing environment bootstrap state, API origin inventory and provider readiness. It never returns database URIs, JWT secrets, private keys or provider credentials.
+- Added the route to the Zuri OS OpenAPI contract.
+- The same inventory is mirrored as a read-only MeBuMIP infrastructure view; the central Zuri OS MAC is the governance authority.
+
+## KMS issuer inventory
+
+Three active RS256 KMS issuers have been created for the `zurios-api` Production project only:
+
+| Purpose | Issuer ID | Active key ID |
+|---|---|---|
+| MAC runtime workload identity | `5653e1ff-fd71-4a0d-8720-380cdfcaf2c4` | `75899278-1e19-4444-bec0-141dc4d17eb0` |
+| User session JWT signing | `16d2fb82-30b7-4a0d-8c4e-49fb1de92919` | `2900b63b-5eed-4689-8726-b05a4618967f` |
+| Audit event signing | `55210f93-c052-45a5-aeb8-e083ed0d5dce` | `da6060ee-9fda-4389-a652-281c256be6d2` |
+
+Vercel KMS keeps the private signing keys. The user-session issuer is ready for a compatible RS256 migration; the audit issuer can sign event digests with the KMS message-signing API. Neither has been wired into application runtime yet, so the MAC correctly reports them as provisioned/pending integration.
+
+## MongoDB Atlas provisioning dependency
+
+A MongoDB Atlas connector is available but not yet connected. Once the owner connects the Atlas account, the cluster, database user, network allowlist and replica-set topology can be provisioned and validated against the Zuri OS requirements. Until then, no production MongoDB URI can be safely fabricated or activated.
+
