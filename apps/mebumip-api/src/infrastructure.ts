@@ -6,6 +6,26 @@ import { hasPlatformPermission } from "./security.js";
 
 const managedKmsKeyrings = [
   {
+    id: "16d2fb82-30b7-4a0d-8c4e-49fb1de92919",
+    name: "Zuri OS User Session JWT Signing",
+    purpose: "User session JWT signing",
+    keyId: "2900b63b-5eed-4689-8726-b05a4618967f",
+    algorithm: "RS256",
+    environment: "production",
+    projectId: "prj_vkIcPCsN1TW3WOturczl3FcWEJkq",
+    status: "provisioned_pending_runtime_integration",
+  },
+  {
+    id: "55210f93-c052-45a5-aeb8-e083ed0d5dce",
+    name: "Zuri OS Audit Event Signing",
+    purpose: "Audit event signing",
+    keyId: "da6060ee-9fda-4389-a652-281c256be6d2",
+    algorithm: "RS256",
+    environment: "production",
+    projectId: "prj_vkIcPCsN1TW3WOturczl3FcWEJkq",
+    status: "provisioned_pending_runtime_integration",
+  },
+  {
     id: "5653e1ff-fd71-4a0d-8720-380cdfcaf2c4",
     name: "Zuri OS MAC Runtime Workload Identity",
     purpose: "Vercel workload identity",
