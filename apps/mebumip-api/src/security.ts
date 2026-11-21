@@ -252,23 +252,60 @@ export async function appendAuditEvent(db: Db, input: AuditEventInput) {
 }
 
 export async function verifyAuditChain(db: Db) {
-  const events = await db.collection<ChainedAuditEvent>("auditEvents").find({}).sort({ sequence: 1, occurredAt: 1, _id: 1 }).toArray();
-  const legacyUnchainedEvents = events.filter(event => !Number.isSafeInteger(event.sequence) || typeof event.previousHash !== "string" || typeof event.eventHash !== "string").length;
-  const chained = events.filter(event => Number.isSafeInteger(event.sequence) && typeof event.previousHash === "string" && typeof event.eventHash === "string");
-  const chainValid = legacyUnchainedEvents === 0 && verifyAuditChainEvents(chained as Array<Record<string, unknown>>, 1);
+  const cursor = db.collection<ChainedAuditEvent>("auditEvents")
+    .find({})
+    .sort({ sequence: 1, occurredAt: 1, _id: 1 });
+  let checked = 0;
+  let legacyUnchainedEvents = 0;
+  let expectedSequence = 1;
+  let previousHash = AUDIT_GENESIS_HASH;
+  let latestSequence = 0;
   let firstInvalidSequence: number | null = null;
-  if (!chainValid && chained.length) {
-    let expected = 1, previousHash = AUDIT_GENESIS_HASH;
-    for (const event of chained) {
-      if (event.sequence !== expected || event.previousHash !== previousHash || !verifyAuditChainEvents([event as Record<string, unknown>], expected)) { firstInvalidSequence = Number(event.sequence); break; }
-      previousHash = event.eventHash; expected += 1;
+  let chainValid = true;
+
+  // Stream the complete history so verification memory remains bounded regardless
+  // of audit-log size. Archive export is intentionally separate and materializes
+  // records only when the caller explicitly requests a full archive.
+  for await (const event of cursor) {
+    if (!Number.isSafeInteger(event.sequence) ||
+        typeof event.previousHash !== "string" ||
+        typeof event.eventHash !== "string") {
+      legacyUnchainedEvents += 1;
+      chainValid = false;
+      if (firstInvalidSequence === null && Number.isSafeInteger(event.sequence)) {
+        firstInvalidSequence = Number(event.sequence);
+      }
+      continue;
     }
+
+    const sequence = Number(event.sequence);
+    const eventValid = sequence === expectedSequence &&
+      event.previousHash === previousHash &&
+      verifyAuditChainEvents([event as Record<string, unknown>], expectedSequence);
+    if (!eventValid) {
+      chainValid = false;
+      if (firstInvalidSequence === null) firstInvalidSequence = sequence;
+    }
+    checked += 1;
+    latestSequence = sequence;
+    previousHash = event.eventHash;
+    expectedSequence += 1;
   }
+
   const counter = await db.collection<{ _id: string; sequence: number }>("auditCounters").findOne({ _id: "global" });
   const counterSequence = Number(counter?.sequence ?? 0);
-  const latestSequence = chained.length ? Number(chained[chained.length - 1]!.sequence) : 0;
   const counterMatches = Number.isSafeInteger(counterSequence) && counterSequence === latestSequence;
-  return { valid: chainValid && counterMatches, chainValid, checked: chained.length, legacyUnchainedEvents, latestSequence, latestHash: chained.length ? String(chained[chained.length - 1]!.eventHash) : AUDIT_GENESIS_HASH, firstInvalidSequence, counterSequence, counterMatches };
+  return {
+    valid: chainValid && legacyUnchainedEvents === 0 && counterMatches,
+    chainValid: chainValid && legacyUnchainedEvents === 0,
+    checked,
+    legacyUnchainedEvents,
+    latestSequence,
+    latestHash: previousHash,
+    firstInvalidSequence,
+    counterSequence,
+    counterMatches,
+  };
 }
 
 export async function planAuditChainBackfill(db: Db) {
