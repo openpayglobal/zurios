@@ -26,6 +26,7 @@ test("validates explicit Graph version and dedicated provider-token key ring whe
 test("requires app secret, HTTPS redirect and token vault when a Meta app ID is set", () => {
   assert.equal(parseConfig({ NODE_ENV: "test", META_APP_ID: "123456789012345" }).success, false);
   assert.equal(parseConfig({ ...validMetaEnvironment, META_REDIRECT_URI: "http://example.test/callback" }).success, false);
+  assert.equal(parseConfig({ ...validMetaEnvironment, META_REDIRECT_URI: "http://localhost:4100/v1/meta/oauth/callback" }).success, true);
 });
 
 test("rejects reusing MFA encryption material for Meta provider tokens", () => {
