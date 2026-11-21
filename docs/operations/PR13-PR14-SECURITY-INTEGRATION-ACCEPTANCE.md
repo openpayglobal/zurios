@@ -102,7 +102,7 @@ The integration candidate must:
 
 - [ ] Exact source SHAs and merge-base recorded.
 - [ ] Changed-file inventory reconciled; both remaining PR #13-only paths accounted for.
-- [ ] All 39 overlapping paths reviewed semantically.
+- [ ] All 52 overlapping paths reviewed semantically.
 - [ ] Canonical audit-chain design approved and tests pass.
 - [ ] Cookie/CSRF and auth lifecycle behavior reviewed and tests pass.
 - [ ] Core-platform ABAC/idempotency/audit/membership changes reconciled.
@@ -144,14 +144,19 @@ The API preview was inspected directly, exposing additional type-checking failur
 
 ## 8. Current evidence and status
 
-- PR #13 and PR #14 remain separate, open and unmerged.
-- Latest documented branch comparison is divergent; it is not a safe fast-forward integration.
-- PR #13's transactional predecessor-linked audit service and backfill are not semantically equivalent to PR #14's inspected append implementation.
-- PR #14's global identity, workspace validity, access-request and platform features must be retained.
-- The exact code checkpoint `7ca6aa31d49c59c1582ba8d434a447736a59144f` passed full CI run [44791610085](https://github.com/openpayglobal/zurios/actions/runs/44791610085) and MeBuMIP run [44791610046](https://github.com/openpayglobal/zurios/actions/runs/44791610046).
-- Vercel reports build-rate-limit failures for both projects. This is not a successful deployment.
-- The ODEI repository remains unavailable to the connected GitHub integration; its requirements are an explicit external dependency.
-- No production migration, audit backfill apply, public intake activation, deployment or promotion is authorized by this engineering plan.
+- PR #13 remains open/draft and PR #14 remains open/non-draft; neither has been merged. Both currently have zero unresolved inline review threads.
+- Latest source inventory: PR #13 head `52e94d1c6b1a87d516cba9fdd64337463259199f` (54 changed paths); PR #14 head `13f6cfb7a4016f8dae7d517b9a5b80a6590b27ec` (91 changed paths); 52 overlapping changed paths and two PR #13-only paths.
+- The two path-only differences have explicit treatment:
+  - `apps/mebumip-api/src/audit-service.ts` is functionally integrated into `apps/mebumip-api/src/security.ts`, which now owns the keyring-aware event signer, canonical chain hash, transaction-scoped append, streaming verifier, bounded backfill, signed archive export and offline archive verification.
+  - `packages/core-platform/src/idempotency-service.ts` exists on PR #14's tree with equivalent canonical request hashing, transactional mutation, replay detection and conflict handling. It is not a missing runtime implementation; the difference is that this file is not changed by PR #14.
+- The tenant-member MongoDB integration test and MeBuMIP Phase 1 production security operations runbook are now present on PR #14. The runbook is indexed in `docs/README.md`.
+- First-owner bootstrap commits owner, tenant, membership and the signed audit event in one MongoDB transaction. Session refresh now creates the successor session, revokes the old session and appends the audit event in one transaction. Password reset now consumes the one-time recovery record, updates the password, revokes sessions and appends the audit event in one transaction.
+- The audit chain now enforces monotonic sequence, predecessor hash, canonical event hash, keyring-backed HMAC signature and counter consistency. Backfill is dry-run-first, bounded to 5,000 events, and refuses partial/malformed or mixed histories. Verification streams the full event history. Offline archive verification normalizes serialized timestamps and validates event/manifest integrity.
+- Latest audit hardening redacts credential-like metadata before signing and fails closed if a signing key is unavailable or required event fields/outcomes are invalid.
+- Exact-head full monorepo CI [#44866926607](https://github.com/openpayglobal/zurios/actions/runs/44866926607) and MeBuMIP verification [#44866926541](https://github.com/openpayglobal/zurios/actions/runs/44866926541) were queued when this source snapshot was recorded. They are not passing evidence yet; use the latest PR head and exact run status before accepting.
+- Vercel reports deployment-rate-limit failures for both frontend and API projects. No preview deployment on the current source head has been verified.
+- The ODEI repository remains unavailable to the connected GitHub integration; its requirements remain an explicit external dependency.
+- No production migration, audit backfill apply, public intake activation, deployment or promotion has been performed or authorized by this engineering plan.
 
 ## 9. Change log
 
@@ -199,3 +204,10 @@ The two remaining changed-path differences are:
 **Verification status:** the MeBuMIP workflow [#44866839352](https://github.com/openpayglobal/zurios/actions/runs/44866839352) passed on the immediately preceding head. Full monorepo CI [#44866845001](https://github.com/openpayglobal/zurios/actions/runs/44866845001) and MeBuMIP verification [#44866845017](https://github.com/openpayglobal/zurios/actions/runs/44866845017) are running on the checkpoint head. Do not mark the exact head verified until both finish successfully.
 
 **Remaining integration work:** review all 52 overlapping paths semantically, reconcile any remaining security behavior not yet covered by tests, and verify the exact candidate against the full regression matrix. Vercel preview verification, production secrets, WORM storage, backup/restore, mail sender verification, legal/privacy approval and production release remain separate blockers.
+
+
+### Security reconciliation and atomic authentication lifecycle (2026-11-21)
+
+The PR #14 branch now contains the substantive security behavior previously isolated on PR #13 while preserving the global-identity/workspace implementation. The changed-path inventory is 52 overlaps and two path-only differences; the audit service is integrated into `security.ts`, and the core-platform idempotency service is present with equivalent behavior. The tenant-member integration test and Phase 1 security operations runbook have also been restored to PR #14.
+
+The current implementation now commits refresh rotation and password reset as single MongoDB transactions with their audit events. Concurrent refresh attempts have a single winner; a reset transaction cannot consume a token or revoke sessions without also changing the password and writing the audit event. Audit metadata redaction, fail-closed signing-key enforcement and serialized-archive timestamp verification are included. Exact-head CI is pending; these changes must not be marked accepted until both full CI and MeBuMIP verification pass on the same latest commit. Vercel build-rate-limit failures and all production release gates remain open.
