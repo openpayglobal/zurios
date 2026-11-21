@@ -10,7 +10,16 @@ declare global {
  interface ImportMeta { readonly env: ImportMetaEnv }
 }
 
-const API_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api-openpayglobal-5300s-projects.vercel.app";
+const API_BOOTSTRAP_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api-openpayglobal-5300s-projects.vercel.app";
+let API_BASE=API_BOOTSTRAP_BASE;
+let apiBasePromise:Promise<string>|null=null;
+let apiBaseCachedAt=0;
+async function getApiBase():Promise<string>{
+ if(apiBasePromise&&Date.now()-apiBaseCachedAt<30_000)return apiBasePromise;
+ apiBaseCachedAt=Date.now();
+ apiBasePromise=(async()=>{try{const response=await fetch(API_BOOTSTRAP_BASE+"/platform/public/runtime-config",{cache:"no-store"});if(response.ok){const runtime=await response.json();const origin=runtime?.apiOrigins?.zuriOs;if(typeof origin==="string"&&origin.startsWith("https://"))API_BASE=origin;}}catch{}return API_BASE;})();
+ return apiBasePromise;
+}
 type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"infrastructure"|"tenants"|"access";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
 type Session={accessToken:string;refreshToken:string;sessionId:string};
@@ -81,7 +90,7 @@ export default function App(){
  const [accessRequestsEnabledDraft,setAccessRequestsEnabledDraft]=useState(false);
  const [runtimeSaveMessage,setRuntimeSaveMessage]=useState("");
  const refreshPromise=useRef<Promise<string>|null>(null);
- useEffect(()=>{let active=true;fetch(API_BASE+"/auth/public-config",{credentials:"include"}).then(response=>response.ok?response.json():null).then(value=>{if(active&&value)setPublicConfig({accessRequestsEnabled:value.accessRequestsEnabled===true,privacyNoticeUrl:typeof value.privacyNoticeUrl==="string"?value.privacyNoticeUrl:null});}).catch(()=>{});return()=>{active=false;};},[]);
+ useEffect(()=>{let active=true;void getApiBase().then(base=>fetch(base+"/auth/public-config",{credentials:"include"})).then(response=>response.ok?response.json():null).then(value=>{if(active&&value)setPublicConfig({accessRequestsEnabled:value.accessRequestsEnabled===true,privacyNoticeUrl:typeof value.privacyNoticeUrl==="string"?value.privacyNoticeUrl:null});}).catch(()=>{});return()=>{active=false;};},[]);
 
 
  const saveSession=useCallback((value:Session)=>{setSession(value);setError("");setNotice("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAccessRequestOpen(false);setAccessRequestSubmitted(false);},[]);
@@ -90,7 +99,7 @@ export default function App(){
   if(!session)throw new Error("Your session has expired. Sign in again.");
   if(!refreshPromise.current){
    refreshPromise.current=(async()=>{
-    const response=await fetch(API_BASE+"/auth/refresh",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sessionId:session.sessionId,refreshToken:session.refreshToken})});
+    const response=await fetch((await getApiBase())+"/auth/refresh",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sessionId:session.sessionId,refreshToken:session.refreshToken})});
     if(!response.ok)throw new Error("Your session has expired. Sign in again.");
     const value=await response.json() as Session;
     saveSession(value);return value.accessToken;
@@ -100,7 +109,7 @@ export default function App(){
  },[session,saveSession]);
  const api=useCallback(async <T = Record<string,unknown>,>(path:string,init:RequestInit={}):Promise<T>=>{
   if(!session)throw new Error("Sign in to continue.");
-  const send=async(token:string)=>fetch(API_BASE+path,{...init,headers:{...(init.body?{"content-type":"application/json"}:{}),...(init.headers??{}),authorization:"Bearer "+token}});
+  const send=async(token:string)=>fetch((await getApiBase())+path,{...init,headers:{...(init.body?{"content-type":"application/json"}:{}),...(init.headers??{}),authorization:"Bearer "+token}});
   let response=await send(session.accessToken);
   if(response.status===401){
    try{const token=await refreshAccessToken();response=await send(token);}catch{clearSession();throw new Error("Your session expired. Please sign in again.");}
@@ -154,7 +163,7 @@ export default function App(){
  const login=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
+   const response=await fetch((await getApiBase())+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
    const result=await response.json();
    if(!response.ok)throw new Error(result.error??"Sign-in failed.");
    if(result.mfaRequired){setChallengeToken(result.challengeToken);setNotice("Enter the current authenticator code to finish signing in.");}
@@ -168,7 +177,7 @@ export default function App(){
  const verifyMfa=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
+   const response=await fetch((await getApiBase())+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA verification failed.");
    if(result.workspaceSelectionRequired){setWorkspaceOptions(result.workspaces??[]);setWorkspaceSelectionToken(result.selectionToken??"");}
    else if(result.accessRequestAvailable){setAccessRequestOpen(true);setNotice("Your identity is verified, but no active workspace is assigned. You can request access here.");}
@@ -180,7 +189,7 @@ export default function App(){
  const submitAccessRequest=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/access-requests",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,displayName:accessRequestName,organizationName:accessRequestOrganization,...(accessRequestNote.trim()?{requestNote:accessRequestNote.trim()}:{})})});
+   const response=await fetch((await getApiBase())+"/auth/access-requests",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,displayName:accessRequestName,organizationName:accessRequestOrganization,...(accessRequestNote.trim()?{requestNote:accessRequestNote.trim()}:{})})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"Unable to submit access request.");
    setAccessRequestSubmitted(true);setNotice(result.message??"Your request has been received.");
   }catch(e){setError(e instanceof Error?e.message:"Unable to submit access request.");}
@@ -190,7 +199,7 @@ export default function App(){
   if(!workspaceSelectionToken)return;
   setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/workspace/select",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({selectionToken:workspaceSelectionToken,tenantId})});
+   const response=await fetch((await getApiBase())+"/auth/workspace/select",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({selectionToken:workspaceSelectionToken,tenantId})});
    const result=await response.json();
    if(!response.ok)throw new Error(result.error??"Workspace selection failed.");
    saveSession(result as Session);
