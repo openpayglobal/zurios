@@ -46,7 +46,7 @@ function auditInput(event: StoredAuditEvent): AuditEventInput & { occurredAt: Da
     occurredAt,
     ...(Number.isSafeInteger(event.sequence) ? { sequence: event.sequence } : {}),
     ...(typeof event.previousHash === "string" ? { previousHash: event.previousHash } : {}),
-    ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as AuditEventInput["metadata"] } : {}),
+    ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
   };
 }
 
@@ -123,6 +123,7 @@ export async function planAuditChainBackfill(db: Db) {
   return {
     legacyCount: legacy.length,
     chainedCount,
+    sequencedCount: events.filter(event => Number.isSafeInteger(event.sequence)).length,
     totalCount: events.length,
     maximumSupported: MAX_BACKFILL_EVENTS,
     invalidLegacyCount,
@@ -154,7 +155,7 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         if (event.integrity.algorithm === "unsigned") throw new Error("AUDIT_SIGNING_KEY_REQUIRED");
         const eventHash = auditEventHash(event);
         const result = await collection.updateOne(
-          { _id: stored._id, eventHash: { $exists: false } },
+          { _id: stored._id, $or: [{ eventHash: { $exists: false } }, { previousHash: { $exists: false } }] },
           { $set: { sequence, previousHash, eventHash, integrity: event.integrity } },
           { session },
         );
@@ -162,7 +163,7 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         previousHash = eventHash;
         expectedSequence += 1;
       }
-      await db.collection("auditCounters").updateOne(
+      await db.collection<{ _id: string; sequence: number; updatedAt?: Date }>("auditCounters").updateOne(
         { _id: "global" },
         { $set: { sequence: expectedSequence - 1, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
         { upsert: true, session },
