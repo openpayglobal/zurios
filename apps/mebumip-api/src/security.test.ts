@@ -71,3 +71,19 @@ test("versioned audit key ring signs with the active key and verifies historical
   delete process.env.AUDIT_SIGNING_ACTIVE_KEY_ID;
 });
 
+
+test("audit event metadata redacts credential-like fields before signing", () => {
+  process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-with-adequate-entropy";
+  delete process.env.AUDIT_SIGNING_KEYRING;
+  delete process.env.AUDIT_SIGNING_ACTIVE_KEY_ID;
+  const event = createAuditEvent({
+    actorUserId: "u1",
+    action: "tenant.member.updated",
+    targetType: "membership",
+    outcome: "success",
+    correlationId: "redaction-1",
+    metadata: { password: "never-store", accessToken: "never-store-this", note: "safe" },
+  });
+  assert.deepEqual(event.metadata, { password: "[REDACTED]", accessToken: "[REDACTED]", note: "safe" });
+  assert.equal(verifyAuditEvent(event), true);
+});
