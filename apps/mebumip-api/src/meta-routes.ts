@@ -142,6 +142,9 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       });
       return reply.code(201).send({ status: "connected", connection });
     } catch (error) {
+      if (error instanceof Error && error.message === "META_CONNECTION_ALREADY_EXISTS") {
+        return reply.code(409).send({ error: "META_CONNECTION_ALREADY_EXISTS" });
+      }
       request.log.warn({
         errorName: error instanceof Error ? error.name : "UnknownError",
         providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
