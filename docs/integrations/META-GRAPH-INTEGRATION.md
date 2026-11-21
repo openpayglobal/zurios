@@ -9,7 +9,7 @@
 3. The state record binds the exact tenant, user, session, callback URI and sorted requested scopes. The callback first checks the same authenticated user/session and current tenant permission. It consumes the state atomically before calling Meta.
 4. The authorization code is exchanged, the user token is debug-validated against the configured app ID, and all requested permissions must be granted. The service then exchanges for a long-lived token and validates the identity/permissions again.
 5. The token is encrypted with AES-256-GCM using the dedicated Meta keyring. Authenticated associated data binds the envelope to the tenant ID and connection ID. The database record stores only the ciphertext.
-6. The API returns a token-free connection summary. Listing is tenant-scoped. Revocation requires a recent MFA step-up, clears ciphertext and commits with its audit event in one transaction.
+6. The API returns a token-free connection summary. Listing is tenant-scoped. Disconnect requires a recent MFA step-up. The API attempts Meta `DELETE /{user-id}/permissions` using the encrypted user token, then always clears local ciphertext and commits the outcome with its audit event in one transaction. The response distinguishes `succeeded`, `failed` and `not_attempted`; a local disconnect is not misreported as a successful remote revoke.
 
 ## API routes
 
@@ -18,7 +18,7 @@
 | POST | `/v1/tenants/{tenantId}/meta/oauth/start` | `meta:connections:write` | Recent MFA step-up; dedicated OAuth initiation rate limit |
 | GET | `/v1/meta/oauth/callback` | Original tenant's `meta:connections:write` | Same user and session as initiation; state single-use; recent MFA step-up |
 | GET | `/v1/tenants/{tenantId}/meta/connections` | `meta:connections:read` | Tenant isolation |
-| DELETE | `/v1/tenants/{tenantId}/meta/connections/{connectionId}` | `meta:connections:write` | Recent MFA step-up; token cleared transactionally |
+| DELETE | `/v1/tenants/{tenantId}/meta/connections/{connectionId}` | `meta:connections:write` | Recent MFA step-up; attempt Meta permission revocation, always erase local token and audit the result |
 
 The authoritative machine-readable contract is [MeBuMIP OpenAPI](../api/mebumip-openapi.yaml).
 
@@ -45,7 +45,7 @@ Meta token keys must be different from MFA encryption keys and audit signing key
 - Provider fetches use the pinned Graph version, no redirects, omitted credentials/cookies, no-store caching and no referrer. App Secret Proof is required for Graph API requests.
 - Provider errors are normalized; tokens and app secrets are not returned in API payloads or application warning logs.
 - Access-token ciphertext is tenant/connection-bound using AES-256-GCM authenticated associated data.
-- Connection create/revoke and OAuth state create/consume are audited transactionally.
+- Connection create/disconnect and OAuth state create/consume are audited transactionally. Remote permission revocation follows Meta's documented User Permissions endpoint; if the remote call fails or the token has expired, the local token is still erased and the outcome is recorded.
 - No token is exposed through connection list, create or revoke responses.
 
 ## Not yet implemented or accepted
@@ -70,6 +70,7 @@ These remain gated on Meta developer configuration, approved permissions, privac
 - [Secure Graph API Requests](https://developers.facebook.com/docs/graph-api/guides/secure-requests) — App Secret Proof is HMAC-SHA256 of the access token using the app secret.
 - [Debug Token reference](https://developers.facebook.com/docs/graph-api/reference/debug_token) — app ID, token type, validity, user ID, expiry, scopes and granular scopes.
 - [Access Token Debugging and Error Handling](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/debugging) — tokens can be invalidated before their expected expiry; handle provider error codes and subcodes.
+- [User Permissions](https://developers.facebook.com/docs/graph-api/reference/user/permissions) — Meta permission listing and remote permission revocation via the user permissions edge.
 - [Install Apps and Generate/Refresh/Revoke Tokens](https://developers.facebook.com/docs/business-management-apis/system-users/install-apps-and-generate-tokens/) — system-user token lifecycle is distinct from a standard user OAuth session.
 
 ## Verification evidence required for acceptance
