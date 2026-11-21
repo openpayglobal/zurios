@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { MetaGraphClient, type MetaGraphClientOptions } from "./meta-graph-client.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
+import { MetaOAuthService, type MetaOAuthServiceOptions } from "./meta-oauth.js";
 import { MetaOAuthStateService, type MetaOAuthStateServiceOptions } from "./meta-oauth-state.js";
 import { MetaOAuthService } from "./meta-oauth.js";
 import type { Db } from "mongodb";
@@ -28,6 +29,24 @@ export function createMetaGraphClient(
     version: providerConfig.META_GRAPH_API_VERSION,
     ...(providerConfig.META_APP_SECRET ? { appSecret: providerConfig.META_APP_SECRET } : {}),
     requireAppSecretProof: Boolean(providerConfig.META_APP_ID),
+  });
+}
+
+export function createMetaOAuthService(
+  providerConfig: MetaProviderConfig,
+  runtimeOptions: Pick<MetaOAuthServiceOptions, "fetchImpl" | "timeoutMs"> = {},
+): MetaOAuthService {
+  if (!providerConfig.META_APP_ID || !providerConfig.META_APP_SECRET || !providerConfig.META_REDIRECT_URI || !providerConfig.META_GRAPH_API_VERSION) {
+    throw new Error("META_OAUTH_NOT_CONFIGURED");
+  }
+  return new MetaOAuthService({
+    ...runtimeOptions,
+    appId: providerConfig.META_APP_ID,
+    appSecret: providerConfig.META_APP_SECRET,
+    redirectUri: providerConfig.META_REDIRECT_URI,
+    version: providerConfig.META_GRAPH_API_VERSION,
+    ...(providerConfig.META_LOGIN_CONFIG_ID ? { loginConfigId: providerConfig.META_LOGIN_CONFIG_ID } : {}),
+    allowInsecureLocalhost: providerConfig.NODE_ENV === "development" || providerConfig.NODE_ENV === "test",
   });
 }
 
@@ -80,6 +99,10 @@ export function createConfiguredMetaGraphClient(): MetaGraphClient {
   return createMetaGraphClient(config);
 }
 
+export function createConfiguredMetaOAuthService(): MetaOAuthService {
+  return createMetaOAuthService(config);
+}
+
 export function createConfiguredMetaTokenVault(): MetaTokenVault {
   return createMetaTokenVault(config);
 }
@@ -93,6 +116,8 @@ export function getMetaIntegrationReadiness(providerConfig: MetaProviderConfig =
     marketingApiVersionConfigured: Boolean(providerConfig.META_MARKETING_API_VERSION),
     marketingApiVersion: providerConfig.META_MARKETING_API_VERSION ?? null,
     appSecretProofConfigured: Boolean(providerConfig.META_APP_ID && providerConfig.META_APP_SECRET),
+    oauthConfigured: Boolean(providerConfig.META_APP_ID && providerConfig.META_APP_SECRET && providerConfig.META_REDIRECT_URI && providerConfig.META_GRAPH_API_VERSION),
+    businessLoginConfigured: Boolean(providerConfig.META_LOGIN_CONFIG_ID),
     businessLoginConfigured: Boolean(providerConfig.META_LOGIN_CONFIG_ID),
     tokenVaultConfigured: Boolean(providerConfig.META_TOKEN_ENCRYPTION_KEYRING && providerConfig.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID),
     webhookVerificationConfigured: Boolean(providerConfig.META_WEBHOOK_VERIFY_TOKEN),
