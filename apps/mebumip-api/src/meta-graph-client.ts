@@ -64,9 +64,10 @@ const GRAPH_API_ORIGIN = "https://graph.facebook.com";
 const TOKEN_QUERY_KEY = "access_token";
 const APP_SECRET_PROOF_QUERY_KEY = "appsecret_proof";
 
-function safeMessage(message: unknown, token: string): string {
+function safeMessage(message: unknown, token: string, appSecret?: string): string {
   const value = typeof message === "string" && message.trim() ? message : "Meta Graph API request failed";
-  return value.replaceAll(token, "[REDACTED]").replace(/(?:access_token|appsecret_proof)\s*[=:]\s*[^\s&,]+/gi, "credential=[REDACTED]").slice(0, 500);
+  const redacted = value.replaceAll(token, "[REDACTED]").replace(/(?:access_token|appsecret_proof)\s*[=:]\s*[^\s&,]+/gi, "credential=[REDACTED]");
+  return (appSecret ? redacted.replaceAll(appSecret, "[REDACTED]") : redacted).slice(0, 500);
 }
 
 function normalizePath(path: string, version: string): string {
