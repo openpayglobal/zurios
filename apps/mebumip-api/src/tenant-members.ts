@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { resolvePrincipal } from "./auth.js";
-import { appendAuditEvent, hashToken, hasTenantPermission, TENANT_ROLES, type TenantRole } from "./security.js";
+import { hashToken, hasTenantPermission, TENANT_ROLES, type TenantRole, withAuditTransaction } from "./security.js";
 import { sendTenantInvitationEmail } from "./mail.js";
 
 const invitationSchema = z.object({
@@ -12,13 +12,6 @@ const invitationSchema = z.object({
 });
 const acceptSchema = z.object({ token: z.string().min(40).max(200) });
 const updateSchema = z.object({ role: z.enum(["tenant_admin", "publisher", "advertiser", "support_agent", "viewer"]), status: z.enum(["active", "suspended"]).optional() });
-
-async function audit(db: Db, actorUserId: string, requestId: string, action: string, tenantId: string, targetId: string) {
-  await appendAuditEvent(db, {
-    actorUserId, action, targetType: "tenant_membership", targetId, tenantId,
-    outcome: "success", correlationId: requestId,
-  });
-}
 
 export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
   app.get("/v1/tenants/:tenantId/members", async (request, reply) => {
@@ -63,25 +56,35 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     const token = randomUUID().replaceAll("-", "") + randomUUID().replaceAll("-", "");
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
-    const inserted = await db.collection("tenantInvitations").insertOne({
-      tenantId, email, role: parsed.data.role, tokenHash: hashToken(token),
-      invitedBy: resolved.principal.userId, createdAt: now, expiresAt,
-    });
+    const inserted = await withAuditTransaction(
+      db,
+      (session) => db.collection("tenantInvitations").insertOne({
+        tenantId, email, role: parsed.data.role, tokenHash: hashToken(token),
+        invitedBy: resolved.principal.userId, createdAt: now, expiresAt,
+      }, { session }),
+      (result) => ({
+        actorUserId: resolved.principal.userId, action: "tenant.invitation.created",
+        targetType: "tenant_invitation", targetId: String(result.insertedId), tenantId,
+        outcome: "success", correlationId: request.id,
+      }),
+    );
     const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
     if (!delivery.delivered) {
-      await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
-      await appendAuditEvent(db, {
-        actorUserId: resolved.principal.userId, action: "tenant.invitation.delivery_failed",
-        targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
-        outcome: "failure", correlationId: request.id,
-      });
+      await withAuditTransaction(
+        db,
+        async (session) => db.collection("tenantInvitations").updateOne(
+          { _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
+          { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } },
+          { session },
+        ),
+        () => ({
+          actorUserId: resolved.principal.userId, action: "tenant.invitation.delivery_failed",
+          targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
+          outcome: "failure", correlationId: request.id,
+        }),
+      );
       return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" });
     }
-    await appendAuditEvent(db, {
-      actorUserId: resolved.principal.userId, action: "tenant.invitation.created",
-      targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
-      outcome: "success", correlationId: request.id,
-    });
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
@@ -98,17 +101,33 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
     if (!user || user.normalizedEmail !== invitation.email) return reply.code(403).send({ error: "INVITATION_EMAIL_MISMATCH" });
     if (!TENANT_ROLES.includes(invitation.role as TenantRole) || invitation.role === "tenant_owner") return reply.code(400).send({ error: "INVITATION_ROLE_INVALID" });
-    await db.collection("memberships").updateOne(
-      { tenantId: invitation.tenantId, userId: resolved.principal.userId },
-      { $set: { role: invitation.role, status: "active", updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
-      { upsert: true },
-    );
-    const accepted = await db.collection("tenantInvitations").updateOne(
-      { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
-      { $set: { acceptedAt: new Date(), acceptedBy: resolved.principal.userId } },
-    );
-    if (accepted.modifiedCount !== 1) return reply.code(409).send({ error: "INVITATION_ALREADY_USED" });
-    await audit(db, resolved.principal.userId, request.id, "tenant.invitation.accepted", invitation.tenantId, resolved.principal.userId);
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const accepted = await db.collection("tenantInvitations").updateOne(
+            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } },
+            { $set: { acceptedAt: new Date(), acceptedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (accepted.modifiedCount !== 1) throw new Error("INVITATION_ALREADY_USED");
+          await db.collection("memberships").updateOne(
+            { tenantId: invitation.tenantId, userId: resolved.principal.userId },
+            { $set: { role: invitation.role, status: "active", updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+            { upsert: true, session },
+          );
+          return { tenantId: invitation.tenantId, userId: resolved.principal.userId };
+        },
+        () => ({
+          actorUserId: resolved.principal.userId, action: "tenant.invitation.accepted",
+          targetType: "tenant_membership", targetId: resolved.principal.userId, tenantId: invitation.tenantId,
+          outcome: "success", correlationId: request.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVITATION_ALREADY_USED") return reply.code(409).send({ error: "INVITATION_ALREADY_USED" });
+      throw error;
+    }
     return reply.send({ status: "accepted", tenantId: invitation.tenantId, role: invitation.role });
   });
 
@@ -125,12 +144,28 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     }
     const parsed = updateSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST", details: parsed.error.flatten() });
-    const result = await db.collection("memberships").updateOne(
-      { tenantId, userId, role: { $ne: "tenant_owner" } },
-      { $set: { ...parsed.data, updatedAt: new Date() } },
-    );
-    if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
-    await audit(db, resolved.principal.userId, request.id, "tenant.membership.updated", tenantId, userId);
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("memberships").updateOne(
+            { tenantId, userId, role: { $ne: "tenant_owner" } },
+            { $set: { ...parsed.data, updatedAt: new Date() } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("MEMBERSHIP_NOT_FOUND_OR_PROTECTED");
+          return result;
+        },
+        () => ({
+          actorUserId: resolved.principal.userId, action: "tenant.membership.updated",
+          targetType: "tenant_membership", targetId: userId, tenantId,
+          outcome: "success", correlationId: request.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MEMBERSHIP_NOT_FOUND_OR_PROTECTED") return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
+      throw error;
+    }
     return reply.send({ status: "updated" });
   });
 
@@ -144,12 +179,28 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
       return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
     }
-    const result = await db.collection("tenantInvitations").updateOne(
-      { _id: new ObjectId(invitationId), tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
-      { $set: { revokedAt: new Date(), revokedBy: resolved.principal.userId } },
-    );
-    if (!result.matchedCount) return reply.code(404).send({ error: "PENDING_INVITATION_NOT_FOUND" });
-    await audit(db, resolved.principal.userId, request.id, "tenant.invitation.revoked", tenantId, invitationId);
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("tenantInvitations").updateOne(
+            { _id: new ObjectId(invitationId), tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
+            { $set: { revokedAt: new Date(), revokedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("PENDING_INVITATION_NOT_FOUND");
+          return result;
+        },
+        () => ({
+          actorUserId: resolved.principal.userId, action: "tenant.invitation.revoked",
+          targetType: "tenant_invitation", targetId: invitationId, tenantId,
+          outcome: "success", correlationId: request.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "PENDING_INVITATION_NOT_FOUND") return reply.code(404).send({ error: "PENDING_INVITATION_NOT_FOUND" });
+      throw error;
+    }
     return reply.code(204).send();
   });
 
@@ -163,12 +214,28 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) {
       return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
     }
-    const result = await db.collection("memberships").updateOne(
-      { tenantId, userId, role: { $ne: "tenant_owner" }, status: "active" },
-      { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } },
-    );
-    if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
-    await audit(db, resolved.principal.userId, request.id, "tenant.membership.removed", tenantId, userId);
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("memberships").updateOne(
+            { tenantId, userId, role: { $ne: "tenant_owner" }, status: "active" },
+            { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("MEMBERSHIP_NOT_FOUND_OR_PROTECTED");
+          return result;
+        },
+        () => ({
+          actorUserId: resolved.principal.userId, action: "tenant.membership.removed",
+          targetType: "tenant_membership", targetId: userId, tenantId,
+          outcome: "success", correlationId: request.id,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MEMBERSHIP_NOT_FOUND_OR_PROTECTED") return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
+      throw error;
+    }
     return reply.code(204).send();
   });
 }
