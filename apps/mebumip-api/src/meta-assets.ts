@@ -238,11 +238,11 @@ export async function rotateMetaPageAssetTokenEnvelopes(
   const updates = assets.flatMap((asset) => {
     if (!asset.pageAccessTokenCiphertext) return [];
     const context = { tenantId, connectionId: connectionId + ":page:" + asset.providerAssetId };
-    const envelope = vault.rotate(asset.pageAccessTokenCiphertext, context);
-    return envelope === asset.pageAccessTokenCiphertext ? [] : [{
+    const rotation = vault.rotate(asset.pageAccessTokenCiphertext, context);
+    return !rotation.rotated ? [] : [{
       updateOne: {
         filter: { _id: asset._id, tenantId, connectionId, status: "active", pageAccessTokenCiphertext: asset.pageAccessTokenCiphertext },
-        update: { $set: { pageAccessTokenCiphertext: envelope, updatedAt: now } },
+        update: { $set: { pageAccessTokenCiphertext: rotation.envelope, updatedAt: now } },
       },
     }];
   });
