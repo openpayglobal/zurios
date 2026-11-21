@@ -30,7 +30,13 @@ export function authenticate(db:Db,config:AuthConfig){
     c.sessions.findOne({tenantId,sessionId,userId,revokedAt:{$exists:false},expiresAt:{$gt:now}}),
     c.tenants.findOne({tenantId,status:"active"}),
     c.users.findOne({userId,status:"active"}),
-    c.memberships.findOne({tenantId,membershipId,userId,status:"active"})
+    c.memberships.findOne({
+     tenantId,membershipId,userId,status:"active",
+     $and:[
+      {$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},
+      {$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}
+     ]
+    })
    ]);
    if(!session||!tenant||!user||!membership)throw new Error("INACTIVE_PRINCIPAL");
    const [permissions,roles,emergencyGrants,platformPermissions]=await Promise.all([
