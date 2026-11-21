@@ -17,11 +17,10 @@ test("rate limit keys isolate route, client and fixed time window", () => {
 });
 
 test("credential and MFA recovery routes use stricter per-IP windows", () => {
-  assert.deepEqual(rateLimitPolicyForPath("/v1/auth/mfa/reset"), {
-    match: rateLimitPolicyForPath("/v1/auth/mfa/reset")?.match,
-    limit: 8,
-    windowMs: 5 * 60_000,
-  });
-  assert.equal(rateLimitPolicyForPath("/v1/auth/password/change")?.limit, 8);
-  assert.equal(rateLimitPolicyForPath("/v1/auth/password/change")?.windowMs, 15 * 60_000);
+  const mfaReset = rateLimitPolicyForPath("/v1/auth/mfa/reset");
+  assert.equal(mfaReset?.limit, 8);
+  assert.equal(mfaReset?.windowMs, 5 * 60_000);
+  const passwordChange = rateLimitPolicyForPath("/v1/auth/password/change");
+  assert.equal(passwordChange?.limit, 8);
+  assert.equal(passwordChange?.windowMs, 15 * 60_000);
 });
