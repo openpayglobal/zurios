@@ -156,3 +156,18 @@ The API preview was inspected directly, exposing additional type-checking failur
 ## 9. Change log
 
 - 2026-11-20: Initial evidence-based integration and acceptance plan authored from the current PR comparison, changed-file inventory, audit implementation review and CI/deployment status.
+
+
+### Audit backfill boundedness and provenance hardening (2026-11-21)
+
+A source review of the two divergent audit implementations identified an operational safety issue: the PR #14 backfill planner and apply path materialized the entire audit collection before enforcing the 5,000-record migration limit. It also classified records by hash-field presence without consistently requiring a valid sequence number, so partial chain metadata could be mistaken for migratable legacy data.
+
+The PR #14 branch now:
+- Counts total, complete-chain and genuinely legacy records with MongoDB count queries rather than loading the full collection to plan a migration.
+- Samples at most 5,001 legacy records for validation and bounds the apply query to 5,001 records.
+- Refuses histories containing partial/malformed chain metadata, mixed legacy and chained records, or more than 5,000 legacy records.
+- Requires actor, action, target type, correlation ID, valid outcome and timestamp to be present before migration; it no longer invents fallback actor/action/correlation values during backfill.
+- Updates only records whose sequence, previous hash and event hash are all absent, then verifies exact update count inside the transaction.
+- Adds a MongoDB integration test proving partial chain metadata is rejected without rewriting the event.
+
+The original full-collection chain verification and archive export still necessarily traverse the complete history; a separate streaming-verification change is a follow-up optimization. Backfill remains dry-run-first, requires an explicit apply flag, a backup, approval and a controlled maintenance window. No migration has been run against production data.
