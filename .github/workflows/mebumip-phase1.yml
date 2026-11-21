@@ -17,7 +17,7 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-        env:
+    env:
       NODE_ENV: test
       MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
       MONGODB_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
