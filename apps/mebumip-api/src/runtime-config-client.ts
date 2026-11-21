@@ -15,13 +15,13 @@ let cached: MacRuntimeConfig | null = null;
 let cachedUntil = 0;
 let inFlight: Promise<MacRuntimeConfig | null> | null = null;
 
-export async function getMacRuntimeConfig(forceRefresh = false): Promise<MacRuntimeConfig | null> {
+export async function getMacRuntimeConfig(forceRefresh = false, suppliedOidcToken?: string): Promise<MacRuntimeConfig | null> {
   if (!process.env.VERCEL) return null;
   if (!forceRefresh && cached && Date.now() < cachedUntil) return cached;
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
-    const token = await getVercelOidcToken();
+    const token = suppliedOidcToken ?? await getVercelOidcToken();
     const response = await fetch(MAC_RUNTIME_CONFIG_URL, {
       method: "GET",
       headers: { authorization: `Bearer ${token}`, accept: "application/json" },
