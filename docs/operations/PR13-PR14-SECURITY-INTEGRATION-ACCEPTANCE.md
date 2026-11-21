@@ -132,6 +132,16 @@ A concrete cookie-CSRF gap identified during source review was corrected on the 
 - Commits: `7141cd02c4ba445e2bbfb7f7b338dd2ab1906030` (enforcement), `7377310f2c915add94b87b1b47739696486bf3aa` (negative/positive tests), `57206a26311d9b9ff455984f8f8fc6e2f34f2c49` (trusted Origin in MFA cookie flow).
 - This change is not yet reported as CI-verified. The integration test requires the workflow's MongoDB service; passing GitHub CI must be observed on the exact final commit before considering the fix accepted.
 
+### Vercel API build findings and hardening (2026-11-20)
+
+The API preview was inspected directly, exposing additional type-checking failures that the earlier GitHub workflow did not reproduce:
+- `TS2345` in `packages/core-platform/src/organization-service.ts` and then `location-service.ts`: schema-spread values were inferred with optional required business fields when passed to MongoDB collection inserts. Both writers now construct explicit `OrganizationDocument` and `LocationDocument` values field-by-field.
+- The same persistence-boundary hardening was applied to membership, user, role, session and audit-event writers using their corresponding document types. This makes required persisted fields explicit rather than relying on widened Zod object spreads.
+- Added core-platform service-invariant tests for organization and location creation, including required identifiers, audit actor fields and default timezone.
+- The next API build exposed `TS2550` for `Object.hasOwn` in ABAC. Production code and the new invariant test now use `Object.prototype.hasOwnProperty.call` for compatibility with the deployment type-checker's selected library surface.
+- The preview at commit `180c3954e8df54f9be8dfdc93703bc6d60e28300` failed on the `Object.hasOwn` type error. Subsequent preview builds for later commits were blocked by Vercel's `build-rate-limit` response before the latest changes could be revalidated on Vercel.
+- GitHub verification passed on exact code/test head `8baf3f4af27d17ed815695c3d8df7cc03ea1a0af`: full CI [44865838762](https://github.com/openpayglobal/zurios/actions/runs/44865838762) and MeBuMIP Phase 1 [44865838697](https://github.com/openpayglobal/zurios/actions/runs/44865838697). These do not substitute for a successful Vercel build; keep API deployment acceptance open.
+
 ## 8. Current evidence and status
 
 - PR #13 and PR #14 remain separate, open and unmerged.
