@@ -24,6 +24,7 @@ export interface MetaOAuthServiceOptions {
   appSecret: string;
   version: string;
   redirectUri: string;
+  allowInsecureLocalhost?: boolean;
   loginConfigId?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
@@ -109,7 +110,8 @@ export class MetaOAuthService {
     if (typeof options.appSecret !== "string" || options.appSecret.length < 32 || options.appSecret.length > 512) throw new Error("META_APP_SECRET_INVALID");
     if (!/^v\d+\.\d+$/.test(options.version)) throw new Error("META_GRAPH_API_VERSION_INVALID");
     const redirect = new URL(options.redirectUri);
-    if (redirect.protocol !== "https:" || redirect.username || redirect.password || redirect.hash) throw new Error("META_REDIRECT_URI_INVALID");
+    const localhost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
+    if (redirect.username || redirect.password || redirect.hash || (redirect.protocol !== "https:" && !(options.allowInsecureLocalhost && localhost))) throw new Error("META_REDIRECT_URI_INVALID");
     if (options.loginConfigId !== undefined && !/^[A-Za-z0-9_-]{4,128}$/.test(options.loginConfigId)) throw new Error("META_LOGIN_CONFIG_ID_INVALID");
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 10_000;
