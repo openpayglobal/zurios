@@ -9,6 +9,8 @@ import { registerAdminRoutes } from "./admin.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
+import { registerCustomerWorkflowRoutes } from "./customer-workflow.js";
+import { registerInfrastructureRoutes } from "./infrastructure.js";
 
 const app = Fastify({ logger: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
   const supplied = request.headers["x-correlation-id"];
@@ -67,6 +69,8 @@ if (config.MONGODB_URI) {
     registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
     registerTenantMemberRoutes(app, db);
+    registerCustomerWorkflowRoutes(app, db);
+    registerInfrastructureRoutes(app, db);
     registerAdminRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
