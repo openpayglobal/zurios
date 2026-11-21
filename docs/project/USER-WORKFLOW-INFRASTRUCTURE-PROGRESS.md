@@ -3,7 +3,7 @@
 **Date:** 2026-11-21  
 **Branch:** `feat/mac-secrets-user-workflow`  
 **Base:** PR #16 head `2087923fd6446e8ae0f2c09b7628101402454fbf`  
-**Status:** Workflow gap diagnosed; control-plane workload identity provisioned; application implementation remains in progress.
+**Status:** Workflow gap diagnosed; customer onboarding API/UI started; control-plane workload identity provisioned; Meta and infrastructure secret activation remain blocked.
 
 ## Confirmed user workflow decisions
 
@@ -30,6 +30,13 @@ Recovered from prior project discussions:
 6. The Vercel deployment checks have been blocked by the team's free daily deployment limit; therefore, repository changes cannot appear on the live domains until a deployment succeeds.
 
 ## Work completed in this increment
+
+9. Added tenant-scoped `GET /v1/workspace/onboarding`, audited/transactional business-profile update and a fail-closed Meta connect endpoint.
+10. Added `tenantOnboarding` unique index.
+11. Added `apps/mebumip-web/src/CustomerWorkspace.tsx` and a Customer workspace navigation entry.
+12. Added customer team listing and MFA-step-up-protected invitation UI using existing tenant member routes.
+13. Added corresponding MeBuMIP OpenAPI paths.
+14. Profile updates and audit append share one MongoDB transaction; connection response projection is allowlisted to avoid exposing provider token fields.
 
 1. Created `feat/mac-secrets-user-workflow` from PR #16's latest head.
 2. Added `docs/ux/MEBUMIP-END-USER-WORKFLOW.md` with the complete proposed customer journey, required app surfaces, phase mapping and activation acceptance.
@@ -68,8 +75,8 @@ Vercel KMS `signJWT` can mint short-lived service tokens from the API deployment
 4. Add MAC keyring lifecycle UI: generate, stage, approve, activate, rotate, retire, revoke and verify.
 5. Add MongoDB provider provisioning connector only after provider credentials/authorization are available; otherwise securely register and validate a provider-issued URI.
 6. Add verified API-origin inventory and exact CORS allowlist.
-7. Add customer onboarding/business profile API and UI; expose access request workflow only with approved privacy notice.
-8. Add team invitations and tenant-scoped role management in customer workspace.
+7. Continue customer onboarding/business profile API and UI; expose access request workflow only with approved privacy notice.
+8. Complete team membership role management, invitation revocation/resend and user-facing invitation acceptance journey in the customer workspace.
 9. Add real Meta OAuth/Embedded Signup and asset selection behind verified Meta app prerequisites.
 10. Run exact-head CI, integration/security tests and deployment smoke tests.
 
