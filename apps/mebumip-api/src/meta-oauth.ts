@@ -123,6 +123,7 @@ export class MetaOAuthService {
       throw new Error("META_OAUTH_STATE_INVALID");
     }
     const mode = input.mode ?? "standard";
+    if (mode !== "standard" && mode !== "business") throw new Error("META_OAUTH_MODE_INVALID");
     const url = new URL(`/${this.options.version}/dialog/oauth`, DIALOG_ORIGIN);
     url.searchParams.set("client_id", this.options.appId);
     url.searchParams.set("redirect_uri", this.options.redirectUri);
@@ -183,6 +184,10 @@ export class MetaOAuthService {
       });
     } catch {
       throw new MetaOAuthError("Meta OAuth token exchange request failed", { status: 0 });
+    }
+    const responseVersion = response.headers.get("facebook-api-version");
+    if (responseVersion && responseVersion !== this.options.version) {
+      throw new MetaOAuthError("Meta OAuth token exchange returned an unexpected API version", { status: response.status });
     }
     let payload: ProviderTokenResponse;
     try {
