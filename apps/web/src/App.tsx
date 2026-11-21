@@ -10,7 +10,7 @@ declare global {
  interface ImportMeta { readonly env: ImportMetaEnv }
 }
 
-const API_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api.vercel.app";
+const API_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api-openpayglobal-5300s-projects.vercel.app";
 type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"infrastructure"|"tenants"|"access";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
 type Session={accessToken:string;refreshToken:string;sessionId:string};
