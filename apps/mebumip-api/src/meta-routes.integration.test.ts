@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { MongoClient, ObjectId } from "mongodb";
 import { newOpaqueToken, hashToken, verifyAuditChain } from "./security.js";
+import { MetaTokenVault } from "./meta-token-vault.js";
+import { createMetaConnection } from "./meta-connections.js";
 
 process.env.NODE_ENV = "test";
 process.env.AUDIT_SIGNING_KEY = "meta-route-test-audit-signing-key-2026";
@@ -31,6 +33,7 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 60 * 60_000);
   let providerCalls = 0;
+  let failRemoteRevoke = false;
   const scopes = ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "instagram_basic", "instagram_content_publish"];
   const fetchImpl: typeof fetch = async (input, init) => {
     providerCalls += 1;
@@ -38,6 +41,11 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     if (init?.method === "DELETE") {
       assert.equal(url.pathname, "/v27.0/meta-route-user-1/permissions");
       assert.equal(new Headers(init.headers).get("authorization"), "Bearer EAAG_long_lived_meta_route_token");
+      if (failRemoteRevoke) {
+        return new Response(JSON.stringify({ error: { message: "remote permission revoke denied", code: 190 } }), {
+          status: 401, headers: { "facebook-api-version": "v27.0" },
+        });
+      }
       return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "facebook-api-version": "v27.0" } });
     }
     if (url.pathname.endsWith("/oauth/access_token")) {
@@ -145,6 +153,28 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     assert.equal(storedRevoked?.status, "revoked");
     assert.equal(storedRevoked?.accessTokenCiphertext, null);
     assert.equal(storedRevoked?.revocationStatus, "succeeded");
+
+    const testVault = new MetaTokenVault({ keyring: { "meta-test": "aa".repeat(32) }, activeKeyId: "meta-test" });
+    const secondConnection = await createMetaConnection(db, testVault, {
+      tenantId: String(tenantId),
+      actorUserId: String(userId),
+      providerUserId: "meta-route-user-2",
+      accessToken: "EAAG_second_meta_route_token",
+      grantedScopes: scopes,
+      correlationId: "meta-route-second-create",
+    });
+    failRemoteRevoke = true;
+    const remoteFailure = await app.inject({
+      method: "DELETE",
+      url: "/v1/tenants/" + tenantId + "/meta/connections/" + secondConnection.connectionId,
+      headers: ownerHeaders,
+    });
+    assert.equal(remoteFailure.statusCode, 200, remoteFailure.body);
+    assert.deepEqual(remoteFailure.json(), { status: "disconnected", remoteRevocation: "failed" });
+    const locallyErased = await db.collection("metaConnections").findOne({ tenantId: String(tenantId), connectionId: secondConnection.connectionId });
+    assert.equal(locallyErased?.status, "revoked");
+    assert.equal(locallyErased?.accessTokenCiphertext, null);
+    assert.equal(locallyErased?.revocationStatus, "failed");
     assert.equal((await verifyAuditChain(db)).valid, true);
   } finally {
     await app.close();
