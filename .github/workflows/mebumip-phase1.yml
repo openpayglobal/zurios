@@ -16,19 +16,10 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
     env:
       NODE_ENV: test
-      MONGODB_URI: mongodb://127.0.0.1:27017
+      MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
+      MONGODB_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
       MFA_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
       AUDIT_SIGNING_KEY: mebumip-ci-audit-signing-key-with-test-only-entropy
       PLATFORM_BOOTSTRAP_TOKEN: mebumip-ci-bootstrap-token-test-only-2026
@@ -40,6 +31,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Start MongoDB replica set
+        uses: supercharge/mongodb-github-action@1.12.0
+        with:
+          mongodb-version: 7.0
+          mongodb-replica-set: rs0
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
       - name: API typecheck
