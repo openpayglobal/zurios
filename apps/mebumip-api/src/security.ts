@@ -272,49 +272,136 @@ export async function verifyAuditChain(db: Db) {
 }
 
 export async function planAuditChainBackfill(db: Db) {
-  const events = await db.collection("auditEvents").find({}).sort({ occurredAt: 1, _id: 1 }).toArray();
-  const legacy = events.filter(event => typeof event.previousHash !== "string" || typeof event.eventHash !== "string");
-  const chainedCount = events.length - legacy.length;
-  const oldest = legacy[0], newest = legacy[legacy.length - 1];
-  const invalidLegacyCount = legacy.filter(event => !(event.occurredAt instanceof Date) || !["success", "denied", "failure"].includes(String(event.outcome)) || typeof event.actorUserId !== "string" || typeof event.action !== "string" || typeof event.targetType !== "string" || typeof event.correlationId !== "string").length;
-  const reason = chainedCount > 0 && legacy.length > 0 ? "LEGACY_AND_CHAINED_EVENTS_MIXED: stop and reconcile before backfill"
-    : legacy.length > AUDIT_BACKFILL_LIMIT ? "BACKFILL_LIMIT_EXCEEDED: approved maintenance migration required"
-    : invalidLegacyCount > 0 ? "LEGACY_EVENTS_INVALID: inspect timestamps, actor, action, target and outcome" : null;
-  return { legacyCount: legacy.length, sequencedCount: events.filter(event => Number.isSafeInteger(event.sequence)).length, maximumSupported: AUDIT_BACKFILL_LIMIT, invalidLegacyCount, applyAllowed: reason === null && legacy.length > 0, reason, oldestLegacyAt: oldest?.occurredAt instanceof Date ? oldest.occurredAt.toISOString() : null, newestLegacyAt: newest?.occurredAt instanceof Date ? newest.occurredAt.toISOString() : null };
+  const events = db.collection<ChainedAuditEvent>("auditEvents");
+  const completeChainFilter = {
+    sequence: { $exists: true },
+    previousHash: { $type: "string" },
+    eventHash: { $type: "string" },
+  };
+  const legacyFilter = {
+    sequence: { $exists: false },
+    previousHash: { $exists: false },
+    eventHash: { $exists: false },
+  };
+  const [totalCount, sequencedCount, legacyCount] = await Promise.all([
+    events.countDocuments({}),
+    events.countDocuments(completeChainFilter),
+    events.countDocuments(legacyFilter),
+  ]);
+  const malformedCount = totalCount - sequencedCount - legacyCount;
+  const [oldest, newest, sample] = await Promise.all([
+    events.findOne(legacyFilter, { sort: { occurredAt: 1, _id: 1 }, projection: { occurredAt: 1 } }),
+    events.findOne(legacyFilter, { sort: { occurredAt: -1, _id: -1 }, projection: { occurredAt: 1 } }),
+    events.find(legacyFilter, { projection: { occurredAt: 1, actorUserId: 1, action: 1, targetType: 1, correlationId: 1, outcome: 1 } })
+      .sort({ occurredAt: 1, _id: 1 }).limit(AUDIT_BACKFILL_LIMIT + 1).toArray(),
+  ]);
+  const invalidLegacyCount = sample.filter(event =>
+    !(event.occurredAt instanceof Date) ||
+    !["success", "denied", "failure"].includes(String(event.outcome)) ||
+    typeof event.actorUserId !== "string" ||
+    typeof event.action !== "string" ||
+    typeof event.targetType !== "string" ||
+    typeof event.correlationId !== "string"
+  ).length;
+  const reason = malformedCount > 0
+    ? "PARTIAL_AUDIT_CHAIN_FIELDS: inspect records with incomplete sequence/hash fields"
+    : sequencedCount > 0 && legacyCount > 0
+      ? "LEGACY_AND_CHAINED_EVENTS_MIXED: stop and reconcile before backfill"
+      : legacyCount > AUDIT_BACKFILL_LIMIT
+        ? "BACKFILL_LIMIT_EXCEEDED: approved maintenance migration required"
+        : invalidLegacyCount > 0
+          ? "LEGACY_EVENTS_INVALID: inspect timestamps, actor, action, target and outcome"
+          : null;
+  return {
+    legacyCount,
+    sequencedCount,
+    malformedCount,
+    maximumSupported: AUDIT_BACKFILL_LIMIT,
+    invalidLegacyCount,
+    applyAllowed: reason === null && legacyCount > 0,
+    reason,
+    oldestLegacyAt: oldest?.occurredAt instanceof Date ? oldest.occurredAt.toISOString() : null,
+    newestLegacyAt: newest?.occurredAt instanceof Date ? newest.occurredAt.toISOString() : null,
+  };
 }
 
 export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: number; latestSequence: number }> {
-  const session = db.client.startSession(); let migrated = 0;
+  const session = db.client.startSession();
+  let migrated = 0;
   try {
     await session.withTransaction(async () => {
       const collection = db.collection<ChainedAuditEvent>("auditEvents");
-      const events = await collection.find({}, { session }).sort({ occurredAt: 1, _id: 1 }).toArray();
-      const legacy = events.filter(event => typeof event.previousHash !== "string" || typeof event.eventHash !== "string");
-      if (events.length - legacy.length > 0 && legacy.length > 0) throw new Error("LEGACY_AND_CHAINED_EVENTS_MIXED");
-      if (legacy.length > AUDIT_BACKFILL_LIMIT) throw new Error("AUDIT_BACKFILL_LIMIT_EXCEEDED");
-      if (!legacy.length) return;
-      let previousHash = AUDIT_GENESIS_HASH, sequence = 0;
+      const completeChainFilter = {
+        sequence: { $exists: true },
+        previousHash: { $type: "string" },
+        eventHash: { $type: "string" },
+      };
+      const legacyFilter = {
+        sequence: { $exists: false },
+        previousHash: { $exists: false },
+        eventHash: { $exists: false },
+      };
+      const [totalCount, sequencedCount, legacyCount] = await Promise.all([
+        collection.countDocuments({}, { session }),
+        collection.countDocuments(completeChainFilter, { session }),
+        collection.countDocuments(legacyFilter, { session }),
+      ]);
+      const malformedCount = totalCount - sequencedCount - legacyCount;
+      if (malformedCount > 0) throw new Error("PARTIAL_AUDIT_CHAIN_FIELDS");
+      if (sequencedCount > 0 && legacyCount > 0) throw new Error("LEGACY_AND_CHAINED_EVENTS_MIXED");
+      if (legacyCount > AUDIT_BACKFILL_LIMIT) throw new Error("AUDIT_BACKFILL_LIMIT_EXCEEDED");
+      if (legacyCount === 0) return;
+
+      const legacy = await collection.find(legacyFilter, { session })
+        .sort({ occurredAt: 1, _id: 1 })
+        .limit(AUDIT_BACKFILL_LIMIT + 1)
+        .toArray();
+      if (legacy.length !== legacyCount || legacy.length > AUDIT_BACKFILL_LIMIT) {
+        throw new Error("AUDIT_BACKFILL_SOURCE_CHANGED");
+      }
+
+      let previousHash = AUDIT_GENESIS_HASH;
+      let sequence = 0;
       for (const old of legacy) {
         sequence += 1;
         const occurredAt = old.occurredAt instanceof Date ? old.occurredAt : new Date(String(old.occurredAt ?? ""));
         if (Number.isNaN(occurredAt.getTime())) throw new Error("LEGACY_AUDIT_TIMESTAMP_INVALID");
         if (!["success", "denied", "failure"].includes(String(old.outcome))) throw new Error("LEGACY_AUDIT_OUTCOME_INVALID");
+        if (typeof old.actorUserId !== "string" || typeof old.action !== "string" ||
+            typeof old.targetType !== "string" || typeof old.correlationId !== "string") {
+          throw new Error("LEGACY_AUDIT_REQUIRED_FIELDS_INVALID");
+        }
         const input: AuditEventInput = {
-          actorUserId: String(old.actorUserId ?? "unknown"), action: String(old.action ?? "legacy.unknown"), targetType: String(old.targetType ?? "unknown"),
-          ...(typeof old.targetId === "string" ? { targetId: old.targetId } : {}), ...(typeof old.tenantId === "string" ? { tenantId: old.tenantId } : {}),
-          outcome: old.outcome as AuditEventInput["outcome"], correlationId: String(old.correlationId ?? String(old._id)), occurredAt,
+          actorUserId: old.actorUserId,
+          action: old.action,
+          targetType: old.targetType,
+          ...(typeof old.targetId === "string" ? { targetId: old.targetId } : {}),
+          ...(typeof old.tenantId === "string" ? { tenantId: old.tenantId } : {}),
+          outcome: old.outcome as AuditEventInput["outcome"],
+          correlationId: old.correlationId,
+          occurredAt,
           ...(old.metadata && typeof old.metadata === "object" ? { metadata: old.metadata as AuditEventInput["metadata"] } : {}),
         };
         const chained = createChainedAuditEvent(input, sequence, previousHash);
-        const result = await collection.updateOne({ _id: old._id, $or: [{ previousHash: { $exists: false } }, { eventHash: { $exists: false } }] }, { $set: { sequence, previousHash, eventHash: chained.eventHash, integrity: chained.integrity, occurredAt } }, { session });
+        const result = await collection.updateOne(
+          { _id: old._id, sequence: { $exists: false }, previousHash: { $exists: false }, eventHash: { $exists: false } },
+          { $set: { sequence, previousHash, eventHash: chained.eventHash, integrity: chained.integrity, occurredAt } },
+          { session },
+        );
         if (result.modifiedCount !== 1) throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
         previousHash = chained.eventHash;
       }
-      await db.collection("auditCounters").updateOne({ _id: "global" }, { $set: { sequence, updatedAt: new Date() } }, { upsert: true, session });
+      await db.collection("auditCounters").updateOne(
+        { _id: "global" },
+        { $set: { sequence, updatedAt: new Date() } },
+        { upsert: true, session },
+      );
       migrated = sequence;
     }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
     return { migrated, latestSequence: migrated };
-  } finally { await session.endSession(); }
+  } finally {
+    await session.endSession();
+  }
 }
 
 export async function exportAuditArchive(db: Db) {
