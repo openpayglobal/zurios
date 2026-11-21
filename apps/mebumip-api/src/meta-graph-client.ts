@@ -198,7 +198,7 @@ export class MetaGraphClient {
           await this.sleep(retryAfterMs(response.headers.get("retry-after")) ?? Math.min(250 * (2 ** attempt), 4_000));
           continue;
         }
-        throw new MetaGraphError(safeMessage(details.message, accessToken), {
+        throw new MetaGraphError(safeMessage(details.message, accessToken, this.appSecret), {
           status: response.status,
           ...(typeof details.code === "number" ? { providerCode: details.code } : {}),
           ...(typeof details.error_subcode === "number" ? { providerSubcode: details.error_subcode } : {}),
