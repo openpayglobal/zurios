@@ -297,3 +297,48 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **Public access-request privacy gate verification (2026-11-20):** added `GET /auth/public-config`, browser gating of the Request Zuri OS action, an optional HTTPS privacy-notice link, and a production config rule that refuses to enable public intake without the notice URL. Access requests default to disabled. Integration coverage verifies enabled/disabled public configuration, notice URL exposure, 503 behavior when disabled, non-enumerating rate limits and no account/tenant provisioning. Repository CI run 44748329176 passed both OpenAPI lint checks, route drift, typecheck, tests and build. Test totals: 52 (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44748328927 passed all API and web checks; all 23 API tests passed.
+
+
+## 2026-11-21 — Current holistic implementation status
+
+**Phase 1 remains in progress; production readiness is not established.** The current PR #14 branch has materially expanded the original Phase 1 security foundation:
+
+- Platform-owner bootstrap creates the owner, initial tenant, membership and signed audit event atomically under a bootstrap lease.
+- Authentication now includes cookie/bearer session handling, exact-Origin/CSRF protection, concurrent single-winner refresh rotation, session inventory/revocation, password change, hashed single-use email recovery records, transactional password reset/session revocation, TOTP enrollment/step-up and recovery-code handling.
+- Tenant invitation/member lifecycle endpoints are implemented with tenant-scoped authorization, role restrictions, expiry and revocation. Tenant membership validity windows are enforced in workspace access paths.
+- Audit events use transaction-scoped sequence allocation, predecessor hashes, canonical event hashes and versioned keyring signatures. Verification is streaming and checks sequence/counter consistency. Credential-like metadata is redacted before hashing/signing.
+- Legacy audit backfill is dry-run-first, bounded to 5,000 genuinely unsequenced records, and refuses malformed/partial or mixed histories. Sequenced pre-chain events require a separate approved signature-preserving reconciliation; they must not be automatically renumbered.
+- Signed local archive export and offline verification exist. Independent immutable/WORM storage, object-lock proof, restore drills and key recovery remain unconfigured and are release gates.
+- MongoDB migrations now include core indexes, identity/workspace selection and audit archive receipts. MeBuMIP CI uses a replica set for transaction tests.
+- The documentation index has been re-audited: 35 documentation files, 42 relative links, zero unindexed files. The Phase 1 security operations runbook is included.
+
+### Five-objective status (unchanged scope)
+
+| ID | Objective | Planned phase | Status |
+|---|---|---:|---|
+| A | Facebook Pages and Instagram Professional account management | 2 | Not started |
+| B | Facebook/Instagram advertising | 3 | Not started |
+| C | WhatsApp Business Platform/API | 4 | Not started |
+| D | Multi-business Meta management SaaS | 5 | Not started |
+| E | Unified integration into company software and external APIs/webhooks | 6 | Not started |
+
+The product owner has deferred live Meta Business Portfolio/developer-app setup. This does not prevent mocked/contract-driven Phase 2–6 engineering, but no live Meta authorization, customer asset access or production integration is claimed.
+
+### Current verification/deployment status
+
+- PR #13 remains open/draft; PR #14 remains open/non-draft; neither has been merged. The latest path inventory shows 53 overlapping changed paths and one PR #13-only audit-service path whose behavior is integrated into PR #14 security.ts.
+- Full monorepo CI and MeBuMIP verification have exposed and received fixes for the migration test expectation, the no-lockfile frozen install, and the idempotency transaction-retry test contract. The latest exact-head runs must still pass before this checkpoint is accepted; queued/in-progress runs are not passes.
+- The latest inspected frontend preview is READY on older commit 08d21ddfdd945553b747be6ac2282290b5654b47. The latest inspected API preview is an ERROR on older commit 180c3954e8df54f9be8dfdc93703bc6d60e28300. No current-head API preview is verified. Vercel currently reports deployment-rate-limit failures for both projects.
+- The ODEI repository remains unavailable to the connected GitHub integration; its requirements remain an external dependency and are not assumed satisfied.
+
+### Remaining Phase 1 exit work
+
+1. Pass full monorepo CI and MeBuMIP verification on the same latest PR #14 head.
+2. Verify a current-head API preview deployment, startup/readiness and authenticated browser end-to-end flows.
+3. Complete sender-domain verification, production email delivery monitoring and durable retry/outbox acceptance.
+4. Configure least-privilege production MongoDB identities and managed audit/MFA keyrings with rotation/recovery evidence.
+5. Resolve the sequenced pre-chain audit migration question from actual database preflight evidence; do not apply a migration without an approved plan.
+6. Prove signed archive retention in independently administered WORM storage, backup restoration and incident alerts.
+7. Complete legal/privacy/data-deletion review and an independent security assessment.
+
+**Release decision:** Phase 1 is not complete. Objectives A–E remain in scope and are not yet implemented. No production migration, audit backfill apply, live Meta connection, production deployment or promotion has been performed.
