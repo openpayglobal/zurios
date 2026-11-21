@@ -129,6 +129,7 @@ try {
           revision: runtime.revision,
           service: expectedProject,
           apiOrigin: expectedProject === "zuri-mebumip-api" ? runtime.apiOrigins.mebumip : runtime.apiOrigins.zuriOs,
+          allowedOrigins: runtime.allowedOrigins,
           privateSettings: {},
           secretAccess: "blocked_until_encryption_kms_is_configured",
         });
