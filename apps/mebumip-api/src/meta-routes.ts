@@ -5,9 +5,10 @@ import { config } from "./config.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasTenantPermission } from "./security.js";
 import { MetaOAuthService, META_PAGES_INSTAGRAM_SCOPES, type MetaOAuthScope } from "./meta-oauth.js";
+import { MetaGraphClient } from "./meta-graph-client.js";
 import { MetaOAuthStateService } from "./meta-oauth-state.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
-import { createMetaConnection, listMetaConnections, revokeMetaConnection } from "./meta-connections.js";
+import { createMetaConnection, getMetaAccessToken, listMetaConnections, revokeMetaConnection } from "./meta-connections.js";
 
 const scopeValues = [
   "public_profile",
@@ -53,6 +54,12 @@ function configuredServices(dependencies: MetaRouteDependencies) {
       ...(dependencies.fetchImpl ? { fetchImpl: dependencies.fetchImpl } : {}),
       ...(config.META_LOGIN_CONFIG_ID ? { loginConfigId: config.META_LOGIN_CONFIG_ID } : {}),
     }),
+    graph: new MetaGraphClient({
+      version: config.META_GRAPH_API_VERSION,
+      appSecret: config.META_APP_SECRET,
+      requireAppSecretProof: true,
+      ...(dependencies.fetchImpl ? { fetchImpl: dependencies.fetchImpl } : {}),
+    }),
     vault: new MetaTokenVault({ keyring, activeKeyId: config.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID }),
     redirectUri: config.META_REDIRECT_URI,
     allowInsecureLocalhost,
@@ -77,7 +84,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
     redirectUri: configured.redirectUri,
     allowInsecureLocalhost: configured.allowInsecureLocalhost,
   });
-  const { oauth, vault } = configured;
+  const { oauth, graph, vault } = configured;
 
   app.post("/v1/tenants/:tenantId/meta/oauth/start", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
@@ -172,12 +179,32 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
     if (!hasRecentStepUp(resolved.stepUpUntil)) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    let remoteRevocation: "succeeded" | "failed" | "not_attempted" = "not_attempted";
     try {
-      await revokeMetaConnection(db, tenantId, connectionId, resolved.principal.userId, request.id);
+      const connection = await db.collection<{ providerUserId: string }>("metaConnections")
+        .findOne({ tenantId, connectionId, status: "connected" }, { projection: { providerUserId: 1 } });
+      if (!connection) return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
+      const accessToken = await getMetaAccessToken(db, vault, tenantId, connectionId);
+      const result = await graph.request<{ success?: boolean } | boolean>(`${connection.providerUserId}/permissions`, {
+        accessToken,
+        method: "DELETE",
+        retry: false,
+      });
+      remoteRevocation = result === true || (typeof result === "object" && result.success === true) ? "succeeded" : "failed";
     } catch (error) {
       if (error instanceof Error && error.message === "META_CONNECTION_NOT_FOUND") return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
-      throw error;
+      if (error instanceof Error && (error.message === "META_CONNECTION_TOKEN_EXPIRED" || error.message === "META_CONNECTION_DATA_ACCESS_EXPIRED")) {
+        remoteRevocation = "not_attempted";
+      } else {
+        remoteRevocation = "failed";
+        request.log.warn({
+          errorName: error instanceof Error ? error.name : "UnknownError",
+          providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
+          correlationId: request.id,
+        }, "Meta remote permission revocation failed; local token will still be erased");
+      }
     }
-    return reply.code(204).send();
+    await revokeMetaConnection(db, tenantId, connectionId, resolved.principal.userId, request.id, remoteRevocation);
+    return reply.code(200).send({ status: "disconnected", remoteRevocation });
   });
 }
