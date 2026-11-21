@@ -61,7 +61,7 @@ Use `requestNext(nextUrl, accessToken)` for Graph paging links. It validates HTT
 3. Implement the Meta Business Login HTTP flow for business onboarding and asset selection; the current route exposes standard OAuth only.
 4. Implement webhook signature verification, durable inbox, deduplication, replay controls, subscription lifecycle and deauthorization callbacks.
 5. Implement token health monitoring, expiry/data-access-expiry jobs, reauthorization UX and scheduled key-rotation orchestration. Transactional key-rotation helpers exist but are not scheduled.
-6. Complete frontend connect/disconnect/discovery UX and end-to-end provider smoke tests.
+6. Complete frontend UX polish, role-specific guidance, reconnect/expiry flows and end-to-end provider smoke tests; a basic tenant-facing connect/discovery/disconnect panel is implemented.
 7. Complete Meta App Review, business verification, privacy/data-deletion and Tech Provider approvals before live customer access.
 
 Objectives B–E remain separate phases. Marketing API requires its own version and spend safeguards; WhatsApp requires consent/template/webhook lifecycle; multi-business SaaS and external integrations require their own acceptance suites.
