@@ -5,6 +5,7 @@ import { z } from "zod";
 import { config, corsOrigins } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { appendAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { appendAuditEventInTransaction } from "./audit-service.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
 import { sendPasswordRecoveryEmail } from "./mail.js";
 
@@ -126,51 +127,93 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       await writeAudit(db, request, "anonymous", "platform.bootstrap.denied", "platform", "denied");
       return reply.code(403).send({ error: "BOOTSTRAP_NOT_AUTHORIZED" });
     }
-    const owners = await db.collection("users").countDocuments({ platformRole: "platform_owner" });
-    if (owners > 0) return reply.code(409).send({ error: "PLATFORM_ALREADY_BOOTSTRAPPED" });
+    // A unique bootstrap lease serializes concurrent first-owner requests. The
+    // transaction and unique owner index remain the database-level invariants.
+    const now = new Date();
+    const lockToken = newOpaqueToken();
+    const locks = db.collection<{ _id: string; lockToken?: string; leaseExpiresAt?: Date; status?: string; acquiredAt?: Date; completedAt?: Date }>("platformBootstrapLocks");
+    try {
+      await locks.insertOne({
+        _id: "singleton",
+        lockToken,
+        leaseExpiresAt: new Date(now.getTime() + 5 * 60_000),
+        acquiredAt: now,
+      });
+    } catch (error) {
+      if ((error as { code?: number }).code !== 11000) throw error;
+      const reclaimed = await locks.updateOne(
+        { _id: "singleton", status: { $ne: "completed" }, leaseExpiresAt: { $lte: now } },
+        { $set: { lockToken, leaseExpiresAt: new Date(now.getTime() + 5 * 60_000), acquiredAt: now } },
+      );
+      if (reclaimed.modifiedCount !== 1) return reply.code(409).send({ error: "PLATFORM_BOOTSTRAP_IN_PROGRESS_OR_COMPLETED" });
+    }
+
+    const completeLock = async () => {
+      const completed = await locks.updateOne(
+        { _id: "singleton", lockToken },
+        { $set: { status: "completed", completedAt: new Date() }, $unset: { lockToken: "", leaseExpiresAt: "" } },
+      );
+      if (completed.modifiedCount !== 1) throw new Error("PLATFORM_BOOTSTRAP_LOCK_LOST");
+    };
+    const releaseLock = async () => { await locks.deleteOne({ _id: "singleton", lockToken }); };
+
     const email = parsed.data.email.trim().toLowerCase();
     const existing = await db.collection("users").findOne({ normalizedEmail: email });
-    if (existing) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED" });
+    if (existing) {
+      await releaseLock();
+      return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED" });
+    }
 
-    const now = new Date();
-    const passwordHash = await hashPassword(parsed.data.password);
-    const userResult = await db.collection("users").insertOne({
-      normalizedEmail: email,
-      displayName: parsed.data.displayName,
-      passwordHash,
-      platformRole: "platform_owner",
-      status: "active",
-      createdAt: now,
-      updatedAt: now,
-    });
-    let tenantId: ObjectId | undefined;
     try {
-      const tenantResult = await db.collection("tenants").insertOne({
-        name: parsed.data.companyName,
-        slug: parsed.data.tenantSlug,
-        status: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
-      tenantId = tenantResult.insertedId;
-      await db.collection("memberships").insertOne({
-        tenantId: String(tenantId),
-        userId: String(userResult.insertedId),
-        role: "tenant_owner",
-        status: "active",
-        createdAt: now,
-        updatedAt: now,
-      });
-      await writeAudit(db, request, String(userResult.insertedId), "platform.bootstrap.completed", "platform", "success");
-    } catch (error) {
-      if (tenantId) {
-        await db.collection("memberships").deleteOne({ tenantId: String(tenantId), userId: String(userResult.insertedId) });
-        await db.collection("tenants").deleteOne({ _id: tenantId });
+      const passwordHash = await hashPassword(parsed.data.password);
+      const session = db.client.startSession();
+      let userId: ObjectId | undefined;
+      try {
+        await session.withTransaction(async () => {
+          const owners = await db.collection("users").countDocuments({ platformRole: "platform_owner" }, { session });
+          if (owners > 0) throw new Error("PLATFORM_ALREADY_BOOTSTRAPPED");
+          const userResult = await db.collection("users").insertOne({
+            normalizedEmail: email, displayName: parsed.data.displayName, passwordHash,
+            platformRole: "platform_owner", status: "active", createdAt: now, updatedAt: now,
+          }, { session });
+          userId = userResult.insertedId;
+          const tenantResult = await db.collection("tenants").insertOne({
+            name: parsed.data.companyName, slug: parsed.data.tenantSlug, status: "active", createdAt: now, updatedAt: now,
+          }, { session });
+          await db.collection("memberships").insertOne({
+            tenantId: String(tenantResult.insertedId), userId: String(userResult.insertedId),
+            role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
+          }, { session });
+          await appendAuditEventInTransaction(db, {
+            actorUserId: String(userResult.insertedId), action: "platform.bootstrap.completed",
+            targetType: "platform", outcome: "success", correlationId: request.id,
+          }, session);
+        });
+      } finally {
+        await session.endSession();
       }
-      await db.collection("users").deleteOne({ _id: userResult.insertedId });
+      if (!userId) throw new Error("PLATFORM_BOOTSTRAP_USER_NOT_CREATED");
+      await completeLock();
+      return reply.code(201).send({ status: "bootstrapped", userId: String(userId), note: "Owner created. Sign in to obtain a session." });
+    } catch (error) {
+      if (error instanceof Error && error.message === "PLATFORM_ALREADY_BOOTSTRAPPED") {
+        await completeLock();
+        return reply.code(409).send({ error: "PLATFORM_ALREADY_BOOTSTRAPPED" });
+      }
+      if ((error as { code?: number }).code === 11000) {
+        const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern ?? {};
+        if (keyPattern.platformRole) {
+          await completeLock();
+          return reply.code(409).send({ error: "PLATFORM_ALREADY_BOOTSTRAPPED" });
+        }
+        await releaseLock();
+        if (keyPattern.normalizedEmail) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED" });
+        if (keyPattern.slug) return reply.code(409).send({ error: "TENANT_SLUG_ALREADY_REGISTERED" });
+      } else {
+        await releaseLock();
+      }
       throw error;
     }
-    return reply.code(201).send({ status: "bootstrapped", userId: String(userResult.insertedId), note: "Owner created. Sign in to obtain a session." });
   });
 
   app.post("/v1/auth/login", async (request, reply) => {
