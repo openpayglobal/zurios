@@ -46,7 +46,8 @@ export function CustomerWorkspace() {
         const list = (body.tenantMemberships ?? []).filter((item: Membership) => item.status === "active");
         if (!active) return;
         setMemberships(list);
-        if (list.length >= 1) setTenantId(list[0].tenantId);
+        if (list.length === 1) setTenantId(list[0].tenantId);
+        else setTenantId("");
       })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Sign in required."); });
     return () => { active = false; };
@@ -110,7 +111,7 @@ export function CustomerWorkspace() {
     {notice && <p className="api-online" role="status">{notice}</p>}
     {!memberships.length ? <div className="empty-panel"><h2>Workspace access required</h2><p>Sign in with an invited customer account. If you do not yet have access, request it through the Zuri OS access workflow. Platform administration does not automatically grant a customer membership.</p></div> : <>
       <div className="panel">
-        <label>Active business workspace <select value={tenantId} onChange={(event) => setTenantId(event.target.value)}>{memberships.map((membership) => <option key={membership.tenantId} value={membership.tenantId}>{membership.tenantId} · {membership.role}</option>)}</select></label>
+        <label>Active business workspace <select value={tenantId} onChange={(event) => setTenantId(event.target.value)} required><option value="">Choose a workspace…</option>{memberships.map((membership) => <option key={membership.tenantId} value={membership.tenantId}>{membership.tenantId} · {membership.role}</option>)}</select></label>
         <p>Membership-based access only. Changing this selection reloads the workspace-scoped onboarding record.</p>
       </div>
       {data && <div className="panel"><div className="panel-head"><div><h3>Onboarding checklist</h3><p>{data.steps.filter((step) => step.status === "complete").length} of {data.steps.length} steps complete</p></div></div>
