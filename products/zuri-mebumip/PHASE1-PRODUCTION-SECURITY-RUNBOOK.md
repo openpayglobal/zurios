@@ -20,7 +20,7 @@ Configure values through the deployment secret manager. Do not commit real value
 |---|---|---|
 | `MONGODB_URI` | Production MongoDB connection | TLS enabled; private network access; least-privilege application user; backup/restore test |
 | `MONGODB_DATABASE` | Dedicated MeBuMIP database | Confirmed database boundary and ownership |
-| `AUDIT_MIGRATION_MONGODB_URI` | Ephemeral audit backfill apply only; separate maintenance credential | Must not be the runtime application credential; scoped to the required audit event/counter updates, approved for one maintenance window, and removed from the operator environment afterwards |
+| `AUDIT_MIGRATION_MONGODB_URI` | Optional ephemeral audit backfill maintenance URI; read-only for dry-run and write-enabled only for approved apply | Must not be the runtime application credential; use a read-only identity for dry-run and a separately approved, time-bounded write identity for apply; remove after the operation |
 | `AUDIT_SIGNING_KEY` | Legacy HMAC-SHA256 verification for historical events | Retain until historical events and backups no longer depend on it; never replace in place |
 | `AUDIT_SIGNING_KEYRING` | JSON map of audit key IDs to 32-byte hex keys (legacy entry may encode original key bytes) | New and historical keys backed up, inventoried and access-controlled |
 | `AUDIT_SIGNING_ACTIVE_KEY_ID` | Selects the 32-byte key for new HMAC-SHA256-v2 events and manifests | Must identify a non-legacy key in `AUDIT_SIGNING_KEYRING`; historical keys remain available for verification |
