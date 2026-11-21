@@ -156,7 +156,7 @@ export async function discoverMetaPages(
     updatedAt: now,
   }));
   const collection = db.collection<MetaPageAssetDocument>("metaAssets");
-  await withAuditTransaction(
+  const reconciliation = await withAuditTransaction(
     db,
     async (session) => {
       if (documents.length) {
@@ -207,6 +207,7 @@ export async function discoverMetaPages(
     items: documents.map((document) => toSummary(document)),
     discovered: documents.length,
     instagramLinked: documents.filter((item) => item.instagramBusinessAccount).length,
+    unavailable: reconciliation.unavailable,
   };
 }
 
