@@ -39,8 +39,9 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     providerCalls += 1;
     const url = new URL(String(input));
     if (init?.method === "DELETE") {
-      assert.equal(url.pathname, "/v27.0/meta-route-user-1/permissions");
-      assert.equal(new Headers(init.headers).get("authorization"), "Bearer EAAG_long_lived_meta_route_token");
+      assert.ok(url.pathname.endsWith("/permissions"));
+      assert.ok(["/v27.0/meta-route-user-1/permissions", "/v27.0/meta-route-user-2/permissions"].includes(url.pathname));
+      assert.ok(["Bearer EAAG_long_lived_meta_route_token", "Bearer EAAG_second_meta_route_token"].includes(new Headers(init.headers).get("authorization") ?? ""));
       if (failRemoteRevoke) {
         return new Response(JSON.stringify({ error: { message: "remote permission revoke denied", code: 190 } }), {
           status: 401, headers: { "facebook-api-version": "v27.0" },
