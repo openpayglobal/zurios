@@ -4,7 +4,7 @@ import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
 import { config, corsOrigins } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
-import { appendAuditEvent, appendAuditEventInTransaction, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
+import { appendAuditEvent, appendAuditEventInTransaction, withAuditTransaction, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
 import { sendPasswordRecoveryEmail } from "./mail.js";
 
@@ -224,15 +224,21 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const token = newOpaqueToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
-    await db.collection("sessions").insertOne({
-      userId: String(user._id),
-      tokenHash: hashToken(token),
-      createdAt: now,
-      expiresAt,
-      userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256),
-      ipHash: hashToken(request.ip || "unknown"),
-    });
-    await writeAudit(db, request, String(user._id), "auth.session.created", "session", "success");
+    await withAuditTransaction(
+      db,
+      (session) => db.collection("sessions").insertOne({
+        userId: String(user._id),
+        tokenHash: hashToken(token),
+        createdAt: now,
+        expiresAt,
+        userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256),
+        ipHash: hashToken(request.ip || "unknown"),
+      }, { session }),
+      (created) => ({
+        actorUserId: String(user._id), action: "auth.session.created", targetType: "session",
+        targetId: String(created.insertedId), outcome: "success", correlationId: request.id,
+      }),
+    );
     setSessionCookies(reply, token);
     return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString(), user: { id: String(user._id), email, displayName: user.displayName, platformRole: user.platformRole ?? null } });
   });
@@ -245,14 +251,29 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!invitation || !["platform_admin", "platform_operator", "platform_auditor"].includes(String(invitation.role))) return reply.code(404).send({ error: "PLATFORM_ADMIN_INVITATION_INVALID_OR_EMAIL_MISMATCH" });
     if (await db.collection("users").findOne({ normalizedEmail: email })) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_USE_ACCEPT" });
     const now = new Date();
-    const created = await db.collection("users").insertOne({ normalizedEmail: email, displayName: parsed.data.displayName, passwordHash: await hashPassword(parsed.data.password), platformRole: invitation.role, platformAdminStatus: "active", status: "active", platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: now, createdAt: now, updatedAt: now });
+    const passwordHash = await hashPassword(parsed.data.password);
+    let created: { insertedId: ObjectId };
     try {
-      const accepted = await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { acceptedAt: now, acceptedBy: String(created.insertedId) } });
-      if (accepted.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_INVITATION_ALREADY_USED");
-      await appendAuditEvent(db, { actorUserId: String(created.insertedId), action: "platform.admin.invitation.registration.completed", targetType: "platform_admin", targetId: String(created.insertedId), outcome: "success", correlationId: request.id, metadata: { role: String(invitation.role) } });
+      created = await withAuditTransaction(
+        db,
+        async (session) => {
+          const accepted = await db.collection("platformAdminInvitations").updateOne(
+            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+            { $set: { acceptedAt: now } },
+            { session },
+          );
+          if (accepted.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_INVITATION_ALREADY_USED");
+          return db.collection("users").insertOne({
+            normalizedEmail: email, displayName: parsed.data.displayName, passwordHash,
+            platformRole: invitation.role, platformAdminStatus: "active", status: "active",
+            platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: now, createdAt: now, updatedAt: now,
+          }, { session });
+        },
+        (result) => ({ actorUserId: String(result.insertedId), action: "platform.admin.invitation.registration.completed", targetType: "platform_admin", targetId: String(result.insertedId), outcome: "success", correlationId: request.id, metadata: { role: String(invitation.role) } }),
+      );
     } catch (error) {
-      await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedBy: String(created.insertedId) }, { $unset: { acceptedAt: "", acceptedBy: "" } });
-      await db.collection("users").deleteOne({ _id: created.insertedId });
+      if (error instanceof Error && error.message === "PLATFORM_ADMIN_INVITATION_ALREADY_USED") return reply.code(409).send({ error: "PLATFORM_ADMIN_INVITATION_ALREADY_USED" });
+      if ((error as { code?: number }).code === 11000) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_USE_ACCEPT" });
       throw error;
     }
     return reply.code(201).send({ status: "registered", userId: String(created.insertedId), role: invitation.role, note: "Sign in to access the platform administrator console." });
@@ -266,16 +287,31 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!TENANT_ROLES.includes(invitation.role as TenantRole) || invitation.role === "tenant_owner") return reply.code(400).send({ error: "INVITATION_ROLE_INVALID" });
     if (await db.collection("users").findOne({ normalizedEmail: email })) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_USE_ACCEPT" });
     const now = new Date();
-    const userResult = await db.collection("users").insertOne({ normalizedEmail: email, displayName: parsed.data.displayName, passwordHash: await hashPassword(parsed.data.password), status: "active", createdAt: now, updatedAt: now });
+    const passwordHash = await hashPassword(parsed.data.password);
+    let userResult: { insertedId: ObjectId };
     try {
-      await db.collection("memberships").insertOne({ tenantId: invitation.tenantId, userId: String(userResult.insertedId), role: invitation.role, status: "active", createdAt: now, updatedAt: now });
-      const accepted = await db.collection("tenantInvitations").updateOne({ _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { acceptedAt: now, acceptedBy: String(userResult.insertedId) } });
-      if (accepted.modifiedCount !== 1) throw new Error("INVITATION_ALREADY_USED");
-      await writeAudit(db, request, String(userResult.insertedId), "tenant.invitation.registration.completed", "tenant_membership", "success", String(userResult.insertedId));
+      userResult = await withAuditTransaction(
+        db,
+        async (session) => {
+          const accepted = await db.collection("tenantInvitations").updateOne(
+            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+            { $set: { acceptedAt: now } },
+            { session },
+          );
+          if (accepted.modifiedCount !== 1) throw new Error("INVITATION_ALREADY_USED");
+          const created = await db.collection("users").insertOne({
+            normalizedEmail: email, displayName: parsed.data.displayName, passwordHash, status: "active", createdAt: now, updatedAt: now,
+          }, { session });
+          await db.collection("memberships").insertOne({
+            tenantId: invitation.tenantId, userId: String(created.insertedId), role: invitation.role, status: "active", createdAt: now, updatedAt: now,
+          }, { session });
+          return created;
+        },
+        (created) => ({ actorUserId: String(created.insertedId), action: "tenant.invitation.registration.completed", targetType: "tenant_membership", targetId: String(created.insertedId), tenantId: invitation.tenantId, outcome: "success", correlationId: request.id }),
+      );
     } catch (error) {
-      await db.collection("tenantInvitations").updateOne({ _id: invitation._id, acceptedBy: String(userResult.insertedId) }, { $unset: { acceptedAt: "", acceptedBy: "" } });
-      await db.collection("memberships").deleteOne({ tenantId: invitation.tenantId, userId: String(userResult.insertedId) });
-      await db.collection("users").deleteOne({ _id: userResult.insertedId });
+      if (error instanceof Error && error.message === "INVITATION_ALREADY_USED") return reply.code(409).send({ error: "INVITATION_ALREADY_USED" });
+      if ((error as { code?: number }).code === 11000) return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_USE_ACCEPT" });
       throw error;
     }
     return reply.code(201).send({ status: "registered", userId: String(userResult.insertedId), note: "Sign in to access the invited tenant." });
