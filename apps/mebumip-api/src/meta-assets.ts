@@ -241,7 +241,7 @@ export async function rotateMetaPageAssetTokenEnvelopes(
     const rotation = vault.rotate(asset.pageAccessTokenCiphertext, context);
     return !rotation.rotated ? [] : [{
       updateOne: {
-        filter: { _id: asset._id, tenantId, connectionId, status: "active", pageAccessTokenCiphertext: asset.pageAccessTokenCiphertext },
+        filter: { _id: asset._id, tenantId, connectionId, status: "active" as const, pageAccessTokenCiphertext: asset.pageAccessTokenCiphertext },
         update: { $set: { pageAccessTokenCiphertext: rotation.envelope, updatedAt: now } },
       },
     }];
