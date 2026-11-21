@@ -91,3 +91,37 @@ Never log or return password hashes, bootstrap secrets, access tokens, Meta cred
 ## Automated verification
 
 The Phase 1 GitHub Actions workflow provisions an ephemeral MongoDB 7 service and runs the database-backed integration suite together with API typecheck/tests/build and web typecheck/build. CI-only bootstrap, MFA and audit keys are test fixtures, not production credentials. The integration suite covers owner bootstrap/login, MFA enrollment and one-time recovery-code replay prevention, invitation registration and replay rejection, cross-tenant access denial, and audit signature verification.
+
+
+## Audit-chain maintenance and archive tooling
+
+The audit chain is globally sequenced, predecessor-linked and HMAC-signed. Production must configure either the legacy signing key or the versioned keyring with an active key ID; retain all verification keys required by historical events. The API refuses to append when an unbackfilled legacy history or a missing chain predecessor is detected.
+
+Run the backfill planner first. It is read-only by default:
+
+```sh
+pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+After independently verifying a database backup, approving the migration and scheduling a maintenance window, the explicit apply is:
+
+```sh
+AUDIT_CHAIN_BACKFILL_APPLY=true pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+The migration is limited to 5,000 valid, genuinely unsequenced legacy events. It refuses mixed histories, partial chain metadata, malformed required audit fields and larger histories; it never fabricates actor identity or event descriptions. Do not run apply automatically at startup or in CI. A larger history requires a separately reviewed migration plan.
+
+After migration, verify the complete chain and counter:
+
+```sh
+pnpm --filter @zuri/mebumip-api audit:verify
+```
+
+When a clean chain is confirmed, export a signed bundle to a new file and independently verify it:
+
+```sh
+AUDIT_ARCHIVE_OUTPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive
+AUDIT_ARCHIVE_FILE=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify
+```
+
+The export file is not itself immutable storage. Upload only after verification to a separately administered object-lock/WORM store with retention, legal-hold, versioning, restore testing and signing-key backup controls. No production backfill or archive upload is performed by these commands automatically.
