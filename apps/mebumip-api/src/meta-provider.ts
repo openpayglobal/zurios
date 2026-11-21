@@ -6,7 +6,6 @@ import { MetaOAuthService } from "./meta-oauth.js";
 import type { Db } from "mongodb";
 
 export type MetaProviderConfig = Pick<typeof config,
-  | "NODE_ENV"
   | "META_APP_ID"
   | "META_APP_SECRET"
   | "META_REDIRECT_URI"
@@ -16,7 +15,7 @@ export type MetaProviderConfig = Pick<typeof config,
   | "META_TOKEN_ENCRYPTION_KEYRING"
   | "META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID"
   | "META_WEBHOOK_VERIFY_TOKEN"
->;
+> & { NODE_ENV?: typeof config.NODE_ENV };
 export function createMetaGraphClient(
   providerConfig: MetaProviderConfig,
   runtimeOptions: Pick<MetaGraphClientOptions, "fetchImpl" | "timeoutMs" | "maxRetries" | "sleep"> = {},
@@ -55,7 +54,7 @@ export function createMetaOAuthService(providerConfig: MetaProviderConfig): Meta
     appSecret,
     version,
     redirectUri,
-    allowInsecureLocalhost: providerConfig.NODE_ENV !== "production",
+    allowInsecureLocalhost: (providerConfig.NODE_ENV ?? config.NODE_ENV) !== "production",
     ...(providerConfig.META_LOGIN_CONFIG_ID ? { loginConfigId: providerConfig.META_LOGIN_CONFIG_ID } : {}),
   });
 }
