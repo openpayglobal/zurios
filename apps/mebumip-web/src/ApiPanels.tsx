@@ -159,7 +159,7 @@ export function AdminData({ resource }: { resource: Resource }) {
     event.preventDefault();
     setStepUpBusy(true); setStepUpMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(/^\\d{6}$/.test(stepUpCode) ? { code: stepUpCode } : { recoveryCode: stepUpCode }) });
+      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(/^\d{6}$/.test(stepUpCode) ? { code: stepUpCode } : { recoveryCode: stepUpCode }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "MFA verification failed.");
       setStepUpCode(""); setStepUpMessage("MFA verified. Privileged MAC actions are enabled for five minutes.");
