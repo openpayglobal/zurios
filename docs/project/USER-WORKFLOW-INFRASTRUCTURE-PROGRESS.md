@@ -114,3 +114,16 @@ Vercel KMS keeps the private signing keys. The user-session issuer is ready for 
 
 A MongoDB Atlas connector is available but not yet connected. Once the owner connects the Atlas account, the cluster, database user, network allowlist and replica-set topology can be provisioned and validated against the Zuri OS requirements. Until then, no production MongoDB URI can be safely fabricated or activated.
 
+
+
+## Invitation registration gap fixed — 2026-11-21
+
+The first customer invitation UI exposed a missing backend capability: the existing tenant invitation acceptance route only accepted already-authenticated users, and the API had no customer registration route. Added `POST /v1/auth/register`:
+
+- Requires the single-use invitation token, matching invited email, display name and 12+ character password.
+- Creates the user and tenant membership, consumes the invitation, marks email verified by possession of the emailed one-time token, and appends the audit event in one MongoDB transaction.
+- Rejects expired/revoked/used invitations, invalid roles, inactive tenants and duplicate accounts.
+- Existing users continue through sign-in followed by `POST /v1/tenant-invitations/accept`.
+- Added the registration contract to MeBuMIP OpenAPI.
+
+This closes the invitation-to-customer-account entry path. Password recovery and MFA enrollment remain in the existing auth surface; mandatory MFA enforcement for privileged tenant roles remains a separate acceptance gate.
