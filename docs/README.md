@@ -1,14 +1,14 @@
 # ZURI Ecosystem Documentation
 
-This directory is the authoritative entry point for ecosystem-wide specifications and engineering guidance. Full product documentation is mirrored under `docs/products/` so the complete accessible ecosystem document set can be read from this directory. The product workspace under `products/` remains the implementation source of truth; mirrored documents must be synchronized when product documents change.
+This directory is the authoritative entry point for ecosystem-wide specifications and engineering guidance. Full product documentation is mirrored under `docs/products/`; the product workspace under `products/` remains the implementation source of truth.
 
 ## Read first
 
 1. [ZURI Ecosystem Overview](./ZURI-ECOSYSTEM-OVERVIEW.md) — vision, product boundaries, shared architecture, security principles, governance and programme map.
 2. [Zuri MeBuMIP Product README](./products/zuri-mebumip/README.md) — product purpose, owner and workspace.
-3. [MeBuMIP Implementation Roadmap](./products/zuri-mebumip/IMPLEMENTATION-ROADMAP.md) — all five approved objectives, phases 0–7, deliverables and exit criteria.
+3. [MeBuMIP Implementation Roadmap](./products/zuri-mebumip/IMPLEMENTATION-ROADMAP.md) — approved objectives A–E, phases 0–7, deliverables and exit criteria.
 4. [MeBuMIP Architecture](./products/zuri-mebumip/ARCHITECTURE.md) — standalone product boundary, tenant model, MAC/MAD, Meta adapters, webhooks and integration API.
-5. [MeBuMIP Progress Register](./products/zuri-mebumip/PROGRESS.md) — current implementation evidence, CI status and remaining gates.
+5. [MeBuMIP Progress Register](./products/zuri-mebumip/PROGRESS.md) — implementation evidence, CI status and remaining gates.
 6. [Phase 1 Production Security Runbook](./products/zuri-mebumip/PHASE1-PRODUCTION-SECURITY-RUNBOOK.md) — deployment security, email, MFA, audit archiving, database and release controls.
 
 ## Canonical documentation catalogue
@@ -16,35 +16,40 @@ This directory is the authoritative entry point for ecosystem-wide specification
 | Domain | Location | Status / purpose |
 |---|---|---|
 | Ecosystem overview | [ZURI Ecosystem Overview](./ZURI-ECOSYSTEM-OVERVIEW.md) | Baseline reference |
-| Product requirements | product/ | Product catalogue, PRDs, functional requirements and acceptance criteria; expand as products are approved |
-| Architecture | architecture/ | System boundaries, integration patterns, deployment topology and architecture decision records |
+| Product requirements | product/ | Product catalogue, PRDs, functional requirements and acceptance criteria |
+| Architecture | architecture/ | System boundaries, integration patterns, deployment topology and ADRs |
 | User experience | ux/ | Design system, navigation, accessibility and screen specifications |
 | Data | database/ | MongoDB collection catalogue, schemas, indexes, validation, tenancy and migrations |
-| Integrations | [integrations/](./integrations/) | Provider readiness, API version governance, permissions, webhooks, data handling and external-service lifecycle; includes the Meta Platform Integration Readiness standard |
-| APIs and events | [api/](./api/) | API standards, OpenAPI documents, event contracts, webhooks and SDK guidance; includes [Zuri OS Platform API](./api/openapi.yaml) and [MeBuMIP API](./api/mebumip-openapi.yaml) |
+| Integrations | [integrations/](./integrations/) | Provider readiness, API version governance, permissions, webhooks and external-service lifecycle |
+| APIs and events | [api/](./api/) | API standards, OpenAPI documents, event contracts, webhooks and SDK guidance |
 | Security | security/ | Threat model, identity, authorization, secrets, audit and incident response |
-| Compliance | [compliance/](./compliance/) | Privacy, retention, jurisdictional requirements and evidence registers; includes the [Public Access Request Privacy and Retention draft](./compliance/ACCESS-REQUEST-PRIVACY-AND-RETENTION.md) |
+| Compliance | [compliance/](./compliance/) | Privacy, retention, jurisdictional requirements and evidence registers |
 | Operations | operations/ | Deployment, observability, backup, disaster recovery, support and runbooks |
-| Decisions | decisions/ | Cross-cutting approved decisions; architecture ADRs may live under architecture/decisions/ |
-| MeBuMIP product | [products/zuri-mebumip/](../products/zuri-mebumip/README.md) | Detailed product-specific documentation |
+| Decisions | architecture/decisions/ | Cross-cutting architecture decision records |
+| MeBuMIP product | [products/zuri-mebumip/](./products/zuri-mebumip/README.md) | Detailed product-specific documentation |
 | CI workflows | [MeBuMIP Phase 1 CI workflow](../.github/workflows/mebumip-phase1.yml) | Automated engineering verification |
 
-## Meta integration readiness
+## Integrations and external standards
 
 - [Meta Platform Integration Readiness and Version Governance](./integrations/META-PLATFORM-INTEGRATION-READINESS.md) — Graph/Marketing API versioning, Tech Provider/App Review, Pages/Instagram, advertising, WhatsApp, webhooks and multi-business requirements.
 
 ## Security engineering standards
 
 - [Key Management and Audit Archiving](./security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md) — MFA key rings, safe migration, audit-signing lifecycle, WORM archive requirements and external standards.
+- [Audit Archive Provider Comparison](./security/AUDIT-ARCHIVE-PROVIDER-COMPARISON.md) — immutable-storage provider capabilities and selection considerations.
 
 ## Canonical identity and operations specifications
 
 - [Identity and Multi-Workspace Architecture](./architecture/IDENTITY-AND-MULTI-WORKSPACE.md) — one global identity, multiple tenant memberships and tenant-bound sessions.
-- [ADR-005: Global Identity with Multiple Workspace Memberships](./architecture/decisions/ADR-005-GLOBAL-IDENTITY-MULTI-WORKSPACE.md) — formal decision, alternatives, consequences and implementation evidence.
+- [ADR-005: Global Identity with Multiple Workspace Memberships](./architecture/decisions/ADR-005-GLOBAL-IDENTITY-MULTI-WORKSPACE.md) — formal decision and implementation evidence.
+- [ADR-006: MAC-Controlled Vercel Runtime Configuration](./architecture/decisions/ADR-006-MAC-CONTROLLED-VERCEL-RUNTIME-CONFIGURATION.md) — MAC as runtime configuration authority; Vercel OIDC workload identity; no-redeployment design and acceptance criteria.
 - [Sign-in and Workspace Selection](./ux/SIGN-IN-AND-WORKSPACE-SELECTION.md) — identity-first sign-in, access request, workspace chooser and accessibility.
 - [Identity and Workspace API Contracts](./api/IDENTITY-AND-WORKSPACE-CONTRACTS.md) — login, MFA, workspace selection, switching and session contracts.
 - [Identity and Membership Data Model](./database/IDENTITY-MEMBERSHIP-DATA-MODEL.md) — users, tenants, memberships, sessions and indexes.
-- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.\n- [PR #13 / PR #14 Security Integration and Acceptance Plan](./operations/PR13-PR14-SECURITY-INTEGRATION-ACCEPTANCE.md) — branch reconciliation, audit-chain invariants, security regression matrix and merge/release gates.
+- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
+- [MAC-to-Vercel Runtime Configuration Operations](./operations/MAC-VERCEL-RUNTIME-CONFIGURATION.md) — runtime fetch flow, configuration classes, OIDC security, cache/revocation and rollout sequence.
+- [MAC/Vercel Runtime Configuration Progress](./project/MAC-VERCEL-RUNTIME-CONFIGURATION-PROGRESS.md) — verified inventory, current implementation state and blockers.
+- [PR #13 / PR #14 Security Integration and Acceptance Plan](./operations/PR13-PR14-SECURITY-INTEGRATION-ACCEPTANCE.md) — branch reconciliation, audit-chain invariants, regression matrix and merge/release gates.
 
 ## Full Zuri OS baseline specifications
 
@@ -55,13 +60,7 @@ This directory is the authoritative entry point for ecosystem-wide specification
 - [UI/UX Design System](./ux/ZURI-OS-UI-UX-DESIGN-SYSTEM-v1.0.md) — app shell, navigation, reusable components, workflows and accessibility.
 - [Implementation Progress Register](./project/ZURI-OS-PROGRESS-REGISTER.md) — exact CI evidence, deployment state, blockers and release gates.
 
-Product document mirrors are kept in sync with the product workspace using `pnpm docs:sync`; CI verifies them with `pnpm docs:check`. Update the canonical file under `products/` first, then synchronize the copy under `docs/products/`.
-
-## Additional platform engineering specifications
-
-The following implementation-level specifications are part of the accessible ecosystem documentation and are indexed here explicitly:
-
-### Zuri OS platform foundation and deliverable 6A
+## Zuri OS platform foundation and Deliverable 6A
 
 - [Foundation Status](./architecture/FOUNDATION-STATUS.md) — implemented foundation scope, verification evidence and outstanding gates.
 - [Deliverable 6A — Platform Foundation](./architecture/DELIVERABLE-6A.md) — foundation scope and deliverables.
@@ -72,27 +71,18 @@ The following implementation-level specifications are part of the accessible eco
 - [Deliverable 6A.4 governance and administration](./architecture/DELIVERABLE-6A.4-GOVERNANCE-ADMIN.md) — governance and administrative controls.
 - [Security and release gates](./architecture/6A-SECURITY-AND-RELEASE-GATES.md) — security, operational and release acceptance gates.
 
-### Audit archive and independent storage
-
-- [Audit archive provider comparison](./security/AUDIT-ARCHIVE-PROVIDER-COMPARISON.md) — comparison of immutable-storage provider capabilities and selection considerations.
-- [Key management and audit archiving](./security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md) — signing keys, migration, verification and immutable archive controls.
-
 ## Document control
 
-Every authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions and change history.
-
-Use explicit document status labels: **Draft**, **In Review**, **Approved**, **Superseded** or **Archived**. A draft must not be represented as an approved implementation requirement.
+Every authoritative specification should state its owner, status, version, approval date, scope, dependencies, assumptions, unresolved decisions and change history. Use explicit statuses: **Draft**, **In Review**, **Approved**, **Superseded** or **Archived**.
 
 ## Documentation governance
 
 - Keep this index current whenever a canonical document is added, renamed or moved.
-- Keep ecosystem-wide principles in docs/ and maintain synchronized, complete product-document mirrors under `docs/products/`; the owning product workspace remains the canonical implementation source.
+- Keep ecosystem-wide principles in `docs/` and maintain synchronized, complete product-document mirrors under `docs/products/`; the owning product workspace remains the canonical implementation source.
 - Record material architecture decisions with context, decision, alternatives, consequences, status and approval.
 - Distinguish planned, implemented, tested, CI-verified, deployed and production-configured.
 - Preserve all five approved MeBuMIP objectives and programme phases 0–7 unless the product owner explicitly approves a change.
 - Never commit credentials, private keys, customer data, live access tokens or secret values.
 - Do not claim production readiness, compliance certification, Meta approval or a live integration without evidence.
 
-## Suggested document additions
-
-Create or expand domain documents as the relevant product scope and decisions are approved. Do not create empty documents that imply completed design work. The ecosystem overview and MeBuMIP product documents linked above are the current baseline; future PRDs, API specifications, threat models, data catalogues, ADRs and operational runbooks should be added here as they are authored and reviewed.
+Product mirrors are maintained using `pnpm docs:sync` and verified using `pnpm docs:check`.
