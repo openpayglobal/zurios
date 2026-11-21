@@ -12,7 +12,7 @@ import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
 import { verifyAuditChain } from "./security.js";
 
-const app = Fastify({ logger: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
+const app = Fastify({ logger: true, disableRequestLogging: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
   const supplied = request.headers["x-correlation-id"];
   return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
     ? supplied
@@ -20,6 +20,17 @@ const app = Fastify({ logger: true, bodyLimit: 1_048_576, trustProxy: config.TRU
 } });
 let mongo: MongoClient | undefined;
 let databaseReady = false;
+
+app.addHook("onResponse", async (request, reply) => {
+  // Log only the registered route template, never the raw URL/query string.
+  // OAuth callback query strings contain one-time state and authorization codes.
+  request.log.info({
+    method: request.method,
+    route: request.routeOptions.url ?? "unmatched",
+    statusCode: reply.statusCode,
+    correlationId: request.id,
+  }, "request completed");
+});
 
 await app.register(helmet);
 await app.register(cors, {
