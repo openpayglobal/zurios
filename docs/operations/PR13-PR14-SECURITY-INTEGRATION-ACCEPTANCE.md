@@ -7,7 +7,7 @@
 
 ## 1. Purpose and non-negotiable rules
 
-The two pull requests are divergent implementation streams, not a safe linear stack. The latest repository comparison reports PR #14 ahead by 435 commits and behind by 197 commits relative to PR #13, with merge base `1b01d0ece95925cad708bb7a113df0a2c59cc105`. The current changed-file inventory records 54 paths on PR #13, 91 on PR #14 and 52 overlapping paths; only two PR #13 changed paths are still absent from PR #14's changed-file set.
+The two pull requests are divergent implementation streams, not a safe linear stack. The current changed-file inventory records 54 paths on PR #13, 97 on PR #14 and 53 overlapping paths; one PR #13 changed path (`apps/mebumip-api/src/audit-service.ts`) is intentionally represented by equivalent keyring-aware behavior integrated into PR #14's `security.ts` rather than copied as a duplicate service.
 
 Do not merge either pull request into the other or into the release branch merely because GitHub reports it mergeable. Git mergeability does not prove semantic equivalence, authorization correctness, audit integrity or runtime compatibility.
 
@@ -182,7 +182,7 @@ The chain verifier was also changed to stream complete chain records in sequence
 
 ## 8. Implementation checkpoint — security integration work applied on PR #14
 
-**Source heads at checkpoint:** PR #13 `52e94d1c6b1a87d516cba9fdd64337463259199f`; PR #14 `86827ed57885fe6a85de6cd396da29016c97f4c6`. PR #14 remains open and unmerged. At this checkpoint, PR #14 has 91 changed paths; PR #13 has 54; 52 overlap; two PR #13 changed paths remain outside PR #14's changed-file inventory.
+**Source heads at verified checkpoint:** PR #13 `52e94d1c6b1a87d516cba9fdd64337463259199f`; PR #14 `f542bddb1af2358491fcdf2de2b52c087bdfa09a`. PR #14 remains open and unmerged. At this checkpoint, PR #14 has 97 changed paths; PR #13 has 54; 53 overlap; the only PR #13-only path is the audit-service file whose behavior is integrated into PR #14's security module.
 
 The following PR #13 security behavior has been ported or reconciled on PR #14:
 
@@ -200,14 +200,14 @@ The two remaining changed-path differences are:
 1. `apps/mebumip-api/src/audit-service.ts` — its required behavior is now implemented in the existing `security.ts` module. The old file is intentionally not copied as a duplicate service.
 2. `packages/core-platform/src/idempotency-service.ts` — the file already exists on PR #14; the PR #13 delta is a narrow parsed-input type assertion, not a separate missing workflow. Confirm the exact diff and typecheck before deciding whether the cast should be retained.
 
-**Verification status:** the MeBuMIP workflow [#44866839352](https://github.com/openpayglobal/zurios/actions/runs/44866839352) passed on the immediately preceding head. Full monorepo CI [#44866845001](https://github.com/openpayglobal/zurios/actions/runs/44866845001) and MeBuMIP verification [#44866845017](https://github.com/openpayglobal/zurios/actions/runs/44866845017) are running on the checkpoint head. Do not mark the exact head verified until both finish successfully.
+**Verification status:** exact checkpoint `f542bddb1af2358491fcdf2de2b52c087bdfa09a` passed [Full monorepo CI #44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) and [MeBuMIP Phase 1 #44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363). Both executed 31 tests: 31 passed, 0 failed, 0 skipped. Typecheck and build steps also passed.
 
-**Remaining integration work:** review all 52 overlapping paths semantically, reconcile any remaining security behavior not yet covered by tests, and verify the exact candidate against the full regression matrix. Vercel preview verification, production secrets, WORM storage, backup/restore, mail sender verification, legal/privacy approval and production release remain separate blockers.
+**Remaining integration work:** review all 53 overlapping paths semantically, reconcile any remaining security behavior not yet covered by tests, and verify the exact candidate against the full regression matrix. Vercel preview verification, production secrets, WORM storage, backup/restore, mail sender verification, legal/privacy approval and production release remain separate blockers.
 
 
 ### Security reconciliation and atomic authentication lifecycle (2026-11-21)
 
-The PR #14 branch now contains the substantive security behavior previously isolated on PR #13 while preserving the global-identity/workspace implementation. The changed-path inventory is 52 overlaps and two path-only differences; the audit service is integrated into `security.ts`, and the core-platform idempotency service is present with equivalent behavior. The tenant-member integration test and Phase 1 security operations runbook have also been restored to PR #14.
+The PR #14 branch now contains the substantive security behavior previously isolated on PR #13 while preserving the global-identity/workspace implementation. The changed-path inventory is 53 overlaps and one path-only difference; the audit service is integrated into `security.ts`, and the core-platform idempotency service is present with equivalent behavior. The tenant-member integration test and Phase 1 security operations runbook have also been restored to PR #14.
 
 The current implementation now commits refresh rotation and password reset as single MongoDB transactions with their audit events. Concurrent refresh attempts have a single winner; a reset transaction cannot consume a token or revoke sessions without also changing the password and writing the audit event. Audit metadata redaction, fail-closed signing-key enforcement and serialized-archive timestamp verification are included. Exact-head CI is pending; these changes must not be marked accepted until both full CI and MeBuMIP verification pass on the same latest commit. Vercel build-rate-limit failures and all production release gates remain open.
 
@@ -226,9 +226,19 @@ The core-platform idempotency API also now documents an important MongoDB transa
 
 The changed-path comparison now reports 53 overlaps and one PR #13-only path (`apps/mebumip-api/src/audit-service.ts`), whose behavior is integrated into PR #14's `security.ts`. PR #14 has 97 changed paths. The security runbook now explicitly documents that pre-chain events which already have a sequence but lack predecessor/event hashes are intentionally rejected by the normal backfill tool. A separate migration must verify historical signatures and preserve them as signed provenance before adding chain links; no automatic renumbering is allowed. The integration test now covers both partial-chain and sequence-only legacy records.
 
-The latest full-suite run exposed and corrected two unrelated test/setup defects: the MeBuMIP workflow now uses `pnpm install --no-frozen-lockfile` because the repository has no committed `pnpm-lock.yaml`; the core-platform migration integration test now expects all three registered migrations. The earlier duplicate outbox callback assertion was corrected to reflect MongoDB transaction callback retries while retaining assertions on committed database side effects. Exact-head workflows are queued/running and must pass before acceptance.
+The full-suite run exposed and corrected migration-index and outbox-transaction assertion defects. A workspace `pnpm-lock.yaml` has now been generated and committed; both CI workflows use `pnpm install --frozen-lockfile`. `MONGODB_TEST_URI` is passed through Turborepo, and both workflows initialize a MongoDB replica set with the host advertised to the runner. The root suite now executes the MongoDB-backed MeBuMIP tests rather than skipping them.
 
 
 ### Atomic domain-write/audit coupling (2026-11-21)
 
 The PR #14 keyring-aware chain append already exposed `appendAuditEventInTransaction`; it is now complemented by a shared `withAuditTransaction` helper. Critical mutations now commit with their audit event in one snapshot/majority transaction: tenant provisioning and membership changes; tenant and platform invitation creation, acceptance and revocation; platform administrator role/status changes and session revocation; login session creation/revocation; invited-user registration; password change and recovery lifecycle; MFA setup, enablement, step-up and reset; and logout. External email delivery remains outside transactions; invitation/recovery creation is audited before delivery and delivery failures are separately recorded with revocation in a transaction. MongoDB transaction callbacks are database-only and safe to retry; external effects must use an outbox. A replica-set integration test proves a domain insert rolls back when audit signing fails, including the audit counter update.
+
+
+### Latest verified checkpoint — 2026-11-21
+
+- PR #14 exact source/test head: `f542bddb1af2358491fcdf2de2b52c087bdfa09a`.
+- Full monorepo CI [#44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358): passed OpenAPI 3.1 validation, route drift, docs mirror validation, typecheck, tests and build. Test suites: 31 passed, 0 failed, 0 skipped.
+- MeBuMIP Phase 1 [#44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363): API typecheck/tests/build and web typecheck/build passed. API tests: 31 passed, 0 failed, 0 skipped.
+- The root pnpm lockfile is now committed and both workflows use frozen installs. The MongoDB test URI is forwarded through Turbo and transaction tests run against a replica set.
+- Vercel preview inspection is still blocked by HTTP 403. The local environment has no Vercel CLI or token, and no active Vercel CLI session is available; no current-head preview is claimed.
+- PR #13 remains open/draft; PR #14 remains open/non-draft and mergeable. Neither is merged. Production release remains blocked by deployment verification, independent WORM storage, backup/restore, production secrets, mail sender verification, legal/privacy approval and independent security review.
