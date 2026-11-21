@@ -39,15 +39,14 @@ export function CustomerWorkspace() {
   }
   useEffect(() => {
     let active = true;
-    fetch((await getMeBuMIPApiBase()) + "/v1/auth/me", { credentials: "include" })
+    void getMeBuMIPApiBase().then((base) => fetch(base + "/v1/auth/me", { credentials: "include" }))
       .then(async (response) => {
         if (!response.ok) throw new Error("Sign in with a customer workspace account to continue.");
         const body = await response.json();
         const list = (body.tenantMemberships ?? []).filter((item: Membership) => item.status === "active");
         if (!active) return;
         setMemberships(list);
-        if (list.length === 1) setTenantId(list[0].tenantId);
-        else if (list.length > 1) setTenantId(list[0].tenantId);
+        if (list.length >= 1) setTenantId(list[0].tenantId);
       })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Sign in required."); });
     return () => { active = false; };
