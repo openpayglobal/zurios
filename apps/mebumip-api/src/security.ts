@@ -247,7 +247,10 @@ export async function appendAuditEventInTransaction(db: Db, input: AuditEventInp
   if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_INVALID");
   const events = db.collection<ChainedAuditEvent>("auditEvents");
   const previous = sequence > 1 ? await events.findOne({ sequence: sequence - 1 }, { session }) : null;
-  if (sequence > 1 && (!previous || typeof previous.eventHash !== "string")) throw new Error("AUDIT_CHAIN_PREDECESSOR_MISSING");
+  if (sequence > 1 && (!previous || previous.sequence !== sequence - 1 || typeof previous.eventHash !== "string")) {
+    throw new Error("AUDIT_CHAIN_PREDECESSOR_MISSING");
+  }
+  if (sequence > 1 && previous && !verifyAuditEvent(previous)) throw new Error("AUDIT_CHAIN_PREDECESSOR_INVALID");
   if (sequence === 1 && await events.countDocuments({}, { session }) > 0) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
   const event = createChainedAuditEvent(input, sequence, previous?.eventHash ?? AUDIT_GENESIS_HASH);
   if ((event.integrity as { algorithm?: string }).algorithm === "unsigned") throw new Error("AUDIT_SIGNING_KEY_REQUIRED");
