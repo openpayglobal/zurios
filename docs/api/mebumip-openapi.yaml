@@ -173,6 +173,30 @@ paths:
         "200": {description: Masked database topology, KMS keyring metadata, origins and provider readiness}
         "401": {description: Authentication required}
         "403": {description: Platform settings-read permission required}
+  /v1/auth/register:
+    post:
+      tags: [Authentication]
+      operationId: registerTenantUserFromInvitation
+      summary: Create a verified customer account from a single-use tenant invitation
+      description: Invitation token possession verifies the invited email. User creation, tenant membership activation, invitation consumption and audit event are committed in one transaction.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, email, password, displayName]
+              properties:
+                token: {type: string, minLength: 40, maxLength: 200}
+                email: {type: string, format: email}
+                password: {type: string, minLength: 12, maxLength: 256}
+                displayName: {type: string, minLength: 2, maxLength: 100}
+      responses:
+        "201": {description: Customer account created and tenant membership activated}
+        "400": {description: Invalid registration data or invitation role}
+        "404": {description: Invitation invalid, expired or email mismatch}
+        "409": {description: Existing account, inactive tenant or invitation already used}
+        "500": {description: Registration transaction failed}
 components:
   securitySchemes:
     bearerAuth:
