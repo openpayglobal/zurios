@@ -34,6 +34,7 @@ test("audit chain appends serialize, verify, and detect tampering", {
     assert.equal(verification.latestSequence, 12);
     const archive = await exportAuditArchive(db);
     assert.equal(verifyAuditArchiveBundle(archive).valid, true);
+    assert.equal(verifyAuditArchiveBundle(JSON.parse(JSON.stringify(archive))).valid, true, "serialized archive timestamps must verify offline");
     await db.collection("auditEvents").updateOne({ sequence: 6 }, { $set: { action: "tampered.event" } });
     assert.equal((await verifyAuditChain(db)).valid, false);
     assert.equal(verifyAuditArchiveBundle(archive).valid, true, "a previously exported immutable bundle remains independently verifiable");
