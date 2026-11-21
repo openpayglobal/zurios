@@ -1,4 +1,4 @@
-import type { Db } from "mongodb";
+import type { ClientSession, Db } from "mongodb";
 
 export type RuntimePublicSettings = {
   accessRequestsEnabled?: boolean;
@@ -79,8 +79,11 @@ export const defaultPlatformRuntimeConfig: PlatformRuntimeConfig = {
   privateSettings: {},
 };
 
-export async function readPlatformRuntimeConfig(db: Db): Promise<PlatformRuntimeConfig> {
-  const current = await db.collection<PlatformRuntimeConfig>("platformRuntimeConfig").findOne({ _id: "global" });
+export async function readPlatformRuntimeConfig(db: Db, session?: ClientSession): Promise<PlatformRuntimeConfig> {
+  const collection = db.collection<PlatformRuntimeConfig>("platformRuntimeConfig");
+  const current = session
+    ? await collection.findOne({ _id: "global" }, { session })
+    : await collection.findOne({ _id: "global" });
   return current ?? defaultPlatformRuntimeConfig;
 }
 
