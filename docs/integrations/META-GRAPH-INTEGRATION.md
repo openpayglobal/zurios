@@ -32,7 +32,7 @@ The Meta routes are not registered unless all required provider and token-vault 
 - `META_GRAPH_API_VERSION` — explicit version, never an unpinned default.
 - `META_TOKEN_ENCRYPTION_KEYRING` — JSON object of key IDs to 32-byte hex keys.
 - `META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` — must name a non-legacy key in that ring.
-- Optional `META_LOGIN_CONFIG_ID` for a separately configured Meta Business Login flow.
+- `META_LOGIN_CONFIG_ID` is reserved for the Business Login path; the current HTTP route exposes standard OAuth only. Business Login is not enabled through these routes yet.
 
 Meta token keys must be different from MFA encryption keys and audit signing keys. Retain old Meta keys while ciphertext encrypted under them remains in storage; rotate stored connection envelopes before removing an old key. Do not put the keyring in source control or a client bundle.
 
@@ -63,6 +63,14 @@ This foundation does **not** mean the following features are complete:
 - End-to-end frontend connect/disconnect experience and production provider smoke tests.
 
 These remain gated on Meta developer configuration, approved permissions, privacy/legal review, operational monitoring and explicit production authorization. No live Meta account has been connected by this implementation.
+
+## Primary Meta references
+
+- [Graph API Platform Versioning](https://developers.facebook.com/docs/graph-api/guides/versioning) — versioned Graph API endpoints and versioned OAuth dialog paths.
+- [Secure Graph API Requests](https://developers.facebook.com/docs/graph-api/guides/secure-requests) — App Secret Proof is HMAC-SHA256 of the access token using the app secret.
+- [Debug Token reference](https://developers.facebook.com/docs/graph-api/reference/debug_token) — app ID, token type, validity, user ID, expiry, scopes and granular scopes.
+- [Access Token Debugging and Error Handling](https://developers.facebook.com/docs/facebook-login/guides/access-tokens/debugging) — tokens can be invalidated before their expected expiry; handle provider error codes and subcodes.
+- [Install Apps and Generate/Refresh/Revoke Tokens](https://developers.facebook.com/docs/business-management-apis/system-users/install-apps-and-generate-tokens/) — system-user token lifecycle is distinct from a standard user OAuth session.
 
 ## Verification evidence required for acceptance
 
