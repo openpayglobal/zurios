@@ -243,3 +243,6 @@ This checkpoint supersedes the previous 52-overlap/2-path-only inventory. Curren
 - Vercel preview inspection returned HTTP 403; no local Vercel CLI/token/session is available. Current-head deployment readiness is therefore unverified.
 
 **Current branch inventory:** PR #13 has 54 changed paths, PR #14 has 97, with 53 overlaps and one PR #13-only audit-service path whose behavior is integrated into PR #14's keyring-aware security module. PR #13 remains open/draft; PR #14 remains open/non-draft and unmerged. Production readiness is not established.
+
+
+**Audit export and credential-abuse controls (2026-11-21):** privileged audit exports now fail closed when the manifest is unsigned, emit a chain audit event with exported sequence range/count/algorithm, and set no-store. Password change and MFA reset have dedicated stricter per-IP rate limits with policy unit coverage. Exact-head workflows for the latest policy/test commit are running; the preceding transactional audit integration checkpoint `f542bddb1af2358491fcdf2de2b52c087bdfa09a` passed full CI [44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) and MeBuMIP verification [44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363).
