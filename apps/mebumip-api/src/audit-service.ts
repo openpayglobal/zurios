@@ -1,3 +1,4 @@
+export { appendAuditEvent, appendAuditEventInTransaction } from "./security.js";
 import type { ClientSession, Db, Document } from "mongodb";
 import {
   auditEventHash,
