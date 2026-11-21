@@ -396,6 +396,7 @@ paths:
       security: []
       responses:
         "200": {description: Public access-request availability and privacy notice URL}
+        "429": {description: Public API rate limit exceeded}
   /auth/login:
     servers:
       - url: /
