@@ -102,3 +102,16 @@ Phases 0–1 are the platform prerequisites. Phase 7 is the combined production-
 6. Add asset discovery and workspace mapping; keep A/B/C feature gates tied to their approved phases.
 7. Add tenant-aware MAD metrics and MAC configuration/secret lifecycle.
 8. Complete end-to-end tests and deploy only after Vercel build capacity and production gates are clear.
+
+
+## Implementation checkpoint — 2026-11-21
+
+The current implementation branch now adds a first customer workspace onboarding surface in `apps/mebumip-web/src/CustomerWorkspace.tsx`, backed by tenant-scoped API routes in `apps/mebumip-api/src/customer-workflow.ts`:
+
+- Read onboarding progress and redacted connection metadata for an authorized tenant.
+- Save a business profile with membership permission checks and an audit event in the same MongoDB transaction.
+- List tenant members and pending invitations using the existing tenant-member API.
+- Invite teammates only after MFA step-up, using least-privilege tenant roles and the existing email invitation service.
+- Expose a Meta connect action that fails closed with an explicit not-configured response until real Meta provider credentials and OAuth callback configuration exist.
+
+This is the beginning of the end-user workflow, not completion of all A–E product functionality. Social publishing, ads, WhatsApp, Meta OAuth/asset discovery, multiple-business provisioning and external developer integrations remain phase-gated work.
