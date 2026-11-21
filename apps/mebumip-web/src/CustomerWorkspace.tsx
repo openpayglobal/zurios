@@ -17,6 +17,11 @@ export function CustomerWorkspace() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [data, setData] = useState<Onboarding | null>(null);
+  const [members, setMembers] = useState<Array<{ id: string; userId: string; role: string; status: string }>>([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("viewer");
+  const [stepUpCode, setStepUpCode] = useState("");
+  const [teamMessage, setTeamMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -28,6 +33,9 @@ export function CustomerWorkspace() {
     if (!response.ok) throw new Error(body.error ?? "Unable to load workspace onboarding.");
     setData(body);
     setProfile({ legalName: "", displayName: "", industry: "", countryCode: "UG", timezone: "Africa/Kampala", website: "", contactEmail: "", ...(body.businessProfile ?? {}) });
+    const memberResponse = await fetch(WORKFLOW_API + "/v1/tenants/" + encodeURIComponent(tenant) + "/members", { credentials: "include" });
+    const memberBody = await memberResponse.json();
+    if (memberResponse.ok) setMembers(memberBody.members ?? []);
   }
   useEffect(() => {
     let active = true;
@@ -60,6 +68,29 @@ export function CustomerWorkspace() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Save failed."); }
     finally { setBusy(false); }
   }
+  async function inviteMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setTeamMessage(""); setError("");
+    try {
+      const stepUp = await fetch(WORKFLOW_API + "/v1/auth/step-up", {
+        method: "POST", credentials: "include", headers: { ...csrf(), "content-type": "application/json" },
+        body: JSON.stringify({ code: stepUpCode }),
+      });
+      const stepUpBody = await stepUp.json();
+      if (!stepUp.ok) throw new Error(stepUpBody.error ?? "MFA step-up verification failed.");
+      const response = await fetch(WORKFLOW_API + "/v1/tenants/" + encodeURIComponent(tenantId) + "/invitations", {
+        method: "POST", credentials: "include", headers: { ...csrf(), "content-type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Team invitation failed.");
+      setTeamMessage("Invitation sent to " + body.email + ". It expires in 72 hours.");
+      setInviteEmail(""); setStepUpCode("");
+      const latest = await fetch(WORKFLOW_API + "/v1/tenants/" + encodeURIComponent(tenantId) + "/members", { credentials: "include" });
+      if (latest.ok) { const result = await latest.json(); setMembers(result.members ?? []); }
+    } catch (cause) { setTeamMessage(cause instanceof Error ? cause.message : "Team invitation failed."); }
+    finally { setBusy(false); }
+  }
+
   async function connectMeta() {
     setBusy(true); setError(""); setNotice("");
     try {
@@ -92,6 +123,17 @@ export function CustomerWorkspace() {
           {(["legalName","displayName","industry","countryCode","timezone","website","contactEmail"] as const).map((key) => <label key={key}>{key.replace(/([A-Z])/g, " $1")}<input value={profile[key]} required={key !== "website"} onChange={(event) => setProfile((current) => ({ ...current, [key]: key === "countryCode" ? event.target.value.toUpperCase() : event.target.value }))} /></label>)}
           <button type="submit" disabled={busy || !tenantId}>{busy ? "Saving…" : "Save business profile"}</button>
         </form>
+      </div>
+      <div className="panel">
+        <div className="panel-head"><div><h3>Team and access</h3><p>Invite team members with least-privilege roles. Sensitive changes require a fresh MFA step-up.</p></div></div>
+        <div className="api-table-wrap"><table><thead><tr><th>Member</th><th>Role</th><th>Status</th></tr></thead><tbody>{members.map((member) => <tr key={member.id}><td>{member.userId}</td><td>{member.role}</td><td>{member.status}</td></tr>)}</tbody></table></div>
+        <form className="api-auth" onSubmit={inviteMember}>
+          <label>Invitee email<input type="email" value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} required /></label>
+          <label>Role<select value={inviteRole} onChange={(event) => setInviteRole(event.target.value)}><option value="viewer">Viewer</option><option value="publisher">Publisher</option><option value="advertiser">Advertiser</option><option value="support_agent">Support agent</option><option value="tenant_admin">Tenant administrator</option></select></label>
+          <label>Authenticator code<input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required /></label>
+          <button type="submit" disabled={busy || !tenantId}>{busy ? "Sending…" : "Verify MFA and invite"}</button>
+        </form>
+        {teamMessage && <p role="status">{teamMessage}</p>}
       </div>
       <div className="panel">
         <div className="panel-head"><div><h3>Connect Meta Business</h3><p>OAuth and asset selection will be enabled after Meta app prerequisites and provider-issued credentials are configured.</p></div></div>
