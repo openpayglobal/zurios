@@ -69,25 +69,25 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const owner = await db.collection("users").findOne({ _id: new ObjectId(parsed.data.ownerUserId), status: "active" });
     if (!owner) return reply.code(404).send({ error: "ACTIVE_OWNER_USER_NOT_FOUND" });
     const now = new Date();
-    const tenantResult = await db.collection("tenants").insertOne({
-      name: parsed.data.name, slug: parsed.data.slug, status: "active",
-      createdAt: now, updatedAt: now, createdBy: resolved.principal.userId,
-    });
-    try {
-      await db.collection("memberships").insertOne({
-        tenantId: String(tenantResult.insertedId), userId: String(owner._id),
-        role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
-      });
-      await appendAuditEvent(db, {
+    const tenantResult = await withAuditTransaction(
+      db,
+      async (session) => {
+        const created = await db.collection("tenants").insertOne({
+          name: parsed.data.name, slug: parsed.data.slug, status: "active",
+          createdAt: now, updatedAt: now, createdBy: resolved.principal.userId,
+        }, { session });
+        await db.collection("memberships").insertOne({
+          tenantId: String(created.insertedId), userId: String(owner._id),
+          role: "tenant_owner", status: "active", createdAt: now, updatedAt: now,
+        }, { session });
+        return created;
+      },
+      (created) => ({
         actorUserId: resolved.principal.userId, action: "platform.tenant.created",
-        targetType: "tenant", targetId: String(tenantResult.insertedId),
+        targetType: "tenant", targetId: String(created.insertedId),
         outcome: "success", correlationId: request.id,
-      });
-    } catch (error) {
-      await db.collection("memberships").deleteOne({ tenantId: String(tenantResult.insertedId) });
-      await db.collection("tenants").deleteOne({ _id: tenantResult.insertedId });
-      throw error;
-    }
+      }),
+    );
     return reply.code(201).send({ id: String(tenantResult.insertedId), name: parsed.data.name, slug: parsed.data.slug, ownerUserId: String(owner._id), status: "active" });
   });
 
@@ -136,10 +136,20 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const pending = await db.collection("tenantInvitations").findOne({ tenantId, email, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
     if (pending) return reply.code(409).send({ error: "INVITATION_ALREADY_PENDING" });
     const token = newOpaqueToken(); const now = new Date(); const expiresAt = new Date(now.getTime() + 72 * 60 * 60_000);
-    const inserted = await db.collection("tenantInvitations").insertOne({ tenantId, email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt });
+    const inserted = await withAuditTransaction(
+      db,
+      (session) => db.collection("tenantInvitations").insertOne({ tenantId, email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt }, { session }),
+      (created) => ({ actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.created", targetType: "tenant_invitation", targetId: String(created.insertedId), tenantId, outcome: "success", correlationId: request.id }),
+    );
     const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
-    if (!delivery.delivered) { await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } }); await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.delivery_failed", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "failure", correlationId: request.id }); return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" }); }
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.created", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "success", correlationId: request.id });
+    if (!delivery.delivered) {
+      await withAuditTransaction(
+        db,
+        (session) => db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } }, { session }),
+        () => ({ actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.delivery_failed", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "failure", correlationId: request.id }),
+      );
+      return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" });
+    }
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
