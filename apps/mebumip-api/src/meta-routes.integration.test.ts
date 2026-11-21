@@ -59,6 +59,16 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
         status: 200, headers: { "facebook-api-version": "v27.0" },
       });
     }
+    if (url.pathname.endsWith("/me/accounts")) {
+      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer EAAG_long_lived_meta_route_token");
+      return new Response(JSON.stringify({ data: [{
+        id: "555555",
+        name: "Route Test Page",
+        access_token: "EAAG_route_page_token",
+        tasks: ["ANALYZE", "CREATE_CONTENT"],
+        instagram_business_account: { id: "666666", username: "route.test.ig" },
+      }] }), { status: 200, headers: { "facebook-api-version": "v27.0" } });
+    }
     assert.equal(url.pathname, "/v27.0/debug_token");
     assert.ok(new Headers(init?.headers).get("authorization")?.startsWith("Bearer 123456789012345|"));
     return new Response(JSON.stringify({ data: {
@@ -146,6 +156,25 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     assert.equal(listAfter.json().items.length, 1);
     assert.equal(JSON.stringify(listAfter.json()).includes("accessToken"), false);
 
+    const discovery = await app.inject({
+      method: "POST",
+      url: "/v1/tenants/" + tenantId + "/meta/connections/" + connectionId + "/assets/discover",
+      headers: ownerHeaders,
+    });
+    assert.equal(discovery.statusCode, 200, discovery.body);
+    assert.equal(discovery.json().discovered, 1);
+    assert.equal(discovery.json().instagramLinked, 1);
+    assert.equal(JSON.stringify(discovery.json()).includes("EAAG_route_page_token"), false);
+    assert.equal(discovery.headers["cache-control"], "no-store, max-age=0");
+    const assets = await app.inject({
+      method: "GET",
+      url: "/v1/tenants/" + tenantId + "/meta/connections/" + connectionId + "/assets",
+      headers: ownerHeaders,
+    });
+    assert.equal(assets.statusCode, 200);
+    assert.equal(assets.json().items.length, 1);
+    assert.equal(JSON.stringify(assets.json()).includes("accessToken"), false);
+
     const revoked = await app.inject({
       method: "DELETE",
       url: `/v1/tenants/${tenantId}/meta/connections/${connectionId}`,
@@ -153,11 +182,14 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     });
     assert.equal(revoked.statusCode, 200, revoked.body);
     assert.deepEqual(revoked.json(), { status: "disconnected", remoteRevocation: "succeeded" });
-    assert.equal(providerCalls, 5);
+    assert.equal(providerCalls, 6);
     const storedRevoked = await db.collection("metaConnections").findOne({ tenantId: String(tenantId), connectionId });
     assert.equal(storedRevoked?.status, "revoked");
     assert.equal(storedRevoked?.accessTokenCiphertext, null);
     assert.equal(storedRevoked?.revocationStatus, "succeeded");
+    const revokedPage = await db.collection("metaAssets").findOne({ tenantId: String(tenantId), connectionId, providerAssetId: "555555" });
+    assert.equal(revokedPage?.status, "unavailable");
+    assert.equal(revokedPage?.pageAccessTokenCiphertext, null);
 
     const testVault = new MetaTokenVault({ keyring: { "meta-test": "aa".repeat(32) }, activeKeyId: "meta-test" });
     const secondConnection = await createMetaConnection(db, testVault, {
