@@ -173,3 +173,13 @@ The central Zuri OS API now has a versioned MongoDB-backed runtime configuration
 - Unit tests cover exact HTTPS origin validation, rejection of unverified domains, de-duplication and safe defaults.
 
 The internal endpoint intentionally returns no secret values yet. MongoDB bootstrap URI, MFA encryption, provider credentials and other secrets remain blocked until an encryption KMS/HSM and secure bootstrap path are available. The live non-secret runtime-config and origin updates are implemented; the full secret-fetch lifecycle is not yet complete.
+
+
+## Runtime configuration consumers connected — 2026-11-21
+
+- Zuri OS web now bootstraps from its stable API URL, then resolves the current Zuri OS API origin from the public MAC runtime-config endpoint and refreshes the pointer on a bounded 30-second cache. A MAC API-origin update is picked up without rebuilding the Vite bundle.
+- MeBuMIP web now resolves its API origin from the same public MAC runtime-config endpoint; its previous direct localhost fallback has been removed from application request paths.
+- MeBuMIP API now obtains a short-lived Vercel OIDC token using `@vercel/oidc`, fetches the project-scoped internal MAC runtime configuration, and refreshes its CORS origin cache without redeployment. If MAC is temporarily unavailable, it retains the last known-good list and uses the bootstrap origin list.
+- Central MAC verifies the OIDC signature using Vercel's team JWKS and enforces exact owner ID, project ID, subject and Production environment. The MeBuMIP API project has team OIDC enabled.
+
+Live token verification and end-to-end runtime fetch remain pending because the central Zuri OS API's Vercel SSO protection currently intercepts its default domain. A public production endpoint or verified custom domain is required before the MeBuMIP API can reach the internal runtime-config endpoint.
