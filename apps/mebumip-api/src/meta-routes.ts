@@ -9,6 +9,7 @@ import { MetaGraphClient } from "./meta-graph-client.js";
 import { MetaOAuthStateService } from "./meta-oauth-state.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
 import { createMetaConnection, getMetaAccessToken, listMetaConnections, revokeMetaConnection } from "./meta-connections.js";
+import { discoverMetaPages, listMetaPageAssets } from "./meta-assets.js";
 
 const scopeValues = [
   "public_profile",
@@ -177,6 +178,47 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
     }
     return reply.send({ items: await listMetaConnections(db, tenantId) });
+  });
+
+  app.get("/v1/tenants/:tenantId/meta/connections/:connectionId/assets", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    const { tenantId, connectionId } = request.params as { tenantId: string; connectionId: string };
+    if (!ObjectId.isValid(tenantId) || !hasTenantPermission(resolved.principal, tenantId, "social:assets:read")) {
+      return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
+    }
+    const connection = await db.collection("metaConnections").findOne({ tenantId, connectionId });
+    if (!connection) return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
+    return reply.send({ items: await listMetaPageAssets(db, tenantId, connectionId) });
+  });
+
+  app.post("/v1/tenants/:tenantId/meta/connections/:connectionId/assets/discover", async (request, reply) => {
+    const resolved = await resolvePrincipal(db, request);
+    if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
+    const { tenantId, connectionId } = request.params as { tenantId: string; connectionId: string };
+    if (!ObjectId.isValid(tenantId) || !hasTenantPermission(resolved.principal, tenantId, "social:assets:write")) {
+      return reply.code(403).send({ error: "TENANT_ACCESS_DENIED" });
+    }
+    if (!hasRecentStepUp(resolved.stepUpUntil)) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
+    try {
+      const result = await discoverMetaPages(db, vault, graph, {
+        tenantId,
+        connectionId,
+        actorUserId: resolved.principal.userId,
+        correlationId: request.id,
+      });
+      return reply.send(result);
+    } catch (error) {
+      if (error instanceof Error && error.message === "META_CONNECTION_NOT_FOUND") return reply.code(404).send({ error: "META_CONNECTION_NOT_FOUND" });
+      if (error instanceof Error && error.message === "META_CONNECTION_TOKEN_EXPIRED") return reply.code(409).send({ error: "META_CONNECTION_TOKEN_EXPIRED" });
+      if (error instanceof Error && error.message === "META_CONNECTION_DATA_ACCESS_EXPIRED") return reply.code(409).send({ error: "META_CONNECTION_DATA_ACCESS_EXPIRED" });
+      request.log.warn({
+        errorName: error instanceof Error ? error.name : "UnknownError",
+        providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
+        correlationId: request.id,
+      }, "Meta Page discovery failed");
+      return reply.code(502).send({ error: "META_ASSET_DISCOVERY_FAILED", correlationId: request.id });
+    }
   });
 
   app.delete("/v1/tenants/:tenantId/meta/connections/:connectionId", async (request, reply) => {
