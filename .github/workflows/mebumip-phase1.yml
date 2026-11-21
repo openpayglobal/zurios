@@ -13,6 +13,9 @@ on:
       - "products/zuri-mebumip/**"
       - ".github/workflows/mebumip-phase1.yml"
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -51,7 +54,7 @@ jobs:
           docker logs zuri-mongo
           exit 1
       - name: Install workspace dependencies
-        run: pnpm install --no-frozen-lockfile
+        run: pnpm install --frozen-lockfile
       - name: API typecheck
         run: pnpm --filter @zuri/mebumip-api typecheck
       - name: API tests
