@@ -52,8 +52,8 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
   }
-  if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => origin.includes("localhost") || origin.includes("127.0.0.1"))) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must not include localhost" });
+  if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => !origin.trim().startsWith("https://"))) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must contain HTTPS origins only" });
   }
   let auditKeyring: Record<string, unknown> | undefined;
   if (value.AUDIT_SIGNING_KEYRING) {
