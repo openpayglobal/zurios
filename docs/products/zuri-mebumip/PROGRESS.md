@@ -410,3 +410,20 @@ Cookie-authenticated unsafe requests require CSRF cookie/header validation and a
 - ODEI requirements remain unavailable (connected repository returned 404). PR #13 and PR #14 remain divergent and unmerged; reconcile the complete diff before merge.
 
 **Status:** Phase 1 implementation and verification are materially advanced; production acceptance remains open. MeBuMIP objectives A–E remain future functional phases (2–6); Objective A now has transport/token-encryption groundwork only.
+
+
+## Meta OAuth connection lifecycle — 2026-11-20 continuation
+
+**Implemented in code; exact-head CI pending.**
+
+- Registered tenant-authorized Meta routes in the API server. Routes self-disable unless the Meta app ID/secret, callback URI, pinned Graph API version and dedicated token keyring are configured.
+- OAuth initiation requires an active tenant membership with `meta:connections:write` and recent MFA step-up. It creates a five-minute, one-time state hashed at rest and bound to tenant, user, session, callback URI and the exact sorted requested scopes.
+- Callback requires the same authenticated user/session, current tenant write permission and recent MFA step-up. State is consumed before exchanging the code. The token is debug-validated against the configured app and requested permissions, exchanged for a long-lived token, and validated again.
+- Added token-free connection list and disconnect routes. Disconnect attempts Meta's `DELETE /{user-id}/permissions`, then always erases local encrypted token material. The response and audit record distinguish remote revocation `succeeded`, `failed` or `not_attempted`.
+- Dedicated database-backed rate limits cover OAuth start and callback. Provider transport is injectable in integration tests; production uses pinned Graph version, App Secret Proof, no redirects, omitted credentials/cookies, no-store and no referrer.
+- Added MongoDB integration test for tenant isolation, same-session callback, MFA, single-use state, scope binding, token encryption/non-disclosure, remote permission revoke, local token erasure and audit-chain integrity.
+- Added `docs/api/mebumip-openapi.yaml` operations and `docs/integrations/META-GRAPH-INTEGRATION.md`; indexed from `docs/README.md`.
+
+**Not yet implemented/accepted:** Page discovery and association; Instagram account discovery/eligibility; publishing/media/comments/inbox; webhook lifecycle and signature verification; Marketing API campaigns/ad accounts; WhatsApp; scheduled token health/re-authorisation; Business Login HTTP route; frontend connect UX; Meta App Review/privacy/data-deletion approval; production provider smoke tests.
+
+**Verification:** route integration and Phase 1 verification passed on checkpoint `5edf3cfb8302a1f3ea13304c25a47d142b1a288c` ([run 44873115938](https://github.com/openpayglobal/zurios/actions/runs/44873115938)). Subsequent remote-disconnect and documentation changes are under verification at the current branch head; see the current Actions runs before marking this continuation fully green. No live Meta account was connected.
