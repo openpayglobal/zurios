@@ -34,7 +34,7 @@ test("rejects unversioned, traversal and absolute request paths", async () => {
   await assert.rejects(() => client.request("https://attacker.example/me", { accessToken: token }), MetaGraphError);
   await assert.rejects(() => client.request("v27.0/me", { accessToken: token }), /Do not include the API version/);
   await assert.rejects(() => client.request("me", { accessToken: token, query: { access_token: "leak" } }), /Credential parameters are managed/);
-  await assert.rejects(() => client.request("me", { accessToken: token, method: "POST", body: { access_token: "leak" } }), /Authorization header/);
+  await assert.rejects(() => client.request("me", { accessToken: token, method: "POST", body: { access_token: "leak" } }), /Credential parameters are managed/);
 });
 
 test("adds Meta app secret proof without exposing the access token in the URL", async () => {
