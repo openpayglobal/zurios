@@ -1,6 +1,5 @@
-import {randomBytes} from "node:crypto";
 import {MongoClient} from "mongodb";
-import {createMembership,createUser,provisionTenant,runCoreMigrations,setTenantStatus} from "@zuri/core-platform";
+import {createMembership,createUser,provisionTenant,runCoreMigrations,seedPlatform,setTenantStatus} from "@zuri/core-platform";
 import {acceptInvitation,issueInvitation} from "../src/platform/auth-service.js";
 import {hashPassword} from "../src/platform/auth-crypto.js";
 
@@ -19,10 +18,13 @@ if(!databaseName.startsWith("zuri_demo"))throw new Error("DEMO_DATABASE_NAME mus
 const actor="system:demo-seed";
 const client=new MongoClient(uri);
 const ensureTenant=async(db:any,slug:string,displayName:string)=>{
- const existing=await db.collection("tenants").findOne({slug});
- if(existing){if(existing.status!=="active"||existing.createdBy!==actor)throw new Error("Refusing to reuse a tenant not created by the demo seeder: "+slug);return existing;}
- const tenant=await provisionTenant(db,actor,{slug,legalName:displayName+" Ltd",displayName,defaultLocale:"en",defaultCurrency:"UGX",timezone:"Africa/Kampala"});
- await setTenantStatus(db,tenant.tenantId,"active",actor);
+ let tenant=await db.collection("tenants").findOne({slug});
+ if(tenant){if(tenant.status!=="active"||tenant.createdBy!==actor)throw new Error("Refusing to reuse a tenant not created by the demo seeder: "+slug);}
+ else{
+  tenant=await provisionTenant(db,actor,{slug,legalName:displayName+" Ltd",displayName,defaultLocale:"en",defaultCurrency:"UGX",timezone:"Africa/Kampala"});
+  await setTenantStatus(db,tenant.tenantId,"active",actor);
+ }
+ await seedPlatform(db,tenant.tenantId,actor);
  return tenant;
 };
 async function ensureAccount(db:any,email:string,displayName:string,workspaceIds:string[]){
@@ -39,7 +41,7 @@ async function ensureAccount(db:any,email:string,displayName:string,workspaceIds
  await db.collection("sessions").updateMany({userId:user.userId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:actor}});
  for(const id of workspaceIds){
   const membership=await db.collection("memberships").findOne({tenantId:id,userId:user.userId,status:{$in:["active","invited","suspended"]}});
-  if(!membership)await createMembership(db,id,actor,{userId:user.userId,organizationIds:[],locationIds:[],roleIds:[]});
+  if(!membership)await createMembership(db,id,actor,{userId:user.userId,organizationIds:[],locationIds:[],roleIds:["rol_tenant_viewer"]});
  }
  return user;
 }
