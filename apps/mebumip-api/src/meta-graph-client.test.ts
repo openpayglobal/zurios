@@ -108,11 +108,11 @@ test("does not automatically retry side-effecting POST requests", async () => {
 test("redacts the bearer token from provider error messages", async () => {
   const client = new MetaGraphClient({
     version: "v27.0",
-    fetchImpl: async () => new Response(JSON.stringify({ error: { message: `Invalid token ${token}`, type: "OAuthException", code: 190 } }), { status: 400 }),
+    fetchImpl: async () => new Response(JSON.stringify({ error: { message: `Invalid token ${token}; appsecret_proof=secret-proof-value`, type: "OAuthException", code: 190 } }), { status: 400 }),
   });
   await assert.rejects(
     () => client.request("me", { accessToken: token }),
-    (error: unknown) => error instanceof MetaGraphError && error.providerCode === 190 && !error.message.includes(token) && error.message.includes("[REDACTED]"),
+    (error: unknown) => error instanceof MetaGraphError && error.providerCode === 190 && !error.message.includes(token) && !error.message.includes("secret-proof-value") && error.message.includes("[REDACTED]"),
   );
 });
 
