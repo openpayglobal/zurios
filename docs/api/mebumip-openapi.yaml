@@ -107,6 +107,7 @@ paths:
         "401": {description: Authentication required}
         "403": {description: Tenant permission or recent MFA step-up required}
         "429": {description: OAuth initiation rate limit exceeded}
+        "503": {description: Meta provider and token-vault configuration is incomplete}
   /v1/meta/oauth/callback:
     get:
       tags: [Meta Integrations]
@@ -139,6 +140,7 @@ paths:
         "409": {description: This Meta provider identity is already connected to the tenant}
         "429": {description: OAuth callback rate limit exceeded}
         "502": {description: Provider exchange or token validation failed}
+        "503": {description: Meta provider and token-vault configuration is incomplete}
   /v1/tenants/{tenantId}/meta/connections:
     get:
       tags: [Meta Integrations]
@@ -250,6 +252,7 @@ paths:
         "409": {description: Meta connection token or data-access grant has expired}
         "429": {description: Page discovery rate limit exceeded}
         "502": {description: Meta Page discovery failed}
+        "503": {description: Meta provider and token-vault configuration is incomplete}
   /v1/mad/overview:
     get:
       tags: [MAD]
