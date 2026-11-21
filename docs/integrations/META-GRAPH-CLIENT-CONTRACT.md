@@ -74,3 +74,10 @@ Official Meta references checked 2026-11-21:
 - Graph API documentation currently identifies `v27.0` as the latest version: https://developers.facebook.com/docs/graph-api/
 - Meta recommends `appsecret_proof`, an HMAC-SHA256 of the access token using the app secret, for server-side Graph API requests and documents the Require App Secret setting: https://developers.facebook.com/docs/graph-api/guides/secure-requests
 - Meta's error-handling guidance documents provider error codes, transient errors and rate-limit recovery: https://developers.facebook.com/docs/graph-api/guides/error-handling
+
+
+## Configuration-backed factories
+
+`createConfiguredMetaGraphClient()` binds the configured Graph API version and, whenever a Meta app ID is configured, requires the app secret and enables App Secret Proof. It fails closed for incomplete app configuration. `createConfiguredMetaTokenVault()` parses the dedicated Meta token keyring and active key ID; the vault uses AES-256-GCM with tenant and connection identifiers as authenticated associated data. `getMetaIntegrationReadiness()` reports only presence/version flags and never returns app secrets, webhook verification tokens or encryption key material.
+
+These are configuration and cryptographic primitives only. The OAuth authorization/callback lifecycle, encrypted token persistence, page discovery, Instagram account linking, connection revocation, webhook subscription and provider app-review approvals are still outstanding; no Meta account is connected and no live Page/Instagram mutation is enabled by this work.
