@@ -56,11 +56,11 @@ Meta token keys must be different from MFA encryption keys and audit signing key
 
 This foundation does **not** mean the following features are complete:
 
-- Facebook Page discovery and Page-to-business association.
-- Instagram Business/Creator account discovery and eligibility validation.
+- Page-level management operations, Page-to-business ownership validation and asset-specific capability checks. Page discovery and linked Instagram account ID/username metadata are implemented.
+- Instagram Business/Creator eligibility, account-level permission validation, insights and publishing workflows. Current discovery captures the linked Instagram ID/username from each Page but does not yet validate account eligibility.
 - Page publishing, media upload, scheduling, comments and inbox management.
 - Meta webhooks, signature verification, event deduplication, replay protection and subscription lifecycle.
-- Token health monitoring, scheduled expiry/data-access-expiry handling, reauthorization UX and automated key rotation operations.
+- Scheduled token health and expiry/data-access-expiry monitoring, reauthorization UX and automated key-rotation orchestration. Transactional key-rotation helpers exist for user and Page tokens but are not yet scheduled or exposed as an operations workflow.
 - Marketing API campaign/ad-account management.
 - WhatsApp Business API onboarding, templates, messaging or webhook processing.
 - Meta App Review, business verification, privacy policy/data-deletion workflows, permissions approval and production security review.
