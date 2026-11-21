@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/zuri-mebumip-foundation
+      - integration/pr13-pr14-security-reconciliation
   pull_request:
     branches:
       - main
@@ -16,19 +17,10 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok'"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    env:
+        env:
       NODE_ENV: test
-      MONGODB_URI: mongodb://127.0.0.1:27017
+      MONGODB_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
+      MONGODB_TEST_URI: mongodb://127.0.0.1:27017/?replicaSet=rs0
       MFA_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
       AUDIT_SIGNING_KEY: mebumip-ci-audit-signing-key-with-test-only-entropy
       PLATFORM_BOOTSTRAP_TOKEN: mebumip-ci-bootstrap-token-test-only-2026
@@ -42,6 +34,21 @@ jobs:
           node-version: 22
       - name: Install workspace dependencies
         run: pnpm install --no-frozen-lockfile
+      - name: Start MongoDB replica set
+        run: |
+          docker run -d --name mebumip-mongo -p 27017:27017 mongo:7 --replSet rs0 --bind_ip_all
+          for i in $(seq 1 30); do
+            if docker exec mebumip-mongo mongosh --quiet --eval 'db.adminCommand({ ping: 1 }).ok' 2>/dev/null | grep -q 1; then break; fi
+            sleep 1
+          done
+          docker exec mebumip-mongo mongosh --quiet --eval "rs.initiate({_id: 'rs0', members: [{_id: 0, host: '127.0.0.1:27017'}]})"
+          for i in $(seq 1 30); do
+            if docker exec mebumip-mongo mongosh --quiet --eval 'db.hello().isWritablePrimary' | grep -q true; then exit 0; fi
+            sleep 1
+          done
+          echo "MongoDB replica set did not become primary"
+          docker logs mebumip-mongo
+          exit 1
       - name: API typecheck
         run: pnpm --filter @zuri/mebumip-api typecheck
       - name: API tests
