@@ -20,7 +20,7 @@ export function AuthPanel() {
   useEffect(() => { fetch(API_BASE + "/v1/auth/me", { credentials: "include" }).then((response) => setAuthenticated(response.ok)).catch(() => setAuthenticated(false)).finally(() => setChecking(false)); }, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset" | "admin-register">("login");
+  const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset" | "admin-register" | "tenant-register">("login");
   const [recoveryEmail, setRecoveryEmail] = useState("");
   const [resetToken, setResetToken] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -31,6 +31,14 @@ export function AuthPanel() {
   const [platformInviteName, setPlatformInviteName] = useState("");
   const [acceptInviteMode, setAcceptInviteMode] = useState(false);
   const [platformInviteMessage, setPlatformInviteMessage] = useState("");
+  const [tenantInviteToken, setTenantInviteToken] = useState("");
+  const [tenantInviteEmail, setTenantInviteEmail] = useState("");
+  const [tenantInvitePassword, setTenantInvitePassword] = useState("");
+  const [tenantInviteName, setTenantInviteName] = useState("");
+  const [tenantInviteMessage, setTenantInviteMessage] = useState("");
+  const [acceptTenantMode, setAcceptTenantMode] = useState(false);
+  const [acceptTenantToken, setAcceptTenantToken] = useState("");
+  const [acceptTenantMessage, setAcceptTenantMessage] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
@@ -90,6 +98,30 @@ export function AuthPanel() {
     } catch (cause) { setPlatformInviteMessage(cause instanceof Error ? cause.message : "Invitation acceptance failed."); }
     finally { setBusy(false); }
   }
+  async function registerInvitedTenantUser(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setTenantInviteMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: tenantInviteToken, email: tenantInviteEmail, password: tenantInvitePassword, displayName: tenantInviteName }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Business invitation registration failed.");
+      setEmail(tenantInviteEmail); setPassword(""); setTenantInviteToken(""); setTenantInvitePassword(""); setRecoveryMode("login");
+      setTenantInviteMessage("Business workspace account created. Sign in to continue.");
+    } catch (cause) { setTenantInviteMessage(cause instanceof Error ? cause.message : "Business invitation registration failed."); }
+    finally { setBusy(false); }
+  }
+
+  async function acceptTenantInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setAcceptTenantMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/tenant-invitations/accept", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ token: acceptTenantToken }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "Workspace invitation acceptance failed.");
+      setAcceptTenantToken(""); setAcceptTenantMode(false); setAcceptTenantMessage("Workspace access activated. Refresh your workspace list.");
+      window.location.reload();
+    } catch (cause) { setAcceptTenantMessage(cause instanceof Error ? cause.message : "Workspace invitation acceptance failed."); }
+    finally { setBusy(false); }
+  }
+
   async function logout() {
     await fetch(API_BASE + "/v1/auth/logout", { method: "POST", credentials: "include", headers: csrfHeaders() }).catch(() => undefined);
     setAuthenticated(false); window.location.reload();
@@ -97,8 +129,9 @@ export function AuthPanel() {
 
   return <section className="api-auth">
     {checking ? <span>Checking secure session…</span> : authenticated
-      ? <><span className="api-online">Authenticated secure session established</span><button type="button" onClick={() => { setAcceptInviteMode((value) => !value); setPlatformInviteMessage(""); }}>Accept administrator invitation</button>{acceptInviteMode && <form onSubmit={acceptExistingPlatformAdmin}><input placeholder="Administrator invitation token" value={platformInviteToken} onChange={(event) => setPlatformInviteToken(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Accepting…" : "Accept invitation"}</button></form>}{platformInviteMessage && <span role="status">{platformInviteMessage}</span>}<button type="button" onClick={logout}>Sign out</button></>
-      : recoveryMode === "login" ? <form onSubmit={submit}><div><strong>Platform administrator sign in</strong><small>Sign in to load protected MAC and MAD data.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button><button type="button" onClick={() => { setRecoveryEmail(email); setRecoveryMode("request"); setRecoveryMessage(""); }}>Forgot password?</button><button type="button" onClick={() => { setRecoveryMode("admin-register"); setPlatformInviteMessage(""); }}>Register from administrator invitation</button>{error && <span className="api-error">{error}</span>}{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
+      ? <><span className="api-online">Authenticated secure session established</span><button type="button" onClick={() => { setAcceptInviteMode((value) => !value); setPlatformInviteMessage(""); }}>Accept administrator invitation</button>{acceptInviteMode && <form onSubmit={acceptExistingPlatformAdmin}><input placeholder="Administrator invitation token" value={platformInviteToken} onChange={(event) => setPlatformInviteToken(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Accepting…" : "Accept administrator invitation"}</button></form>}{platformInviteMessage && <span role="status">{platformInviteMessage}</span>}<button type="button" onClick={() => { setAcceptTenantMode((value) => !value); setAcceptTenantMessage(""); }}>Accept business workspace invitation</button>{acceptTenantMode && <form onSubmit={acceptTenantInvitation}><input placeholder="Business invitation token" value={acceptTenantToken} onChange={(event) => setAcceptTenantToken(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Accepting…" : "Accept workspace invitation"}</button></form>}{acceptTenantMessage && <span role="status">{acceptTenantMessage}</span>}<button type="button" onClick={logout}>Sign out</button></>
+      : recoveryMode === "login" ? <form onSubmit={submit}><div><strong>Sign in to Zuri MeBuMIP</strong><small>Sign in to access your business workspace or authorized MAC/MAD administration.</small></div><input type="email" autoComplete="username" placeholder="Administrator email" value={email} onChange={(event) => setEmail(event.target.value)} required/><input type="password" autoComplete="current-password" placeholder="Password" value={password} onChange={(event) => setPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Signing in…" : "Sign in"}</button><button type="button" onClick={() => { setRecoveryEmail(email); setRecoveryMode("request"); setRecoveryMessage(""); }}>Forgot password?</button><button type="button" onClick={() => { setRecoveryMode("admin-register"); setPlatformInviteMessage(""); }}>Register from administrator invitation</button><button type="button" onClick={() => { setRecoveryMode("tenant-register"); setTenantInviteMessage(""); }}>Register from business invitation</button>{error && <span className="api-error">{error}</span>}{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
+      : recoveryMode === "tenant-register" ? <form onSubmit={registerInvitedTenantUser}><div><strong>Join a business workspace</strong><small>Use the one-time invitation token sent by your workspace administrator.</small></div><input placeholder="Business invitation token" value={tenantInviteToken} onChange={(event) => setTenantInviteToken(event.target.value)} required/><input type="email" placeholder="Invited email address" value={tenantInviteEmail} onChange={(event) => setTenantInviteEmail(event.target.value)} required/><input placeholder="Full name" value={tenantInviteName} onChange={(event) => setTenantInviteName(event.target.value)} required/><input type="password" autoComplete="new-password" minLength={12} placeholder="Password (12+ characters)" value={tenantInvitePassword} onChange={(event) => setTenantInvitePassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Joining…" : "Create workspace account"}</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{tenantInviteMessage && <span role="status">{tenantInviteMessage}</span>}</form>
       : recoveryMode === "admin-register" ? <form onSubmit={registerInvitedPlatformAdmin}><div><strong>Register as a platform administrator</strong><small>Use the one-time invitation token sent to your email address.</small></div><input placeholder="Administrator invitation token" value={platformInviteToken} onChange={(event) => setPlatformInviteToken(event.target.value)} required/><input type="email" placeholder="Invited email address" value={platformInviteEmail} onChange={(event) => setPlatformInviteEmail(event.target.value)} required/><input placeholder="Full name" value={platformInviteName} onChange={(event) => setPlatformInviteName(event.target.value)} required/><input type="password" autoComplete="new-password" minLength={12} placeholder="Password (12+ characters)" value={platformInvitePassword} onChange={(event) => setPlatformInvitePassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Registering…" : "Create administrator account"}</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{platformInviteMessage && <span role="status">{platformInviteMessage}</span>}</form>
       : recoveryMode === "request" ? <form onSubmit={requestPasswordRecovery}><div><strong>Recover your password</strong><small>We will send a one-time reset token if this account exists.</small></div><input type="email" placeholder="Account email" value={recoveryEmail} onChange={(event) => setRecoveryEmail(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Sending…" : "Send recovery email"}</button><button type="button" onClick={() => setRecoveryMode("reset")}>I already have a reset token</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>
       : <form onSubmit={resetAccountPassword}><div><strong>Set a new password</strong><small>Paste the one-time token from your recovery email.</small></div><input placeholder="Password reset token" value={resetToken} onChange={(event) => setResetToken(event.target.value)} required/><input type="password" autoComplete="new-password" minLength={12} placeholder="New password (12+ characters)" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required/><button disabled={busy} type="submit">{busy ? "Resetting…" : "Reset password"}</button><button type="button" onClick={() => setRecoveryMode("login")}>Back to sign in</button>{recoveryMessage && <span role="status">{recoveryMessage}</span>}</form>}
