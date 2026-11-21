@@ -50,7 +50,7 @@ function Status({ children }: { children: string }) {
 }
 
 function App() {
-  const [section, setSection] = useState<Section>("dashboard");
+  const [section, setSection] = useState<Section>("customer-workspace");
   const [mobileNav, setMobileNav] = useState(false);
   const [query, setQuery] = useState("");
   const selected = nav.find((item) => item.id === section)!;
