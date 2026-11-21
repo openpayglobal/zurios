@@ -505,7 +505,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      environment:process.env.NODE_ENV??"unknown",
      database:{configured:Boolean(process.env.MONGODB_URI),topology,source:"deployment_bootstrap",note:"The API requires a bootstrap database connection before it can read MAC runtime configuration. A provider-issued production URI must be validated and registered through a separate secure provisioning step; the URI is never returned."},
      keyrings:{
-      userSessionJwt:{legacyConfigured:Boolean(config.jwtSecret),legacyAlgorithm:"HS256",managedSigning,status:"KMS_keys_provisioned_pending_application_migration"},
+      workloadIdentity:{managedSigning:managedSigning.filter(key=>key.purpose.toLowerCase().includes("workload identity")),status:"provisioned_pending_live_oidc_validation"},
+      userSessionJwt:{legacyConfigured:Boolean(config.jwtSecret),legacyAlgorithm:"HS256",managedSigning:managedSigning.filter(key=>key.purpose==="User session JWT signing"),status:"KMS_key_provisioned_pending_application_migration"},
       mfaEncryption:{configured:Boolean(process.env.MFA_ENCRYPTION_KEY),source:"deployment_bootstrap",status:"encryption_KMS_HSM_required_for_MAC_managed_rotation"},
       auditSigning:{configured:Boolean(process.env.AUDIT_SIGNING_KEY||process.env.AUDIT_SIGNING_KEYRING),managedSigning:managedSigning.filter(key=>key.purpose==="Audit event signing"),status:"KMS_key_provisioned_pending_audit_pipeline_migration"}
      },
