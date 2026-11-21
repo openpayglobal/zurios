@@ -17,7 +17,7 @@ const teamSlug = "openpayglobal-5300s-projects";
 const teamId = "team_Gn7gvUwfzUbCZpxOIRrYK5gD";
 const teamIssuer = `https://oidc.vercel.com/${teamSlug}`;
 const teamAudience = `https://vercel.com/${teamSlug}`;
-const vercelJwks = createRemoteJWKSet(new URL(`${teamIssuer}/.well-known/jwks.json`));
+const vercelJwks = createRemoteJWKSet(new URL(`${teamIssuer}/.well-known/jwks`));
 let outboxWorkerPromise: Promise<void> | undefined;
 
 await app.register(helmet);
