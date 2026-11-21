@@ -152,3 +152,35 @@ At this checkpoint, the identity-first multi-workspace foundation and PR #14 pub
 
 
 **Streaming audit verification (2026-11-21):** the chain verifier now streams fully shaped records in sequence order, counts all partial/legacy records separately, and checks the sequence counter. This removes full-collection materialization/sort in application memory while preserving fail-closed handling of incomplete chain data. The archive export remains a deliberate full materialization operation. Current code/test head: `a13b5c0f23bcd7aa6bb4e762821f9ac7651d919b`; exact-head GitHub workflows are pending. A previous CI attempt identified strict TypeScript errors in the initial bounded-backfill patch; fixes were applied in subsequent commits, and final acceptance awaits successful current-head workflows.
+
+
+## 2026-11-21 — PR #13 / PR #14 security reconciliation checkpoint
+
+This section supersedes earlier changed-path counts in this register. A fresh inventory now records PR #13 at 54 changed paths and PR #14 at 91 changed paths, with 52 overlapping paths and two PR #13-only path differences. PR #13 remains open/draft; PR #14 remains open/non-draft. Neither has been merged. Both currently have zero unresolved inline review threads.
+
+### Previously unique PR #13 work accounted for on PR #14
+
+- `apps/mebumip-api/src/audit-service.ts`: its transactional audit-chain, backfill, verification and archive responsibilities are integrated into `apps/mebumip-api/src/security.ts`; PR #14 has one canonical security/audit module rather than a duplicate audit service file.
+- `packages/core-platform/src/idempotency-service.ts`: the file exists on PR #14's tree and its canonical request hashing, transactional mutation, replay detection and conflict behavior were compared with PR #13. It is not missing functionality; it is not a changed path in PR #14.
+- The MeBuMIP tenant-member MongoDB integration test and the Phase 1 production security operations runbook are now present on PR #14 and the runbook is indexed in `docs/README.md`.
+
+### Security and lifecycle implementation now on PR #14
+
+- Audit events are sequence-ordered, predecessor-linked, canonically hashed and signed through the versioned key ring. Sequence allocation, predecessor lookup, counter update and event insert are transaction-scoped.
+- Chain verification streams the full audit history, validates the sequence counter and fails on missing/partial/legacy records or invalid signatures. Backfill is dry-run-first, bounded to 5,000 records and refuses malformed, partial or mixed histories.
+- Signed archive export and offline verification are available. Serialized JSON timestamps are normalized before event signature verification. The runbook documents independent immutable/WORM retention as a separate production control; local export does not claim WORM acceptance.
+- Audit event creation redacts credential-like metadata before signing and fails closed on invalid required fields/outcomes or unavailable signing keys.
+- First-owner bootstrap commits owner, tenant, membership and the signed bootstrap event in one MongoDB transaction under the bootstrap lease.
+- Session refresh now inserts the successor, revokes the previous session and appends the rotation audit event in one transaction. Concurrent refresh attempts have a single winner.
+- Password recovery uses hashed, expiring, one-time records. Password reset consumes the record, updates the password, revokes sessions and appends the audit event in one transaction.
+- Existing identity/workspace validity enforcement, CSRF exact-Origin validation, access-request safeguards and platform authorization behavior remain on the branch.
+
+### Verification and release state
+
+- Code/test head before the documentation follow-up: `13f6cfb7a4016f8dae7d517b9a5b80a6590b27ec`.
+- Full monorepo CI [#44866926607](https://github.com/openpayglobal/zurios/actions/runs/44866926607) and MeBuMIP verification [#44866926541](https://github.com/openpayglobal/zurios/actions/runs/44866926541) were queued when inspected. They are not passing evidence yet. The plan update commit `207cebb21599eab88e6ac002a9dcea11777a4209` and this register update must also pass their exact-head checks.
+- Vercel frontend/API contexts continue to report deployment-rate-limit failures; there is no current-head preview deployment verification.
+- No production audit backfill apply, ABAC backfill apply, public access-request activation, production deployment or promotion has been performed.
+- The ODEI repository remains inaccessible to the connected GitHub integration; do not claim its requirements are satisfied.
+
+**Release assessment:** implementation has materially advanced and PR #14 now contains the main security behaviors that were previously isolated on PR #13. It is not yet production-ready. Exact-head CI, current Vercel preview verification, remaining semantic review of overlapping paths, privacy/legal approvals, production secret/database controls, immutable archive proof and independent security review remain release gates.
