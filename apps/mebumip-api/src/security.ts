@@ -172,32 +172,37 @@ export function auditEventHash(event: AuditEventInput & { occurredAt: Date }): s
 }
 
 /** Allocate sequence, link the predecessor, sign, and insert atomically. */
+export async function appendAuditEventInTransaction(db: Db, input: AuditEventInput, session: import("mongodb").ClientSession) {
+  const counters = db.collection<{ _id: string; sequence: number }>("auditCounters");
+  const events = db.collection("auditEvents");
+  let counter = await counters.findOne({ _id: "global" }, { session });
+  if (!counter) {
+    const existingEvent = await events.findOne({}, { session, sort: { sequence: -1 } });
+    if (existingEvent) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
+    await counters.insertOne({ _id: "global", sequence: 0 }, { session });
+  }
+  await counters.updateOne({ _id: "global" }, { $inc: { sequence: 1 }, $set: { updatedAt: new Date() } }, { session });
+  counter = await counters.findOne({ _id: "global" }, { session });
+  const sequence = Number(counter?.sequence);
+  if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_ALLOCATION_FAILED");
+  const previous = sequence > 1 ? await events.findOne({ sequence: sequence - 1 }, { session }) : null;
+  if (sequence > 1 && (!previous || typeof previous.eventHash !== "string")) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
+  const previousHash = typeof previous?.eventHash === "string" ? previous.eventHash : "GENESIS";
+  const event = createAuditEvent({ ...input, sequence, previousHash });
+  if (event.integrity.algorithm === "unsigned") throw new Error("AUDIT_SIGNING_KEY_REQUIRED");
+  const eventHash = auditEventHash(event);
+  const chainedEvent = { ...event, eventHash };
+  await events.insertOne(chainedEvent as Document, { session });
+  return chainedEvent;
+}
+
+/** Standalone append always uses a transaction; callers already in a transaction use appendAuditEventInTransaction. */
 export async function appendAuditEvent(db: Db, input: AuditEventInput) {
   const session = db.client.startSession();
-  let result: (ReturnType<typeof createAuditEvent> & { eventHash: string }) | undefined;
   try {
+    let result: Awaited<ReturnType<typeof appendAuditEventInTransaction>> | undefined;
     await session.withTransaction(async () => {
-      const counters = db.collection<{ _id: string; sequence: number }>("auditCounters");
-      const events = db.collection("auditEvents");
-      let counter = await counters.findOne({ _id: "global" }, { session });
-      if (!counter) {
-        const existingEvent = await events.findOne({}, { session, sort: { sequence: -1 } });
-        if (existingEvent) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
-        await counters.insertOne({ _id: "global", sequence: 0 }, { session });
-      }
-      await counters.updateOne({ _id: "global" }, { $inc: { sequence: 1 }, $set: { updatedAt: new Date() } }, { session });
-      counter = await counters.findOne({ _id: "global" }, { session });
-      const sequence = Number(counter?.sequence);
-      if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_ALLOCATION_FAILED");
-      const previous = sequence > 1 ? await events.findOne({ sequence: sequence - 1 }, { session }) : null;
-      if (sequence > 1 && (!previous || typeof previous.eventHash !== "string")) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
-      const previousHash = typeof previous?.eventHash === "string" ? previous.eventHash : "GENESIS";
-      const event = createAuditEvent({ ...input, sequence, previousHash });
-      if (event.integrity.algorithm === "unsigned") throw new Error("AUDIT_SIGNING_KEY_REQUIRED");
-      const eventHash = auditEventHash(event);
-      const chainedEvent = { ...event, eventHash };
-      await events.insertOne(chainedEvent as Document, { session });
-      result = chainedEvent;
+      result = await appendAuditEventInTransaction(db, input, session);
     }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
     if (!result) throw new Error("AUDIT_EVENT_RESULT_MISSING");
     return result;
