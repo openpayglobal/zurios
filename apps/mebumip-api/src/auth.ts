@@ -216,6 +216,98 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     }
   });
 
+  app.post("/v1/auth/register", async (request, reply) => {
+    const parsed = z.object({
+      token: z.string().min(40).max(200),
+      email: z.string().email().max(254),
+      password: z.string().min(12).max(256),
+      displayName: z.string().trim().min(2).max(100),
+    }).strict().safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
+    const email = parsed.data.email.trim().toLowerCase();
+    const invitation = await db.collection("tenantInvitations").findOne({
+      tokenHash: hashToken(parsed.data.token),
+      email,
+      acceptedAt: { $exists: false },
+      revokedAt: { $exists: false },
+      expiresAt: { $gt: new Date() },
+    });
+    if (!invitation) return reply.code(404).send({ error: "INVITATION_INVALID_OR_EMAIL_MISMATCH" });
+    if (!TENANT_ROLES.includes(invitation.role as TenantRole) || invitation.role === "tenant_owner") {
+      return reply.code(400).send({ error: "INVITATION_ROLE_INVALID" });
+    }
+    if (await db.collection("users").findOne({ normalizedEmail: email })) {
+      return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_SIGN_IN_AND_ACCEPT_INVITATION" });
+    }
+
+    const passwordHash = await hashPassword(parsed.data.password);
+    const now = new Date();
+    const session = db.client.startSession();
+    let createdUserId = "";
+    try {
+      await session.withTransaction(async () => {
+        const currentInvitation = await db.collection("tenantInvitations").findOne({
+          _id: invitation._id,
+          tokenHash: hashToken(parsed.data.token),
+          email,
+          acceptedAt: { $exists: false },
+          revokedAt: { $exists: false },
+          expiresAt: { $gt: now },
+        }, { session });
+        if (!currentInvitation) throw new Error("INVITATION_ALREADY_USED_OR_EXPIRED");
+        const tenant = await db.collection("tenants").findOne({ _id: new ObjectId(currentInvitation.tenantId), status: "active" }, { session });
+        if (!tenant) throw new Error("TENANT_NOT_ACTIVE");
+
+        const inserted = await db.collection("users").insertOne({
+          normalizedEmail: email,
+          email,
+          displayName: parsed.data.displayName,
+          passwordHash,
+          status: "active",
+          emailVerifiedAt: now,
+          emailVerificationMethod: "single_use_workspace_invitation",
+          createdAt: now,
+          updatedAt: now,
+        }, { session });
+        createdUserId = String(inserted.insertedId);
+
+        await db.collection("memberships").updateOne(
+          { tenantId: currentInvitation.tenantId, userId: createdUserId },
+          { $setOnInsert: { tenantId: currentInvitation.tenantId, userId: createdUserId, role: currentInvitation.role, status: "active", createdAt: now, updatedAt: now } },
+          { upsert: true, session },
+        );
+        const accepted = await db.collection("tenantInvitations").updateOne(
+          { _id: currentInvitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
+          { $set: { acceptedAt: now, acceptedBy: createdUserId } },
+          { session },
+        );
+        if (accepted.modifiedCount !== 1) throw new Error("INVITATION_ALREADY_USED");
+
+        await appendAuditEventInTransaction(db, {
+          actorUserId: createdUserId,
+          action: "tenant.invitation.registered",
+          targetType: "tenant_membership",
+          targetId: createdUserId,
+          tenantId: currentInvitation.tenantId,
+          outcome: "success",
+          correlationId: request.id,
+          metadata: { role: currentInvitation.role, emailVerifiedBy: "single_use_invitation" },
+        }, session);
+      }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && (error as { code?: number }).code === 11000) {
+        return reply.code(409).send({ error: "EMAIL_ALREADY_REGISTERED_SIGN_IN_AND_ACCEPT_INVITATION" });
+      }
+      if (error instanceof Error && error.message === "INVITATION_ALREADY_USED") return reply.code(409).send({ error: error.message });
+      if (error instanceof Error && error.message === "TENANT_NOT_ACTIVE") return reply.code(409).send({ error: error.message });
+      request.log.error({ err: error, correlationId: request.id }, "Tenant invitation registration failed");
+      return reply.code(500).send({ error: "REGISTRATION_FAILED" });
+    } finally {
+      await session.endSession();
+    }
+    return reply.code(201).send({ status: "registered", tenantId: invitation.tenantId, userId: createdUserId, emailVerified: true });
+  });
+
   app.post("/v1/auth/login", async (request, reply) => {
     const parsed = loginSchema.safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });

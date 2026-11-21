@@ -5,6 +5,7 @@ import {createHash} from "node:crypto";
 import type {AuthConfig} from "./auth-service.js";
 import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
+import {readPlatformRuntimeConfig} from "./runtime-config-store.js";
 const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64).optional()});
 const workspaceSelectionSchema=z.object({selectionToken:z.string().min(40).max(200),tenantId:z.string().min(1).max(128)});
 const workspaceSwitchSchema=z.object({tenantId:z.string().min(1).max(128)});
@@ -26,7 +27,10 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   const requireAuth=authenticate(db,config);
   app.get("/auth/public-config",async(_request,reply)=>{
    reply.header("Cache-Control","no-store");
-   const enabled=config.accessRequestsEnabled===true;return {accessRequestsEnabled:enabled,privacyNoticeUrl:enabled?(config.accessRequestsPrivacyNoticeUrl??null):null};
+   const runtime=await readPlatformRuntimeConfig(db);
+   const enabled=runtime.publicSettings.accessRequestsEnabled??config.accessRequestsEnabled===true;
+   const privacyNoticeUrl=runtime.publicSettings.privacyNoticeUrl??config.accessRequestsPrivacyNoticeUrl??null;
+   return {accessRequestsEnabled:enabled,privacyNoticeUrl:enabled?privacyNoticeUrl:null};
   });
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
@@ -35,7 +39,8 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/auth/access-requests",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(config.accessRequestsEnabled!==true)return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
+   const runtime=await readPlatformRuntimeConfig(db);
+   if(!(runtime.publicSettings.accessRequestsEnabled??config.accessRequestsEnabled===true))return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
    try{
     const body=accessRequestSchema.parse(request.body),ipHash=createHash("sha256").update(request.ip).digest("hex");
     const result=await requestWorkspaceAccess(db,{email:body.email,displayName:body.displayName,organizationName:body.organizationName,...(body.requestNote?{requestNote:body.requestNote}:{}),ipHash});

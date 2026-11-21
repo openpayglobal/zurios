@@ -29,5 +29,6 @@ export async function ensureMeBuMIPIndexes(db: Db): Promise<void> {
     db.collection("passwordRecoveries").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "password_recovery_expiry_ttl" }),
     db.collection("rateLimitCounters").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0, name: "rate_limit_expiry_ttl" }),
     db.collection("metaConnections").createIndex({ tenantId: 1, provider: 1, status: 1 }, { name: "meta_connection_tenant_provider_status" }),
+    db.collection("tenantOnboarding").createIndex({ tenantId: 1 }, { unique: true, name: "tenant_onboarding_tenant_unique" }),
   ]);
 }

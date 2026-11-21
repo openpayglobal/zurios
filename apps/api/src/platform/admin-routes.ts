@@ -16,6 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
+import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin,type PlatformRuntimeConfig} from "./runtime-config-store.js";
 import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -441,6 +442,93 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      return {statusCode:201,body:{data:approval}};
     });
    }catch(error){return fail(error,reply);}
+  });
+
+
+  app.get("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(_request,reply)=>{
+   const runtime=await readPlatformRuntimeConfig(db);
+   return reply.header("cache-control","no-store").send({data:runtime});
+  });
+  app.put("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   const schema=z.object({
+    allowedOrigins:z.array(z.string().url()).min(1).max(20),
+    apiOrigins:z.object({zuriOs:z.string().url(),mebumip:z.string().url()}).strict(),
+    publicSettings:z.object({
+     accessRequestsEnabled:z.boolean().optional(),
+     privacyNoticeUrl:z.string().url().refine(value=>value.startsWith("https://"),"Privacy notice URL must use HTTPS").nullable().optional(),
+     supportEmail:z.string().email().optional(),
+     supportUrl:z.string().url().optional(),
+     defaultLocale:z.string().min(2).max(12).optional(),
+     defaultCurrency:z.string().regex(/^[A-Z]{3}$/).optional(),
+     timezone:z.string().min(3).max(80).optional()
+    }).strict(),
+    reason:z.string().trim().min(8).max(500)
+   }).strict();
+   try{
+    const body=schema.parse(request.body);
+    const allowedOrigins=normalizeOriginList(body.allowedOrigins);
+    const apiOrigins={zuriOs:normalizeVerifiedApiOrigin(body.apiOrigins.zuriOs),mebumip:normalizeVerifiedApiOrigin(body.apiOrigins.mebumip)};
+    if(body.publicSettings.accessRequestsEnabled===true&&!body.publicSettings.privacyNoticeUrl)throw new Error("PRIVACY_NOTICE_REQUIRED");
+    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.runtime_config.update",async(session)=>{
+     const current=await readPlatformRuntimeConfig(db,session);
+     const now=new Date();
+     const revision=current.revision+1;
+     const publicSettings={
+      accessRequestsEnabled:body.publicSettings.accessRequestsEnabled??current.publicSettings.accessRequestsEnabled,
+      privacyNoticeUrl:body.publicSettings.privacyNoticeUrl===undefined?current.publicSettings.privacyNoticeUrl:body.publicSettings.privacyNoticeUrl,
+      supportEmail:body.publicSettings.supportEmail??current.publicSettings.supportEmail,
+      supportUrl:body.publicSettings.supportUrl??current.publicSettings.supportUrl,
+      defaultLocale:body.publicSettings.defaultLocale??current.publicSettings.defaultLocale,
+      defaultCurrency:body.publicSettings.defaultCurrency??current.publicSettings.defaultCurrency,
+      timezone:body.publicSettings.timezone??current.publicSettings.timezone
+     };
+     const next={revision,allowedOrigins,apiOrigins,publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
+     await db.collection<PlatformRuntimeConfig>("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{_id:"global",createdAt:now}},{upsert:true,session});
+     await db.collection("platformRuntimeConfigHistory").insertOne({...next,changeId:randomUUID(),actorUserId:p.userId},{session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.runtime_config.updated","runtime_configuration","global","success",{revision,reason:body.reason,allowedOriginCount:allowedOrigins.length,apiOriginKeys:Object.keys(apiOrigins).join(",")},session);
+     return {statusCode:200,body:{status:"updated",revision,updatedAt:now.toISOString(),allowedOrigins,apiOrigins,publicSettings:body.publicSettings}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
+  app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(request,reply)=>{
+   try{
+    let topology={replicaSet:false,writablePrimary:false,transactionsAvailable:false};
+    try{
+     const hello=await db.command({hello:1});
+     topology={
+      replicaSet:typeof hello.setName==="string"&&hello.setName.length>0,
+      writablePrimary:hello.isWritablePrimary===true,
+      transactionsAvailable:typeof hello.logicalSessionTimeoutMinutes==="number"&&hello.logicalSessionTimeoutMinutes>0
+     };
+    }catch{}
+    const managedSigning=[
+     {id:"5653e1ff-fd71-4a0d-8720-380cdfcaf2c4",name:"Zuri OS MAC Runtime Workload Identity",purpose:"Vercel workload identity",keyId:"75899278-1e19-4444-bec0-141dc4d17eb0",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"16d2fb82-30b7-4a0d-8c4e-49fb1de92919",name:"Zuri OS User Session JWT Signing",purpose:"User session JWT signing",keyId:"2900b63b-5eed-4689-8726-b05a4618967f",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"55210f93-c052-45a5-aeb8-e083ed0d5dce",name:"Zuri OS Audit Event Signing",purpose:"Audit event signing",keyId:"da6060ee-9fda-4389-a652-281c256be6d2",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"501ff21c-7c24-4e9e-b23e-789256cd6edd",name:"Zuri MeBuMIP Runtime Workload Identity",purpose:"MeBuMIP Vercel workload identity",keyId:"5d401897-e851-438f-a56c-b28453aff756",algorithm:"RS256",environment:"production",projectId:"prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ",status:"provisioned_pending_runtime_integration"},
+    ];
+    const runtimeConfig=await readPlatformRuntimeConfig(db);
+    return reply.header("cache-control","no-store").send({data:{
+     generatedAt:new Date().toISOString(),
+     environment:process.env.NODE_ENV??"unknown",
+     database:{configured:Boolean(process.env.MONGODB_URI),topology,source:"deployment_bootstrap",note:"The API requires a bootstrap database connection before it can read MAC runtime configuration. A provider-issued production URI must be validated and registered through a separate secure provisioning step; the URI is never returned."},
+     keyrings:{
+      workloadIdentity:{managedSigning:managedSigning.filter(key=>key.purpose.toLowerCase().includes("workload identity")),status:"provisioned_pending_live_oidc_validation"},
+      userSessionJwt:{legacyConfigured:Boolean(config.jwtSecret),legacyAlgorithm:"HS256",managedSigning:managedSigning.filter(key=>key.purpose==="User session JWT signing"),status:"KMS_key_provisioned_pending_application_migration"},
+      mfaEncryption:{configured:Boolean(process.env.MFA_ENCRYPTION_KEY),source:"deployment_bootstrap",status:"encryption_KMS_HSM_required_for_MAC_managed_rotation"},
+      auditSigning:{configured:Boolean(process.env.AUDIT_SIGNING_KEY||process.env.AUDIT_SIGNING_KEYRING),managedSigning:managedSigning.filter(key=>key.purpose==="Audit event signing"),status:"KMS_key_provisioned_pending_audit_pipeline_migration"}
+     },
+     apiOrigins:{items:runtimeConfig.allowedOrigins,apiOrigins:runtimeConfig.apiOrigins,revision:runtimeConfig.revision,source:"MAC_runtime_registry",status:"active"},
+     providers:{
+      meta:{configured:false,status:"provider_authorization_required"},
+      whatsapp:{configured:false,status:"provider_authorization_required"},
+      email:{configured:Boolean(process.env.RESEND_API_KEY&&process.env.MAIL_FROM),status:process.env.RESEND_API_KEY&&process.env.MAIL_FROM?"configured":"not_configured"}
+     },
+     secretStore:{status:"blocked",reason:"Vercel KMS provides managed JWT/message signing, not general symmetric encryption/decryption. Configure a dedicated encryption KMS/HSM before storing provider, database or MFA secret values in MAC."},
+     note:"Metadata only. No private key, JWT secret, database URI or provider credential is returned."
+    }});
+   }catch(error){request.log.error({err:error,correlationId:request.id},"Infrastructure inventory failed");return reply.code(500).send({error:"INFRASTRUCTURE_INVENTORY_UNAVAILABLE"});}
   });
   app.post("/platform/admin/tenants/:tenantId/lifecycle-requests",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.lifecycle.request")},async(request,reply)=>{
    const p=principal(request);try{
