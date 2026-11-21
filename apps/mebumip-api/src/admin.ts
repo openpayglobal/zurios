@@ -456,6 +456,15 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const signed = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
     const generatedAt = new Date().toISOString();
     const manifest = signAuditExport(events as Array<Record<string, unknown>>, generatedAt);
+    if (manifest.integrity.algorithm === "unsigned") return reply.code(503).send({ error: "AUDIT_EXPORT_SIGNING_KEY_REQUIRED" });
+    await appendAuditEvent(db, {
+      actorUserId: resolved.principal.userId, action: "audit.events.exported",
+      targetType: "audit_export",
+      targetId: `${manifest.firstSequence ?? "empty"}-${manifest.lastSequence ?? "empty"}`,
+      outcome: "success", correlationId: request.id,
+      metadata: { count: events.length, signed, unsignedOrInvalid: events.length - signed, firstSequence: manifest.firstSequence, lastSequence: manifest.lastSequence, algorithm: manifest.integrity.algorithm },
+    });
+    reply.header("Cache-Control", "no-store");
     return reply.send({ manifest, integrity: { signed, unsignedOrInvalid: events.length - signed, algorithm: manifest.integrity.algorithm }, events, nextCursor: events.length === limit && events.length ? String(events[events.length - 1]!._id) : null, archiveStatus: "exported_not_archived" });
   });
   app.get("/v1/mac/audit-events", async (request, reply) => {
