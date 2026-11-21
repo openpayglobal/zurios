@@ -39,7 +39,7 @@ paths:
       operationId: verifyRecentMeBuMIPAuditEvents
       summary: Verify signatures and sequence continuity for the latest 500 audit events
       responses:
-        "200": {description: Counts of verified, unsigned and invalid events plus detected sequence gaps}
+        "200": {description: "Counts of verified, unsigned and invalid events plus detected sequence gaps"}
         "401": {description: Authentication required}
         "403": {description: Platform audit-read permission required}
   /v1/mac/audit-events/export:
@@ -67,7 +67,7 @@ paths:
         "400": {description: Invalid sequence range}
         "401": {description: Authentication required}
         "403": {description: Platform audit-read permission required}
-        "409": {description: Sequence gap, unsigned manifest or invalid event signature}
+        "409": {description: "Sequence gap, unsigned manifest or invalid event signature"}
         "503": {description: Audit signing key is not configured}
   /v1/tenants/{tenantId}/meta/oauth/start:
     post:
@@ -132,9 +132,9 @@ paths:
                 properties:
                   status: {type: string, const: connected}
                   connection: {$ref: "#/components/schemas/MetaConnectionSummary"}
-        "400": {description: Invalid, expired, replayed state or provider authorization denied}
+        "400": {description: "Invalid, expired, replayed state or provider authorization denied"}
         "401": {description: Original authenticated session required}
-        "403": {description: Original user/session, tenant permission or MFA step-up mismatch}
+        "403": {description: "Original user/session, tenant permission or MFA step-up mismatch"}
         "409": {description: This Meta provider identity is already connected to the tenant}
         "429": {description: OAuth callback rate limit exceeded}
         "502": {description: Provider exchange or token validation failed}
