@@ -57,15 +57,22 @@ test("audit-chain backfill refuses partial chain metadata instead of rewriting p
     await client.connect();
     await db.command({ ping: 1 });
     await ensureMeBuMIPIndexes(db);
-    await db.collection("auditEvents").insertOne({
-      actorUserId: "legacy-user", action: "legacy.partial", targetType: "test",
-      outcome: "success", correlationId: "legacy-partial", occurredAt: new Date(),
-      sequence: 7, previousHash: "GENESIS",
-    });
+    await db.collection("auditEvents").insertMany([
+      {
+        actorUserId: "legacy-user", action: "legacy.partial", targetType: "test",
+        outcome: "success", correlationId: "legacy-partial", occurredAt: new Date(),
+        sequence: 7, previousHash: "GENESIS",
+      },
+      {
+        actorUserId: "legacy-user", action: "legacy.sequence-only", targetType: "test",
+        outcome: "success", correlationId: "legacy-sequence-only", occurredAt: new Date(),
+        sequence: 8,
+      },
+    ]);
     const plan = await planAuditChainBackfill(db);
     assert.equal(plan.legacyCount, 0);
     assert.equal(plan.sequencedCount, 0);
-    assert.equal(plan.malformedCount, 1);
+    assert.equal(plan.malformedCount, 2);
     assert.equal(plan.applyAllowed, false);
     assert.match(plan.reason ?? "", /PARTIAL_AUDIT_CHAIN_FIELDS/);
     await assert.rejects(() => applyAuditChainBackfill(db), /PARTIAL_AUDIT_CHAIN_FIELDS/);
