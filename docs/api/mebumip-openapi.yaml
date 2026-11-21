@@ -224,8 +224,8 @@ components:
     delete:
       tags: [Meta Integrations]
       operationId: revokeTenantMetaConnection
-      summary: Revoke and erase a tenant Meta connection token
-      description: Requires tenant meta:connections:write permission and recent MFA step-up. The encrypted token is cleared and the action is audited transactionally.
+      summary: Disconnect a tenant Meta connection and erase its local token
+      description: Requires tenant meta:connections:write permission and recent MFA step-up. The API attempts to revoke the Meta user permission, then always clears the local encrypted token and audits the remote outcome.
       security:
         - bearerAuth: []
         - cookieAuth: []
@@ -247,7 +247,16 @@ components:
 }}
         - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
       responses:
-        "204": {description: Connection revoked and encrypted token cleared}
+        "200":
+          description: Local token erased; remote permission revocation outcome is explicit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, remoteRevocation]
+                properties:
+                  status: {type: string, const: disconnected}
+                  remoteRevocation: {type: string, enum: [succeeded, failed, not_attempted]}
         "401": {description: Authentication required}
         "403": {description: Tenant connection-write permission or recent MFA step-up required}
         "404": {description: Connection not found in this tenant}
