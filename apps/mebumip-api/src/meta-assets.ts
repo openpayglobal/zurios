@@ -278,7 +278,7 @@ export async function getMetaPageAccessToken(
   const tenantId = requiredText(tenantIdInput, "tenant_id");
   const connectionId = requiredText(connectionIdInput, "connection_id");
   const pageId = requiredText(pageIdInput, "page_id", 64);
-  if (!/^\\d{1,64}$/.test(pageId)) throw new Error("META_ASSET_PAGE_ID_INVALID");
+  if (!/^\d{1,64}$/.test(pageId)) throw new Error("META_ASSET_PAGE_ID_INVALID");
   const connection = await db.collection("metaConnections").findOne({ tenantId, connectionId, status: "connected" });
   if (!connection) throw new Error("META_CONNECTION_NOT_FOUND");
   const asset = await db.collection<MetaPageAssetDocument>("metaAssets").findOne({
