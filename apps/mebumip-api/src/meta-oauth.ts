@@ -121,7 +121,7 @@ export class MetaOAuthService {
       throw new Error("META_OAUTH_STATE_INVALID");
     }
     const mode = input.mode ?? "standard";
-    const url = new URL("/dialog/oauth", DIALOG_ORIGIN);
+    const url = new URL(`/${this.options.version}/dialog/oauth`, DIALOG_ORIGIN);
     url.searchParams.set("client_id", this.options.appId);
     url.searchParams.set("redirect_uri", this.options.redirectUri);
     url.searchParams.set("response_type", "code");
