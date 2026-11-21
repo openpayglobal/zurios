@@ -20,7 +20,7 @@ function associatedData(context: MetaTokenContext, keyId: string): Buffer {
   if (!context.tenantId.trim() || !context.connectionId.trim() || context.tenantId.length > 256 || context.connectionId.length > 256) {
     throw new Error("META_TOKEN_CONTEXT_INVALID");
   }
-  return Buffer.from(`zuri:meta-token:${ENVELOPE_VERSION}:${keyId}:${context.tenantId}:${context.connectionId}`, "utf8");
+  return Buffer.from(JSON.stringify(["zuri-meta-token", ENVELOPE_VERSION, keyId, context.tenantId, context.connectionId]), "utf8");
 }
 
 export class MetaTokenVault {
