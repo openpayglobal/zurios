@@ -10,6 +10,7 @@ const POLICIES = [
   { match: (path: string) => path === "/v1/auth/mfa/setup", limit: 5, windowMs: 60 * 60_000 },
   { match: (path: string) => path === "/v1/auth/password/change", limit: 8, windowMs: 15 * 60_000 },
   { match: (path: string) => path.endsWith("/meta/oauth/start"), limit: 8, windowMs: 15 * 60_000 },
+  { match: (path: string) => path.endsWith("/meta/connections/:connectionId/assets/discover"), limit: 20, windowMs: 60 * 60_000 },
   { match: (path: string) => path === "/v1/meta/oauth/callback", limit: 20, windowMs: 15 * 60_000 },
   { match: (path: string) => path.startsWith("/v1/"), limit: 180, windowMs: 60_000 },
 ] as const;
