@@ -189,6 +189,178 @@ paths:
         "401": {description: Authentication required}
         "403": {description: Tenant connection-write permission or recent MFA step-up required}
         "404": {description: Connection not found in this tenant}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}/assets:
+    get:
+      tags: [Meta Integrations]
+      operationId: listTenantMetaPageAssets
+      summary: List discovered Facebook Pages and linked Instagram Business account metadata
+      description: Returns tenant-scoped asset metadata only. Page access tokens are encrypted at rest and never returned.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}
+    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mebumip_session
+  schemas:
+    MetaOAuthStartResponse:
+      type: object
+      additionalProperties: false
+      required: [authorizationUrl, expiresAt]
+      properties:
+        authorizationUrl: {type: string, format: uri}
+        expiresAt: {type: string, format: date-time}
+    MetaPageAssetSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, assetType, providerAssetId, name, tasks, status, discoveredAt, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        assetType: {type: string, const: facebook_page}
+        providerAssetId: {type: string}
+        name: {type: string}
+        tasks: {type: array, items: {type: string}}
+        instagramBusinessAccount:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id: {type: string}
+            username: {type: string}
+        status: {type: string, enum: [active, unavailable]}
+        discoveredAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    MetaConnectionSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, providerUserId, grantedScopes, status, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        providerUserId: {type: string}
+        providerUserName: {type: string}
+        grantedScopes: {type: array, items: {type: string}}
+        expiresAt: {type: string, format: date-time}
+        dataAccessExpiresAt: {type: string, format: date-time}
+        status: {type: string, enum: [connected, revoked]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        revokedAt: {type: string, format: date-time}
+        revocationStatus: {type: string, enum: [succeeded, failed, not_attempted]}
+}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Discovered Page assets, including unavailable assets retained for reconciliation history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaPageAssetSummary"}
+        "401": {description: Authentication required}
+        "403": {description: Tenant social:assets:read permission required}
+        "404": {description: Meta connection not found in this tenant}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}/assets/discover:
+    post:
+      tags: [Meta Integrations]
+      operationId: discoverTenantMetaPages
+      summary: Discover Facebook Pages and linked Instagram Business account metadata
+      description: Requires tenant social:assets:write permission and recent MFA step-up. Follows same-origin Meta pagination with bounded limits, encrypts Page tokens, and marks previously discovered Pages unavailable when they are no longer returned.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}
+    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mebumip_session
+  schemas:
+    MetaOAuthStartResponse:
+      type: object
+      additionalProperties: false
+      required: [authorizationUrl, expiresAt]
+      properties:
+        authorizationUrl: {type: string, format: uri}
+        expiresAt: {type: string, format: date-time}
+    MetaConnectionSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, providerUserId, grantedScopes, status, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        providerUserId: {type: string}
+        providerUserName: {type: string}
+        grantedScopes: {type: array, items: {type: string}}
+        expiresAt: {type: string, format: date-time}
+        dataAccessExpiresAt: {type: string, format: date-time}
+        status: {type: string, enum: [connected, revoked]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        revokedAt: {type: string, format: date-time}
+        revocationStatus: {type: string, enum: [succeeded, failed, not_attempted]}
+}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Reconciled Page assets and discovery counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, discovered, instagramLinked]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaPageAssetSummary"}
+                  discovered: {type: integer, minimum: 0}
+                  instagramLinked: {type: integer, minimum: 0}
+        "401": {description: Authentication required}
+        "403": {description: Tenant social:assets:write permission or recent MFA step-up required}
+        "404": {description: Meta connection not found in this tenant}
+        "409": {description: Meta connection token or data-access grant has expired}
+        "429": {description: Page discovery rate limit exceeded}
+        "502": {description: Meta Page discovery failed}
   /v1/mad/overview:
     get:
       tags: [MAD]
