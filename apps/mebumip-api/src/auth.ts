@@ -597,19 +597,48 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
     if (!user) return reply.code(403).send({ error: "MFA_REQUIRED" });
-    let verified = false;
+    let verifiedTotp = false;
+    let recoveryHash: string | undefined;
     if ("code" in parsed.data && typeof user.mfaSecretEncrypted === "string") {
-      verified = verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code);
+      verifiedTotp = verifyTotp(decryptMfaSecret(user.mfaSecretEncrypted), parsed.data.code);
     } else if ("recoveryCode" in parsed.data) {
-      const recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
-      const recoveryHashes = Array.isArray(user.mfaRecoveryCodeHashes) ? user.mfaRecoveryCodeHashes.filter((value: unknown) => value !== recoveryHash) : [];
-      const consumed = await db.collection("users").updateOne({ _id: user._id, mfaRecoveryCodeHashes: recoveryHash }, { $set: { mfaRecoveryCodeHashes: recoveryHashes } });
-      verified = consumed.modifiedCount === 1;
+      recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
     }
-    if (!verified) { await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId)); return reply.code(403).send({ error: "MFA_CODE_INVALID" }); }
+    if (!verifiedTotp && !recoveryHash) {
+      await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId));
+      return reply.code(403).send({ error: "MFA_CODE_INVALID" });
+    }
     const stepUpUntil = new Date(Date.now() + 5 * 60_000);
-    await db.collection("sessions").updateOne({ _id: resolved.sessionId }, { $set: { stepUpUntil } });
-    await writeAudit(db, request, resolved.principal.userId, "auth.step_up.completed", "session", "success", String(resolved.sessionId));
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          if (recoveryHash) {
+            const consumed = await db.collection("users").updateOne(
+              { _id: user._id, mfaRecoveryCodeHashes: recoveryHash },
+              { $pull: { mfaRecoveryCodeHashes: recoveryHash } },
+              { session },
+            );
+            if (consumed.modifiedCount !== 1) throw new Error("MFA_CODE_INVALID");
+          }
+          const updated = await db.collection("sessions").updateOne(
+            { _id: resolved.sessionId, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } },
+            { $set: { stepUpUntil } },
+            { session },
+          );
+          if (updated.modifiedCount !== 1) throw new Error("SESSION_NOT_ACTIVE");
+          return { stepUpUntil };
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "auth.step_up.completed", targetType: "session", targetId: String(resolved.sessionId), outcome: "success", correlationId: request.id }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MFA_CODE_INVALID") {
+        await writeAudit(db, request, resolved.principal.userId, "auth.step_up.denied", "session", "denied", String(resolved.sessionId));
+        return reply.code(403).send({ error: "MFA_CODE_INVALID" });
+      }
+      if (error instanceof Error && error.message === "SESSION_NOT_ACTIVE") return unauthorized(reply);
+      throw error;
+    }
     return reply.send({ status: "verified", stepUpUntil: stepUpUntil.toISOString() });
   });
 
@@ -621,17 +650,33 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active", mfaEnabled: true });
     if (!user || typeof user.passwordHash !== "string" || !(await verifyPassword(parsed.data.currentPassword, user.passwordHash))) return reply.code(403).send({ error: "CURRENT_PASSWORD_INVALID" });
     const recoveryHash = hashToken(normalizeMfaRecoveryCode(parsed.data.recoveryCode));
-    const consumed = await db.collection("users").updateOne(
-      { _id: user._id, mfaEnabled: true, mfaRecoveryCodeHashes: recoveryHash },
-      { $unset: { mfaSecretEncrypted: "", mfaEnabled: "", mfaEnabledAt: "", mfaRecoveryCodeHashes: "", mfaPendingSecret: "", mfaSetupExpiresAt: "" } },
-    );
-    if (consumed.modifiedCount !== 1) {
-      await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset.denied", "user", "denied");
-      return reply.code(403).send({ error: "MFA_RECOVERY_CODE_INVALID" });
-    }
     const now = new Date();
-    await db.collection("sessions").updateMany({ userId: resolved.principal.userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "mfa_factor_reset" }, $unset: { stepUpUntil: "" } });
-    await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset", "user", "success");
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const consumed = await db.collection("users").updateOne(
+            { _id: user._id, mfaEnabled: true, mfaRecoveryCodeHashes: recoveryHash },
+            { $unset: { mfaSecretEncrypted: "", mfaEnabled: "", mfaEnabledAt: "", mfaRecoveryCodeHashes: "", mfaPendingSecret: "", mfaSetupExpiresAt: "" } },
+            { session },
+          );
+          if (consumed.modifiedCount !== 1) throw new Error("MFA_RECOVERY_CODE_INVALID");
+          await db.collection("sessions").updateMany(
+            { userId: resolved.principal.userId, revokedAt: { $exists: false } },
+            { $set: { revokedAt: now, revokeReason: "mfa_factor_reset" }, $unset: { stepUpUntil: "" } },
+            { session },
+          );
+          return { userId: resolved.principal.userId };
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "auth.mfa.reset", targetType: "user", outcome: "success", correlationId: request.id }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MFA_RECOVERY_CODE_INVALID") {
+        await writeAudit(db, request, resolved.principal.userId, "auth.mfa.reset.denied", "user", "denied");
+        return reply.code(403).send({ error: "MFA_RECOVERY_CODE_INVALID" });
+      }
+      throw error;
+    }
     clearSessionCookies(reply);
     return reply.send({ status: "mfa_reset", sessionsRevoked: true, note: "Sign in again and enroll a new authenticator. Recovery codes have been invalidated." });
   });
@@ -639,8 +684,21 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
   app.post("/v1/auth/logout", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
-    await db.collection("sessions").updateOne({ _id: resolved.sessionId, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date() } });
-    await writeAudit(db, request, resolved.principal.userId, "auth.session.revoked", "session", "success", String(resolved.sessionId));
+    await withAuditTransaction(
+      db,
+      async (session) => {
+        const result = await db.collection("sessions").updateOne(
+          { _id: resolved.sessionId, revokedAt: { $exists: false } },
+          { $set: { revokedAt: new Date() } },
+          { session },
+        );
+        if (!result.matchedCount) throw new Error("SESSION_ALREADY_REVOKED");
+        return result;
+      },
+      () => ({ actorUserId: resolved.principal.userId, action: "auth.session.revoked", targetType: "session", targetId: String(resolved.sessionId), outcome: "success", correlationId: request.id }),
+    ).catch((error: unknown) => {
+      if (!(error instanceof Error) || error.message !== "SESSION_ALREADY_REVOKED") throw error;
+    });
     clearSessionCookies(reply);
     return reply.code(204).send();
   });
