@@ -220,6 +220,50 @@ export async function listMetaPageAssets(db: Db, tenantIdInput: string, connecti
   return documents.map(toSummary);
 }
 
+/** Rotate encrypted Page tokens without ever returning plaintext from this maintenance helper. */
+export async function rotateMetaPageAssetTokenEnvelopes(
+  db: Db,
+  vault: MetaTokenVault,
+  input: { tenantId: string; connectionId: string; actorUserId: string; correlationId: string },
+): Promise<{ rotated: number }> {
+  const tenantId = requiredText(input.tenantId, "tenant_id");
+  const connectionId = requiredText(input.connectionId, "connection_id");
+  const actorUserId = requiredText(input.actorUserId, "actor_user_id");
+  const correlationId = requiredText(input.correlationId, "correlation_id");
+  const collection = db.collection<MetaPageAssetDocument>("metaAssets");
+  const assets = await collection.find({
+    tenantId, connectionId, status: "active", pageAccessTokenCiphertext: { $type: "string" },
+  }).limit(2_000).toArray();
+  const updates = assets.flatMap((asset) => {
+    if (!asset.pageAccessTokenCiphertext) return [];
+    const context = { tenantId, connectionId: connectionId + ":page:" + asset.providerAssetId };
+    const envelope = vault.rotate(asset.pageAccessTokenCiphertext, context);
+    return envelope === asset.pageAccessTokenCiphertext ? [] : [{
+      updateOne: {
+        filter: { _id: asset._id, tenantId, connectionId, status: "active", pageAccessTokenCiphertext: asset.pageAccessTokenCiphertext },
+        update: { $set: { pageAccessTokenCiphertext: envelope, updatedAt: new Date() } },
+      },
+    }];
+  });
+  await withAuditTransaction(
+    db,
+    async (session) => {
+      if (updates.length) await collection.bulkWrite(updates, { session, ordered: true });
+      return { rotated: updates.length };
+    },
+    (result) => ({
+      actorUserId,
+      action: "meta.assets.page_tokens.rotated",
+      targetType: "meta_connection",
+      targetId: connectionId,
+      tenantId,
+      outcome: "success",
+      correlationId,
+      metadata: { rotatedPageTokenCount: result.rotated, activeKeyId: vault.activeKeyId },
+    }),
+  );
+  return { rotated: updates.length };
+}
 /** Internal-only Page token access. Never expose this value from an HTTP route. */
 export async function getMetaPageAccessToken(
   db: Db,
