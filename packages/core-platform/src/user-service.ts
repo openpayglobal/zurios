@@ -2,10 +2,11 @@ import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {newId} from "./ids.js";
 import {coreCollections} from "./repositories.js";
+import type {UserDocument} from "./types.js";
 const schema=z.object({email:z.string().email().max(254),displayName:z.string().min(2).max(120),phoneE164:z.string().regex(/^\+[1-9]\d{7,14}$/).optional()});
 export async function createUser(db:Db,actorId:string,input:unknown,session?:ClientSession){
  const d=schema.parse(input),now=new Date(),userId=newId("usr");
- const doc={userId,emailNormalized:d.email.trim().toLowerCase(),displayName:d.displayName,...(d.phoneE164?{phoneE164:d.phoneE164}:{}),status:"invited" as const,mfaEnabled:false,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
+ const doc:UserDocument={userId,emailNormalized:d.email.trim().toLowerCase(),displayName:d.displayName,...(d.phoneE164?{phoneE164:d.phoneE164}:{}),status:"invited",mfaEnabled:false,createdAt:now,updatedAt:now,createdBy:actorId,updatedBy:actorId};
  await coreCollections(db).users.insertOne(doc,session?{session}:{});return doc;
 }
 export async function setUserStatus(db:Db,userId:string,status:"active"|"suspended"|"locked",actorId:string,session?:ClientSession){
