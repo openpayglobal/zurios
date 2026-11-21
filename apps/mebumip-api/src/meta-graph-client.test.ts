@@ -191,3 +191,23 @@ test("requires an explicit valid API version", () => {
   assert.throws(() => new MetaGraphClient({ version: "v27" }), /META_GRAPH_API_VERSION_INVALID/);
   assert.throws(() => new MetaGraphClient({ version: "latest" }), /META_GRAPH_API_VERSION_INVALID/);
 });
+
+test("computes appsecret_proof without exposing the app secret and rejects missing proof configuration", async () => {
+  const appSecret = "meta-app-secret-that-is-never-sent";
+  let requestedUrl = "";
+  const client = new MetaGraphClient({
+    version: "v27.0",
+    appSecret,
+    requireAppSecretProof: true,
+    fetchImpl: async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify({ id: "me" }), { status: 200 });
+    },
+  });
+  await client.request("me", { accessToken: token });
+  const url = new URL(requestedUrl);
+  assert.equal(url.searchParams.has("appsecret_proof"), true);
+  assert.equal(url.searchParams.get("appsecret_proof")?.length, 64);
+  assert.equal(requestedUrl.includes(appSecret), false);
+  assert.throws(() => new MetaGraphClient({ version: "v27.0", requireAppSecretProof: true }), /META_APP_SECRET_PROOF_REQUIRED/);
+});
