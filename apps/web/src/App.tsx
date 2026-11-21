@@ -73,6 +73,13 @@ export default function App(){
  const [accessRequestNote,setAccessRequestNote]=useState("");
  const [busy,setBusy]=useState(false);
  const [mobileNav,setMobileNav]=useState(false);
+ const [allowedOriginsDraft,setAllowedOriginsDraft]=useState<string[]>([]);
+ const [originInput,setOriginInput]=useState("");
+ const [zuriApiOriginDraft,setZuriApiOriginDraft]=useState("");
+ const [mebumipApiOriginDraft,setMebumipApiOriginDraft]=useState("");
+ const [privacyNoticeUrlDraft,setPrivacyNoticeUrlDraft]=useState("");
+ const [accessRequestsEnabledDraft,setAccessRequestsEnabledDraft]=useState(false);
+ const [runtimeSaveMessage,setRuntimeSaveMessage]=useState("");
  const refreshPromise=useRef<Promise<string>|null>(null);
  useEffect(()=>{let active=true;fetch(API_BASE+"/auth/public-config",{credentials:"include"}).then(response=>response.ok?response.json():null).then(value=>{if(active&&value)setPublicConfig({accessRequestsEnabled:value.accessRequestsEnabled===true,privacyNoticeUrl:typeof value.privacyNoticeUrl==="string"?value.privacyNoticeUrl:null});}).catch(()=>{});return()=>{active=false;};},[]);
 
@@ -132,7 +139,10 @@ export default function App(){
    if(target==="audit")result=await api("/v1/platform/admin/audit-events");
    if(target==="breakglass")result=await api("/v1/platform/admin/break-glass");
    if(target==="configuration")result=await api("/v1/platform/admin/configuration");
-   if(target==="infrastructure")result=await api("/platform/admin/infrastructure");
+   if(target==="infrastructure"){
+    const [inventory,runtime]=await Promise.all([api<any>("/platform/admin/infrastructure"),api<any>("/platform/admin/runtime-config")]);
+    result={...inventory,runtimeConfig:runtime.data};
+   }
    if(target==="tenants")result=await api("/v1/platform/admin/tenants");
    if(target==="access")result=await api("/platform/admin/access-requests?status=pending");
    setViewData(previous=>({...previous,[target]:result}));
@@ -205,6 +215,37 @@ export default function App(){
  const title=navigation.find(item=>item.id===view)?.label??"Overview";
  const refresh=()=>void loadView(view);
  const idempotency=()=>crypto.randomUUID();
+ const infrastructureState=(viewData.infrastructure??{}) as any;
+ const runtimeConfigState=infrastructureState.runtimeConfig as any;
+ useEffect(()=>{
+  if(runtimeConfigState){
+   setAllowedOriginsDraft(runtimeConfigState.allowedOrigins??[]);
+   setZuriApiOriginDraft(runtimeConfigState.apiOrigins?.zuriOs??"");
+   setMebumipApiOriginDraft(runtimeConfigState.apiOrigins?.mebumip??"");
+   setPrivacyNoticeUrlDraft(runtimeConfigState.publicSettings?.privacyNoticeUrl??"");
+   setAccessRequestsEnabledDraft(runtimeConfigState.publicSettings?.accessRequestsEnabled===true);
+  }
+ },[runtimeConfigState?.revision]);
+ const addAllowedOrigin=()=>{
+  const value=originInput.trim();
+  if(value&&!allowedOriginsDraft.includes(value))setAllowedOriginsDraft(current=>[...current,value]);
+  setOriginInput("");
+ };
+ const saveRuntimeConfig=async()=>{
+  if(!runtimeConfigState)return;
+  setBusy(true);setRuntimeSaveMessage("");setError("");
+  try{
+   const result=await api<any>("/platform/admin/runtime-config",{method:"PUT",headers:{"idempotency-key":idempotency()},body:JSON.stringify({
+    allowedOrigins:allowedOriginsDraft,
+    apiOrigins:{zuriOs:zuriApiOriginDraft,mebumip:mebumipApiOriginDraft},
+    publicSettings:{...runtimeConfigState.publicSettings,accessRequestsEnabled:accessRequestsEnabledDraft,privacyNoticeUrl:privacyNoticeUrlDraft||null},
+    reason:"Updated approved origins and public runtime controls through Zuri OS MAC"
+   })});
+   setRuntimeSaveMessage("Saved revision "+result.revision+". Running API instances refresh their approved-origin cache within five seconds; no redeployment is required.");
+   await loadView("infrastructure");
+  }catch(cause){setRuntimeSaveMessage(cause instanceof Error?cause.message:"Unable to save runtime configuration.");}
+  finally{setBusy(false);}
+ };
 
  if(!session||!principal){
   return <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#091321] px-4 py-10 text-slate-100">
@@ -230,6 +271,7 @@ export default function App(){
  const grants=(data.data??[]) as any[];
  const configRows=(data.data??[]) as any[];
  const infrastructure=(data.data??{}) as any;
+ const runtimeConfig=(data.runtimeConfig??null) as any;
  const tenants=(data.data??[]) as any[];
  const accessRequests=(data.data??[]) as any[];
 
@@ -319,7 +361,24 @@ export default function App(){
       <Panel className="p-5"><p className="text-xs text-slate-500">MFA encryption</p><div className="mt-3"><Status value={infrastructure.keyrings.mfaEncryption.configured?"configured":"blocked"}/></div><p className="mt-3 text-xs text-slate-400">Dedicated encryption KMS/HSM required for MAC-managed rotation.</p></Panel>
       <Panel className="p-5"><p className="text-xs text-slate-500">Audit signing</p><div className="mt-3"><Status value={infrastructure.keyrings.auditSigning.status}/></div><p className="mt-3 text-xs text-slate-400">Historical verification must be preserved during migration.</p></Panel>
      </div>}
-     <div className="grid gap-5 xl:grid-cols-2">
+     <Panel className="mb-5 p-5">
+       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Live MAC runtime configuration</h2><p className="mt-1 text-xs text-slate-500">Version {runtimeConfig?.revision??0}. Approved origins and public settings update at runtime without a Vercel redeployment.</p></div><Status value="live runtime store"/></div>
+       <div className="grid gap-4 md:grid-cols-2">
+        <Input label="Zuri OS API origin" value={zuriApiOriginDraft} onChange={setZuriApiOriginDraft} placeholder="https://..." required/>
+        <Input label="MeBuMIP API origin" value={mebumipApiOriginDraft} onChange={setMebumipApiOriginDraft} placeholder="https://..." required/>
+       </div>
+       <div className="mt-4"><p className="mb-2 text-xs font-medium text-slate-400">Approved browser origins (verified Vercel domains only)</p>
+        <div className="mb-3 flex flex-wrap gap-2">{allowedOriginsDraft.map(origin=><span key={origin} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">{origin}<button type="button" onClick={()=>setAllowedOriginsDraft(current=>current.filter(item=>item!==origin))} className="text-slate-500 hover:text-rose-200" aria-label={"Remove "+origin}>×</button></span>)}</div>
+        <div className="flex flex-wrap gap-2"><div className="min-w-[240px] flex-1"><Input label="Add verified origin" value={originInput} onChange={setOriginInput} placeholder="https://your-verified-domain.example"/></div><div className="self-end"><Button variant="secondary" onClick={addAllowedOrigin} disabled={!originInput.trim()}>Add origin</Button></div></div>
+       </div>
+       <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <Input label="Privacy notice URL (HTTPS)" value={privacyNoticeUrlDraft} onChange={setPrivacyNoticeUrlDraft} placeholder="https://..."/>
+        <label className="flex items-center gap-3 self-end rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-300"><input type="checkbox" checked={accessRequestsEnabledDraft} onChange={event=>setAccessRequestsEnabledDraft(event.target.checked)} disabled={!privacyNoticeUrlDraft.startsWith("https://")}/> Enable public access requests (requires published HTTPS privacy notice)</label>
+       </div>
+       <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-[11px] leading-5 text-slate-500">Only verified Vercel project domains are accepted. Custom domains must be verified before approval. Secret values remain blocked until an encryption KMS/HSM is configured.</p><Button onClick={saveRuntimeConfig} disabled={busy||!zuriApiOriginDraft||!mebumipApiOriginDraft||allowedOriginsDraft.length===0}>{busy?"Saving…":"Save MAC runtime configuration"}</Button></div>
+       {runtimeSaveMessage&&<p role="status" className="mt-3 text-xs text-cyan-200">{runtimeSaveMessage}</p>}
+      </Panel>
+      <div className="grid gap-5 xl:grid-cols-2">
       <Panel className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Vercel KMS signing issuers</h2><Status value="provisioned"/></div>{(infrastructure.keyrings?.userSessionJwt?.managedSigning??[]).map((key:any)=><div key={key.id} className="border-t border-white/[0.06] py-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">{key.name}</p><Status value={key.status}/></div><p className="mt-1 text-xs text-slate-500">{key.purpose} · {key.algorithm} · {key.environment}</p><p className="mt-1 break-all text-[10px] text-slate-600">Issuer {key.id}</p><p className="mt-1 text-[10px] text-slate-600">Key {key.keyId} · project {key.projectId}</p></div>)}</Panel>
       <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Approved API origins</h2>{(infrastructure.apiOrigins?.items??[]).length?(infrastructure.apiOrigins.items.map((origin:string)=><div key={origin} className="border-t border-white/[0.06] py-3 text-xs text-slate-300">{origin}</div>)):<Empty label="No API origins configured."/ >}<div className="mt-3"><Status value={infrastructure.apiOrigins?.status??"unknown"}/></div><p className="mt-3 text-xs leading-5 text-slate-500">Current origins are deployment bootstrap values. MAC's verified, versioned runtime origin registry is the next implementation step.</p></Panel>
       <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provider authorization</h2>{Object.entries(infrastructure.providers??{}).map(([name,value]:[string,any])=><div key={name} className="flex items-center justify-between border-t border-white/[0.06] py-3"><span className="text-xs capitalize text-slate-400">{name}</span><Status value={value.status??(value.configured?"configured":"not_configured")}/></div>)}</Panel>
