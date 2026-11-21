@@ -7,6 +7,7 @@ export interface MetaOAuthStateContext {
   userId: string;
   sessionId: string;
   redirectUri: string;
+  requestedScopes?: string[];
 }
 
 export interface MetaOAuthStateResult {
@@ -79,12 +80,15 @@ export class MetaOAuthStateService {
     const userId = requiredText(context.userId, "user_id");
     const sessionId = requiredText(context.sessionId, "session_id");
     const correlationId = requiredText(correlationIdInput, "correlation_id");
+    const requestedScopes = context.requestedScopes === undefined ? undefined : [...new Set(context.requestedScopes.map((scope) => requiredText(scope, "scope")))].sort();
+    if (requestedScopes && (requestedScopes.length < 1 || requestedScopes.length > 20 || requestedScopes.some((scope) => !/^[A-Za-z0-9_.:-]{1,128}$/.test(scope)))) throw new Error("META_OAUTH_SCOPES_INVALID");
     if (normalizeRedirectUri(context.redirectUri, this.allowInsecureLocalhost) !== this.redirectUri) throw new Error("META_OAUTH_REDIRECT_URI_MISMATCH");
     const state = randomBytes(32).toString("base64url");
     const createdAt = this.now();
     const expiresAt = new Date(createdAt.getTime() + this.ttlMs);
     const document: MetaOAuthStateDocument = {
       tenantId, userId, sessionId, redirectUri: this.redirectUri,
+      ...(requestedScopes ? { requestedScopes } : {}),
       stateHash: stateHash(state), createdAt, expiresAt,
     };
     await withAuditTransaction(
@@ -108,7 +112,7 @@ export class MetaOAuthStateService {
   }
 
   /** Returns the pending state binding without consuming it; callers must authenticate the same user/session before consume(). */
-  async getPendingContext(state: string): Promise<Pick<ConsumedMetaOAuthState, "tenantId" | "userId" | "sessionId" | "redirectUri"> | null> {
+  async getPendingContext(state: string): Promise<Pick<ConsumedMetaOAuthState, "tenantId" | "userId" | "sessionId" | "redirectUri" | "requestedScopes"> | null> {
     if (typeof state !== "string" || state.length < 32 || state.length > 128 || !/^[A-Za-z0-9_-]+$/.test(state)) return null;
     const now = this.now();
     const record = await this.db.collection<MetaOAuthStateDocument>("metaOAuthStates").findOne({
@@ -116,13 +120,14 @@ export class MetaOAuthStateService {
       redirectUri: this.redirectUri,
       usedAt: { $exists: false },
       expiresAt: { $gt: now },
-    }, { projection: { tenantId: 1, userId: 1, sessionId: 1, redirectUri: 1 } });
+    }, { projection: { tenantId: 1, userId: 1, sessionId: 1, redirectUri: 1, requestedScopes: 1 } });
     if (!record) return null;
     return {
       tenantId: record.tenantId,
       userId: record.userId,
       sessionId: record.sessionId,
       redirectUri: record.redirectUri,
+      ...(record.requestedScopes ? { requestedScopes: record.requestedScopes } : {}),
     };
   }
 
@@ -160,6 +165,7 @@ export class MetaOAuthStateService {
           userId: record.userId,
           sessionId: record.sessionId,
           redirectUri: record.redirectUri,
+          ...(record.requestedScopes ? { requestedScopes: record.requestedScopes } : {}),
           createdAt: record.createdAt,
           expiresAt: record.expiresAt,
           usedAt: now,
