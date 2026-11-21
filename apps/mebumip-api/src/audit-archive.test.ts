@@ -28,7 +28,7 @@ test("audit archive package is contiguous, signed, and content addressed",()=>{
 });
 
 test("audit archive package rejects gaps, invalid signatures, oversized batches, and unsigned manifests",()=>{
-  assert.throws(()=>buildAuditArchivePackage([event(1),event(3)],1,2),/AUDIT_ARCHIVE_SEQUENCE_GAP|AUDIT_ARCHIVE_BATCH_SIZE_OR_GAP_INVALID/);
+  assert.throws(()=>buildAuditArchivePackage([event(1),event(3)],1,3),/AUDIT_ARCHIVE_SEQUENCE_GAP|AUDIT_ARCHIVE_BATCH_SIZE_OR_GAP_INVALID/);
   const tampered={...event(1),action:"tampered"};
   assert.throws(()=>buildAuditArchivePackage([tampered],1,1),/AUDIT_ARCHIVE_EVENT_SIGNATURE_INVALID/);
   assert.throws(()=>buildAuditArchivePackage(Array.from({length:1001},(_,i)=>event(i+1)),1,1001),/AUDIT_ARCHIVE_BATCH_SIZE_OR_GAP_INVALID/);
