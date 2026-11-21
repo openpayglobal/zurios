@@ -235,13 +235,14 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, discovered, instagramLinked]
+                required: [items, discovered, instagramLinked, unavailable]
                 properties:
                   items:
                     type: array
                     items: {$ref: "#/components/schemas/MetaPageAssetSummary"}
                   discovered: {type: integer, minimum: 0}
                   instagramLinked: {type: integer, minimum: 0}
+                  unavailable: {type: integer, minimum: 0}
         "401": {description: Authentication required}
         "403": {description: Tenant social:assets:write permission or recent MFA step-up required}
         "404": {description: Meta connection not found in this tenant}
