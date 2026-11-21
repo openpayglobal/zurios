@@ -28,6 +28,12 @@ test("requires a dedicated token keyring and complete app credentials", () => {
   assert.equal(parseConfig({ ...base, META_APP_ID: undefined, META_APP_SECRET: base.META_APP_SECRET }).success, false);
 });
 
+test("validates the optional Business Login configuration ID", () => {
+  assert.equal(parseConfig({ ...base, META_LOGIN_CONFIG_ID: "business_config_2026" }).success, true);
+  assert.equal(parseConfig({ ...base, META_LOGIN_CONFIG_ID: "invalid config id" }).success, false);
+  assert.equal(parseConfig({ ...base, META_APP_ID: undefined, META_LOGIN_CONFIG_ID: "business_config_2026" }).success, false);
+});
+
 test("keeps marketing API version separate from Graph API version", () => {
   assert.equal(parseConfig({ ...base, META_MARKETING_API_VERSION: "v25.0" }).success, true);
   assert.equal(parseConfig({ ...base, META_MARKETING_API_VERSION: "v25" }).success, false);
