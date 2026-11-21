@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Db } from "mongodb";
 import { z } from "zod";
 import { resolvePrincipal } from "./auth.js";
-import { appendAuditEvent, hasTenantPermission } from "./security.js";
+import { appendAuditEventInTransaction, hasTenantPermission } from "./security.js";
 
 const tenantQuery = z.object({ tenantId: z.string().min(1).max(128) });
 const businessProfileSchema = z.object({
@@ -33,7 +33,7 @@ export function registerCustomerWorkflowRoutes(app: FastifyInstance, db: Db): vo
       db.collection("memberships").countDocuments({ tenantId, status: "active" }),
       db.collection("metaConnections").find(
         { tenantId },
-        { projection: { accessToken: 0, refreshToken: 0, token: 0, credentials: 0, appSecret: 0 } },
+        { projection: { _id: 1, connectionId: 1, provider: 1, status: 1, connectedAt: 1, expiresAt: 1, scopes: 1, updatedAt: 1 } },
       ).sort({ updatedAt: -1 }).limit(50).toArray(),
     ]);
     const completeProfile = Boolean(profile && profile.legalName && profile.displayName && profile.industry && profile.countryCode && profile.timezone && profile.contactEmail);
@@ -78,21 +78,28 @@ export function registerCustomerWorkflowRoutes(app: FastifyInstance, db: Db): vo
     if (!hasTenantPermission(resolved.principal, tenantId, "tenant:members:write")) return forbidden(reply);
 
     const now = new Date();
-    await db.collection("tenantOnboarding").updateOne(
-      { tenantId },
-      { $set: { ...profile, updatedAt: now, updatedBy: resolved.principal.userId }, $setOnInsert: { tenantId, createdAt: now, createdBy: resolved.principal.userId } },
-      { upsert: true },
-    );
-    await appendAuditEvent(db, {
-      actorUserId: resolved.principal.userId,
-      action: "tenant.onboarding.business_profile.updated",
-      targetType: "tenant_onboarding",
-      targetId: tenantId,
-      tenantId,
-      outcome: "success",
-      correlationId: request.id,
-      metadata: { changedFields: Object.keys(profile) },
-    });
+    const session = db.client.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await db.collection("tenantOnboarding").updateOne(
+          { tenantId },
+          { $set: { ...profile, updatedAt: now, updatedBy: resolved.principal.userId }, $setOnInsert: { tenantId, createdAt: now, createdBy: resolved.principal.userId } },
+          { upsert: true, session },
+        );
+        await appendAuditEventInTransaction(db, {
+          actorUserId: resolved.principal.userId,
+          action: "tenant.onboarding.business_profile.updated",
+          targetType: "tenant_onboarding",
+          targetId: tenantId,
+          tenantId,
+          outcome: "success",
+          correlationId: request.id,
+          metadata: { changedFields: Object.keys(profile) },
+        }, session);
+      }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
+    } finally {
+      await session.endSession();
+    }
     return reply.send({ status: "saved", tenantId, updatedAt: now.toISOString() });
   });
 
