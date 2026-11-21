@@ -1,6 +1,6 @@
 # Meta Graph API Client Contract
 
-**Status:** Phase 2 transport, token-vault and OAuth-state foundation; not a live Meta integration approval  
+**Status:** Tenant-authorized OAuth and Facebook Page discovery foundation implemented; not a live Meta integration approval  
 **Applies to:** Zuri MeBuMIP Objective A and shared Meta provider operations  
 **Owner:** Blockchain Innovations LTD
 
@@ -20,13 +20,13 @@ The MeBuMIP API now has a reusable Meta Graph transport client in `apps/mebumip-
 - Redirects, cookies, cache and referrers are disabled on outbound requests.
 - Token and app-secret redaction in provider error messages.
 
-A dedicated AES-256-GCM Meta token vault, tenant-scoped encrypted connection persistence, audited per-connection key rotation/revocation and tenant/user/session-bound OAuth-state store are implemented. This does not yet implement the OAuth callback/code exchange, Page/Instagram asset discovery and authorization, publishing, Marketing API operations, WhatsApp or webhook processing. Those remain separate services and acceptance gates.
+A dedicated AES-256-GCM Meta token vault, tenant-scoped encrypted connection persistence, audited connection key rotation/disconnect, tenant/user/session-bound OAuth state, authenticated OAuth start/callback routes, code exchange, app/token/scope validation, Page discovery, linked Instagram Business metadata, Page-token encryption, asset reconciliation and Page-token rotation are implemented. This does not yet implement publishing, Page/Instagram management actions, Marketing API operations, WhatsApp or webhook processing. Those remain separate services and acceptance gates.
 
 ## 2. Version governance
 
 The constructor requires an explicit version in the form `vN.N`; it has no unversioned/default fallback. Do not hardcode a version in a route or tenant record. The integration configuration must select one Graph API version centrally after checking endpoint compatibility, permissions and the current Meta changelog. Marketing API version selection remains separate.
 
-The 20 November 2026 research snapshot identifies Graph API v27.0 on Meta's landing/versioning pages, while the changelog's latest Graph API row is v26.0. This discrepancy is recorded in [Meta Platform Integration Readiness](./META-PLATFORM-INTEGRATION-READINESS.md); v27.0 is a discovery observation, not a production selection.
+The 20 November 2026 research snapshot identifies Graph API v27.0 on Meta's landing/versioning pages, while the changelog's latest Graph API row was v26.0. This discrepancy is recorded in [Meta Platform Integration Readiness](./META-PLATFORM-INTEGRATION-READINESS.md). The feature-branch implementation pins v27.0 explicitly; before production, verify every required endpoint against the current changelog and obtain an approved version decision.
 
 ## 3. Request contract
 
@@ -52,17 +52,17 @@ Use `requestNext(nextUrl, accessToken)` for Graph paging links. It validates HTT
 
 ## 6. Verification
 
-`meta-graph-client.test.ts` covers explicit versioning, token-header handling, App Secret Proof, credential parameter rejection, traversal/absolute-path rejection, Meta transient/throttle GET retries, malformed 429/5xx retry, no POST/DELETE retry, provider-error redaction and same-host/same-version pagination. `meta-token-vault.test.ts`, `meta-connections.integration.test.ts`, `meta-provider.test.ts`, `config.meta.test.ts` and `meta-oauth-state.integration.test.ts` cover tenant-bound token encryption, audited connection key rotation/revocation, config isolation, secret-safe readiness diagnostics and single-use tenant/session-bound OAuth state.
+`meta-graph-client.test.ts` covers explicit versioning, token-header handling, App Secret Proof, credential parameter rejection, traversal/absolute-path rejection, Meta transient/throttle GET retries, malformed 429/5xx retry, no POST/DELETE retry, provider-error redaction and same-host/same-version pagination. `meta-token-vault.test.ts`, `meta-connections.integration.test.ts`, `meta-assets.integration.test.ts`, `meta-routes.integration.test.ts`, `meta-provider.test.ts`, `config.meta.test.ts`, `meta-oauth-state.integration.test.ts` and `rate-limit.test.ts` cover tenant-bound user/Page token encryption, rotation, OAuth state, same-session callback, remote revoke success/failure, Page pagination/reconciliation, local token erasure, route authorization and rate limits.
 
 ## 7. Remaining Objective A work
 
-1. Wire the versioned authorization URL and token-exchange service into an authenticated start route and callback route that atomically consumes state, verifies the initiating tenant/user/session and persists the returned token; handle provider denial, user cancellation and reauthorization safely.
-2. Complete OAuth code exchange, token refresh/reauthorization and provider-side expiry/revocation reconciliation; encrypted connection persistence, key rotation and audited revocation primitives now exist.
-3. Facebook Login for Business permission and asset-selection flow.
-4. Page/Instagram Professional account discovery and tenant-asset binding.
-5. Webhook signature verification, durable inbox, deduplication and replay controls.
-6. Publishing/inbox/insights adapters with permission matrices and provider contract tests.
-7. App Review, business verification and Tech Provider approvals before live customer access.
+1. Complete Page-level management: Page details/ownership verification, asset-specific capability checks, publishing, media upload, scheduling, comments and inbox.
+2. Complete Instagram Business/Creator eligibility and permission validation, insights and publishing workflows. The linked Instagram ID/username is discovered from each Page but account eligibility is not yet accepted.
+3. Implement the Meta Business Login HTTP flow for business onboarding and asset selection; the current route exposes standard OAuth only.
+4. Implement webhook signature verification, durable inbox, deduplication, replay controls, subscription lifecycle and deauthorization callbacks.
+5. Implement token health monitoring, expiry/data-access-expiry jobs, reauthorization UX and scheduled key-rotation orchestration. Transactional key-rotation helpers exist but are not scheduled.
+6. Complete frontend connect/disconnect/discovery UX and end-to-end provider smoke tests.
+7. Complete Meta App Review, business verification, privacy/data-deletion and Tech Provider approvals before live customer access.
 
 Objectives B–E remain separate phases. Marketing API requires its own version and spend safeguards; WhatsApp requires consent/template/webhook lifecycle; multi-business SaaS and external integrations require their own acceptance suites.
 
@@ -83,7 +83,7 @@ Official Meta references checked 2026-11-21:
 
 `createConfiguredMetaGraphClient()` binds the configured Graph API version and, whenever a Meta app ID is configured, requires the app secret and enables App Secret Proof. `createConfiguredMetaOAuthService()` binds the versioned login URL, code exchange and long-lived-token exchange to the registered redirect URI and optional Business Login config ID. `createConfiguredMetaTokenVault()` parses the dedicated Meta token keyring; `MetaConnectionService` persists only AES-256-GCM envelopes with tenant/connection associated data, and OAuth state is hashed, session-bound and one-time. `getMetaIntegrationReadiness()` reports only presence/version flags and never returns app secrets, webhook verification tokens or key material.
 
-These are configuration, transport and credential-persistence foundations only. The OAuth authorization/callback code exchange, page discovery, Instagram account linking, external asset authorization, webhook subscription and provider app-review approvals are still outstanding; no Meta account is connected and no live Page/Instagram mutation is enabled by this work.
+The tenant-authorized OAuth start/callback, code exchange, encrypted user-token persistence, Facebook Page discovery, linked Instagram account metadata, encrypted Page-token storage, asset reconciliation and audited local disconnect are implemented. No live Meta account is connected and no live Page/Instagram mutation is enabled by this work. See [Meta Graph Integration Implementation Contract](./META-GRAPH-INTEGRATION.md) for current route behavior and acceptance gaps.
 
 The client also checks Meta's `facebook-api-version` response header when present and rejects a version mismatch instead of silently accepting a provider-side version change.
 
@@ -96,10 +96,10 @@ The client also checks Meta's `facebook-api-version` response header when presen
 - `MetaOAuthStateService` stores only a SHA-256 hash of a random 256-bit state, binds it to tenant/user/session/redirect URI, expires it after five minutes by default, and consumes it with one atomic conditional update. MongoDB has unique state-hash, TTL and context-lookup indexes.
 - `meta-provider.ts` supplies config-backed Graph-client/token-vault factories and secret-safe readiness diagnostics. The app ID/secret, explicit Graph version, HTTPS redirect URI and dedicated token key ring remain optional until the owner provisions a Meta app; if an app ID is configured, incomplete settings fail config validation.
 
-The vault, connection persistence service and state store are implemented and integration-tested against disposable MongoDB. No token exchange/callback route, connected customer account, webhook subscription or live Meta permission is claimed yet.
+The vault, connection persistence service, state store, OAuth HTTP routes and Page discovery are integration-tested against disposable MongoDB. No connected customer account, webhook subscription or live Meta permission is claimed.
 
 
 ## 8. OAuth protocol boundary
 
-The authorization dialog and token exchange are implemented as a server-side service, not yet as HTTP routes. Meta's OAuth token endpoint documentation specifies GET query parameters for code and long-lived-token exchange; therefore client_secret, authorization code and fb_exchange_token are necessarily present in the outbound URL to Meta. The service restricts the origin to HTTPS graph.facebook.com, pins the API version, disables redirects/cookies/cache/referrers, applies a timeout, emits generic errors and never logs the URL. Production egress/APM logging must redact these query parameters. Ordinary Graph resource calls continue to carry access tokens in the Authorization header.
+The authorization dialog and token exchange are implemented as a server-side service and exposed through tenant-authorized OAuth start/callback routes. Meta's OAuth token endpoint documentation specifies GET query parameters for code and long-lived-token exchange; therefore client_secret, authorization code and fb_exchange_token are necessarily present in the outbound URL to Meta. The service restricts the origin to HTTPS graph.facebook.com, pins the API version, disables redirects/cookies/cache/referrers, applies a timeout, emits generic errors and never logs the URL. Production egress/APM logging must redact these query parameters. Ordinary Graph resource calls continue to carry access tokens in the Authorization header.
 
