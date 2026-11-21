@@ -78,8 +78,8 @@ function frontendReturnUrl(status: string, tenantId: string, connectionId?: stri
   return target.toString();
 }
 
-function isBrowserNavigation(request: { headers: { accept?: string | string[] | undefined } }): boolean {
-  return typeof request.headers.accept === "string" && request.headers.accept.includes("text/html");
+function isBrowserNavigation(accept: string | string[] | undefined): boolean {
+  return typeof accept === "string" && accept.includes("text/html");
 }
 
 function hasRecentStepUp(stepUpUntil: Date | undefined): boolean {
@@ -156,7 +156,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
     }, request.id);
     if (!consumed) return reply.code(400).send({ error: "OAUTH_STATE_INVALID_OR_EXPIRED" });
     if (parsed.data.error) {
-      const returnUrl = isBrowserNavigation(request) ? frontendReturnUrl("denied", pending.tenantId) : null;
+      const returnUrl = isBrowserNavigation(request.headers.accept) ? frontendReturnUrl("denied", pending.tenantId) : null;
       if (returnUrl) return reply.redirect(returnUrl, 303);
       return reply.code(400).send({ error: "META_AUTHORIZATION_DENIED" });
     }
@@ -175,7 +175,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
         ...(longLived.identity.dataAccessExpiresAt ? { dataAccessExpiresAt: longLived.identity.dataAccessExpiresAt } : {}),
         correlationId: request.id,
       });
-      const returnUrl = isBrowserNavigation(request) ? frontendReturnUrl("connected", pending.tenantId, connection.connectionId) : null;
+      const returnUrl = isBrowserNavigation(request.headers.accept) ? frontendReturnUrl("connected", pending.tenantId, connection.connectionId) : null;
       if (returnUrl) return reply.redirect(returnUrl, 303);
       return reply.code(201).send({ status: "connected", connection });
     } catch (error) {
@@ -187,7 +187,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
         providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
         correlationId: request.id,
       }, "Meta OAuth callback failed");
-      const returnUrl = isBrowserNavigation(request) ? frontendReturnUrl("failed", pending.tenantId) : null;
+      const returnUrl = isBrowserNavigation(request.headers.accept) ? frontendReturnUrl("failed", pending.tenantId) : null;
       if (returnUrl) return reply.redirect(returnUrl, 303);
       return reply.code(502).send({ error: "META_CONNECTION_FAILED", correlationId: request.id });
     }
