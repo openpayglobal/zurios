@@ -30,7 +30,12 @@ test("Meta OAuth state is hashed, tenant/session-bound and consumed once", {
     assert.equal(stored.stateHash === created.state, false);
     assert.equal(stored.usedAt, undefined);
 
-    const consumed = await service.consume(created.state, context);
+    const concurrent = await Promise.all([
+      service.consume(created.state, context),
+      service.consume(created.state, context),
+    ]);
+    assert.equal(concurrent.filter(Boolean).length, 1);
+    const consumed = concurrent.find(Boolean);
     assert.equal(consumed?.tenantId, context.tenantId);
     assert.equal(consumed?.userId, context.userId);
     assert.equal(consumed?.sessionId, context.sessionId);
