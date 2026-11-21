@@ -23,6 +23,11 @@ test("validates explicit Graph version and dedicated provider-token key ring whe
   assert.equal(parseConfig({ ...validMetaEnvironment, META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: "missing" }).success, false);
 });
 
+test("requires an OAuth-compatible session cookie policy when Meta is configured", () => {
+  assert.equal(parseConfig({ ...validMetaEnvironment, SESSION_COOKIE_SAME_SITE: "Strict" }).success, false);
+  assert.equal(parseConfig({ ...validMetaEnvironment, SESSION_COOKIE_SAME_SITE: "Lax" }).success, true);
+});
+
 test("requires app secret, HTTPS redirect and token vault when a Meta app ID is set", () => {
   assert.equal(parseConfig({ NODE_ENV: "test", META_APP_ID: "123456789012345" }).success, false);
   assert.equal(parseConfig({ ...validMetaEnvironment, META_REDIRECT_URI: "http://example.test/callback" }).success, false);
