@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-const WORKFLOW_API = import.meta.env.VITE_MEBUMIP_API_BASE ?? "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app";
 type Membership = { tenantId: string; role: string; status: string };
 type Onboarding = {
   tenantId: string;
@@ -28,18 +27,18 @@ export function CustomerWorkspace() {
   const [profile, setProfile] = useState({ legalName: "", displayName: "", industry: "", countryCode: "UG", timezone: "Africa/Kampala", website: "", contactEmail: "" });
 
   async function load(tenant: string) {
-    const response = await fetch(WORKFLOW_API + "/v1/workspace/onboarding?tenantId=" + encodeURIComponent(tenant), { credentials: "include" });
+    const response = await fetch((await getMeBuMIPApiBase()) + "/v1/workspace/onboarding?tenantId=" + encodeURIComponent(tenant), { credentials: "include" });
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Unable to load workspace onboarding.");
     setData(body);
     setProfile({ legalName: "", displayName: "", industry: "", countryCode: "UG", timezone: "Africa/Kampala", website: "", contactEmail: "", ...(body.businessProfile ?? {}) });
-    const memberResponse = await fetch(WORKFLOW_API + "/v1/tenants/" + encodeURIComponent(tenant) + "/members", { credentials: "include" });
+    const memberResponse = await fetch((await getMeBuMIPApiBase()) + "/v1/tenants/" + encodeURIComponent(tenant) + "/members", { credentials: "include" });
     const memberBody = await memberResponse.json();
     if (memberResponse.ok) setMembers(memberBody.members ?? []);
   }
   useEffect(() => {
     let active = true;
-    fetch(WORKFLOW_API + "/v1/auth/me", { credentials: "include" })
+    fetch((await getMeBuMIPApiBase()) + "/v1/auth/me", { credentials: "include" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Sign in with a customer workspace account to continue.");
         const body = await response.json();
@@ -57,7 +56,7 @@ export function CustomerWorkspace() {
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
     try {
-      const response = await fetch(WORKFLOW_API + "/v1/workspace/onboarding/business-profile", {
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/workspace/onboarding/business-profile", {
         method: "PUT", credentials: "include", headers: { ...csrf(), "content-type": "application/json" },
         body: JSON.stringify({ tenantId, ...profile }),
       });
@@ -71,13 +70,13 @@ export function CustomerWorkspace() {
   async function inviteMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setTeamMessage(""); setError("");
     try {
-      const stepUp = await fetch(WORKFLOW_API + "/v1/auth/step-up", {
+      const stepUp = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/step-up", {
         method: "POST", credentials: "include", headers: { ...csrf(), "content-type": "application/json" },
         body: JSON.stringify({ code: stepUpCode }),
       });
       const stepUpBody = await stepUp.json();
       if (!stepUp.ok) throw new Error(stepUpBody.error ?? "MFA step-up verification failed.");
-      const response = await fetch(WORKFLOW_API + "/v1/tenants/" + encodeURIComponent(tenantId) + "/invitations", {
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/tenants/" + encodeURIComponent(tenantId) + "/invitations", {
         method: "POST", credentials: "include", headers: { ...csrf(), "content-type": "application/json" },
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
@@ -85,7 +84,7 @@ export function CustomerWorkspace() {
       if (!response.ok) throw new Error(body.error ?? "Team invitation failed.");
       setTeamMessage("Invitation sent to " + body.email + ". It expires in 72 hours.");
       setInviteEmail(""); setStepUpCode("");
-      const latest = await fetch(WORKFLOW_API + "/v1/tenants/" + encodeURIComponent(tenantId) + "/members", { credentials: "include" });
+      const latest = await fetch((await getMeBuMIPApiBase()) + "/v1/tenants/" + encodeURIComponent(tenantId) + "/members", { credentials: "include" });
       if (latest.ok) { const result = await latest.json(); setMembers(result.members ?? []); }
     } catch (cause) { setTeamMessage(cause instanceof Error ? cause.message : "Team invitation failed."); }
     finally { setBusy(false); }
@@ -94,7 +93,7 @@ export function CustomerWorkspace() {
   async function connectMeta() {
     setBusy(true); setError(""); setNotice("");
     try {
-      const response = await fetch(WORKFLOW_API + "/v1/workspace/onboarding/meta/connect", {
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/workspace/onboarding/meta/connect", {
         method: "POST", credentials: "include", headers: { ...csrf(), "content-type": "application/json" },
         body: JSON.stringify({ tenantId }),
       });
