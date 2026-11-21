@@ -443,3 +443,14 @@ Cookie-authenticated unsafe requests require CSRF cookie/header validation and a
 - Added MeBuMIP OpenAPI paths and the Meta Graph integration contract. Page publishing, Page ownership verification, Instagram eligibility, webhooks, insights, comments/inbox and frontend UX remain outstanding.
 
 **Passing verification checkpoint:** [Full monorepo CI #44874698857](https://github.com/openpayglobal/zurios/actions/runs/44874698857) and [MeBuMIP Phase 1 #44874698885](https://github.com/openpayglobal/zurios/actions/runs/44874698885) passed on `8b9ea3cf2babcd285fc81f7d5257658bc4920bc8`. Full CI passed both OpenAPI 3.1 specs, route-drift, product-doc mirror check, monorepo typecheck/tests/build; Phase 1 passed API/web typecheck/tests/build with MongoDB replica set. The later Meta client-contract documentation correction is on a newer head and its own exact-head checks are pending.
+
+
+## Tenant-facing Meta connection workspace — 2026-11-20
+
+- Replaced the Connections placeholder with a tenant-membership-aware Meta workspace panel. It loads the signed-in identity's active tenant memberships and allows the user to choose the target tenant.
+- Added MFA step-up input supporting authenticator or recovery codes; connect, Page discovery and disconnect remain server-authorized and are rejected without the required membership permission and recent step-up.
+- Added browser OAuth return to the configured first CORS origin with only `section`, `meta_connection`, `tenantId` and `connectionId` metadata; the UI returns to the Connections section and refreshes tenant-scoped connection/asset metadata. API clients still receive JSON.
+- Added UI actions to connect a Meta account, list/select connections, discover Pages, display linked Instagram Business metadata and disconnect. No provider tokens are rendered or passed to the browser.
+- The UI is a first functional foundation; role-specific UX polish, expired-token recovery/re-auth, provider smoke tests and production Meta app setup remain.
+
+**Verification:** [MeBuMIP Phase 1 #44875767100](https://github.com/openpayglobal/zurios/actions/runs/44875767100) passed on code checkpoint `613ec58ddeb02fd4eb0996e5e0768f4c14b2de3d`, including API typecheck/tests/build and web typecheck/build. Full monorepo CI #44875767146 was still running at the time of this progress update.
