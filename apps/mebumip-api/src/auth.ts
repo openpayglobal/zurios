@@ -609,6 +609,9 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       return reply.code(403).send({ error: "MFA_CODE_INVALID" });
     }
     const stepUpUntil = new Date(Date.now() + 5 * 60_000);
+    const recoveryHashes = Array.isArray(user.mfaRecoveryCodeHashes)
+      ? user.mfaRecoveryCodeHashes.filter((value: unknown) => value !== recoveryHash)
+      : [];
     try {
       await withAuditTransaction(
         db,
@@ -616,7 +619,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
           if (recoveryHash) {
             const consumed = await db.collection("users").updateOne(
               { _id: user._id, mfaRecoveryCodeHashes: recoveryHash },
-              { $pull: { mfaRecoveryCodeHashes: recoveryHash } },
+              { $set: { mfaRecoveryCodeHashes: recoveryHashes } },
               { session },
             );
             if (consumed.modifiedCount !== 1) throw new Error("MFA_CODE_INVALID");
