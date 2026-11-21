@@ -25,6 +25,7 @@ This directory is the authoritative entry point for ecosystem-wide specification
 | Security | security/ | Threat model, identity, authorization, secrets, audit and incident response |
 | Compliance | [compliance/](./compliance/) | Privacy, retention, jurisdictional requirements and evidence registers; includes the [Public Access Request Privacy and Retention draft](./compliance/ACCESS-REQUEST-PRIVACY-AND-RETENTION.md) |
 | Operations | operations/ | Deployment, observability, backup, disaster recovery, support and runbooks |
+| MeBuMIP security operations | [Phase 1 Security Operations Runbook](./operations/MEBUMIP-PHASE1-SECURITY-OPERATIONS.md) | First-owner atomicity, session/email controls, audit-chain backfill, key lifecycle, archive/WORM, ABAC and release evidence |
 | Decisions | decisions/ | Cross-cutting approved decisions; architecture ADRs may live under architecture/decisions/ |
 | MeBuMIP product | [products/zuri-mebumip/](../products/zuri-mebumip/README.md) | Detailed product-specific documentation |
 | CI workflows | [MeBuMIP Phase 1 CI workflow](../.github/workflows/mebumip-phase1.yml) | Automated engineering verification |
@@ -36,6 +37,7 @@ This directory is the authoritative entry point for ecosystem-wide specification
 ## Security engineering standards
 
 - [Key Management and Audit Archiving](./security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md) — MFA key rings, safe migration, audit-signing lifecycle, WORM archive requirements and external standards.
+- [MeBuMIP Phase 1 Security Operations Runbook](./operations/MEBUMIP-PHASE1-SECURITY-OPERATIONS.md) — operational steps and evidence requirements for atomic bootstrap, key rotation, dry-run-first audit backfill, signed archive export, WORM retention and production release.
 
 ## Canonical identity and operations specifications
 
@@ -44,7 +46,8 @@ This directory is the authoritative entry point for ecosystem-wide specification
 - [Sign-in and Workspace Selection](./ux/SIGN-IN-AND-WORKSPACE-SELECTION.md) — identity-first sign-in, access request, workspace chooser and accessibility.
 - [Identity and Workspace API Contracts](./api/IDENTITY-AND-WORKSPACE-CONTRACTS.md) — login, MFA, workspace selection, switching and session contracts.
 - [Identity and Membership Data Model](./database/IDENTITY-MEMBERSHIP-DATA-MODEL.md) — users, tenants, memberships, sessions and indexes.
-- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.\n- [PR #13 / PR #14 Security Integration and Acceptance Plan](./operations/PR13-PR14-SECURITY-INTEGRATION-ACCEPTANCE.md) — branch reconciliation, audit-chain invariants, security regression matrix and merge/release gates.
+- [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
+- [PR #13 / PR #14 Security Integration and Acceptance Plan](./operations/PR13-PR14-SECURITY-INTEGRATION-ACCEPTANCE.md) — branch reconciliation, audit-chain invariants, security regression matrix and merge/release gates.
 
 ## Full Zuri OS baseline specifications
 
