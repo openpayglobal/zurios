@@ -192,3 +192,34 @@ This section supersedes earlier changed-path counts in this register. A fresh in
 
 
 **Operational reliability follow-up (2026-11-21):** audit backfill now batches up to 5,000 validated hash-chain updates into one ordered MongoDB `bulkWrite` within the transaction and verifies matched/modified counts. A 5,001-record regression test proves oversized histories are rejected without mutation. The core-platform idempotency callback contract now explicitly accounts for MongoDB transaction callback retries; callers must keep callbacks database-only and use the outbox for external effects. The concurrency test asserts committed state/replay outcomes rather than a non-guaranteed callback invocation count. The repository now has a workspace lockfile covering all five workspaces; CI workflows are being moved to frozen installs and Node 24-compatible action runtimes. Current code/test changes are undergoing exact-head CI.
+
+
+## 2026-11-21 — Latest full-platform verification and audit migration gate
+
+This checkpoint supersedes the previous 52-overlap/2-path-only inventory. Current PR metadata reports PR #13 at 54 changed paths and PR #14 at 97 changed paths, with 53 overlaps and one PR #13-only path. The remaining path-only apps/mebumip-api/src/audit-service.ts is not missing runtime behavior: its transaction append, chain verification, dry-run backfill and archive functions are integrated into PR #14's apps/mebumip-api/src/security.ts. PR #13 remains draft/open; PR #14 remains open/non-draft. Neither is merged.
+
+### Additional security/data-migration clarification
+
+- The regular audit backfill handles genuinely unsequenced legacy events only. Historical events that already have a sequence but lack complete predecessor/event hashes are classified as malformed/partial and refused. This matters because earlier MeBuMIP builds allocated sequence numbers before chain hashes existed. The runbook now requires a separate approved migration that verifies each original signature with the historical key, preserves the original signature as signed provenance, proves sequence continuity and only then adds chain links. No automatic renumbering or blind apply is allowed. The integration test covers both partial-chain and sequence-only legacy records.
+- Audit event metadata redaction is applied before chain hashing and signing, so the stored metadata, event hash and HMAC cover the same sanitized payload. A regression assertion verifies credential-like fields are redacted while chain verification remains valid.
+- Session refresh and password reset are transaction-scoped with their audit append. Refresh is single-winner under concurrent requests; password reset atomically consumes the one-time recovery record, changes the password, revokes sessions and records the audit event.
+
+### Full-suite corrections
+
+- A full CI run found the MeBuMIP workflow used frozen-lockfile installation even though the repository has no committed pnpm-lock.yaml; changed the workflow to pnpm install --no-frozen-lockfile (consistent with the repository's current install policy).
+- The migration integration test expected only 0001_core_indexes even though the registry now runs 0001_core_indexes, 0002_identity_workspace_selection and 0003_audit_archive_receipts; corrected the expected migration list.
+- The idempotency/outbox concurrency test no longer asserts that an in-memory callback counter executes exactly once. MongoDB may retry transaction callbacks; the contract now documents that callbacks must keep effects inside the provided session and external effects must use the outbox. The test retains the exactly-once committed resource/outbox assertions.
+- Earlier CI exposed and corrected the invalid explicit unique _id index creation; MongoDB owns that index automatically.
+
+### Deployment evidence
+
+- Latest frontend preview inspected: READY at commit 08d21ddfdd945553b747be6ac2282290b5654b47, not the current PR head.
+- Latest API preview on the feature branch inspected: ERROR at older commit 180c3954e8df54f9be8dfdc93703bc6d60e28300; no current-head API preview has been verified. The latest API deployment on the separate integration branch was CANCELED as an unaffected-project deployment, not a successful API build.
+- Current GitHub Vercel contexts report Deployment rate limited — retry in 24 hours for both frontend and API. The Vercel projects report Node 22.x; the frontend preview build completed successfully with the root engine constrained to Node 22.
+
+### Current verification status
+
+- Source head recorded before this progress update: 16c5faa29ba960403536a2597e782a90c6ae490a.
+- Full monorepo CI #44867572223 and MeBuMIP verification #44867572218 were queued; prior MeBuMIP run #44867568082 was in progress. These are not passing evidence. The plan update and this register update require exact-head CI as well.
+- Objectives A–E (Facebook/Instagram asset management, advertising, WhatsApp, multi-business SaaS and unified external integrations) remain planned for phases 2–6 and are not yet implemented. Phase 1 foundation remains in progress. Live Meta setup is still deferred by the product owner; mocked/contract-driven integration work can proceed without live credentials.
+- Production readiness remains open: legal/privacy and data deletion approval, production secret/key management, least-privilege DB roles, independent WORM archive proof, backup/restore drill, mail sender verification, independent security review, API preview and browser end-to-end tests remain required.
