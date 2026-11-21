@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-const INFRA_API = import.meta.env.VITE_MEBUMIP_API_BASE ?? "http://localhost:4100";
+const INFRA_API = import.meta.env.VITE_MEBUMIP_API_BASE ?? "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app";
 type Infrastructure = {
   generatedAt: string;
   environment: string;
