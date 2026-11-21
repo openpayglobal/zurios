@@ -127,3 +127,24 @@ The first customer invitation UI exposed a missing backend capability: the exist
 - Added the registration contract to MeBuMIP OpenAPI.
 
 This closes the invitation-to-customer-account entry path. Password recovery and MFA enrollment remain in the existing auth surface; mandatory MFA enforcement for privileged tenant roles remains a separate acceptance gate.
+
+
+## MeBuMIP Vercel deployment foundation provisioned — 2026-11-21
+
+Created two additional Vercel projects under the existing team and linked them to `openpayglobal/zurios`:
+
+| Project | Project ID | Root | Runtime | Verified project domain |
+|---|---|---|---|---|
+| `zuri-mebumip` | `prj_ywOZfmePHpz6Gdjm7BBSAdjLDEU2` | `apps/mebumip-web` | Vite / Node 22 | `https://zuri-mebumip-openpayglobal-5300s-projects.vercel.app` |
+| `zuri-mebumip-api` | `prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ` | `apps/mebumip-api` | Fastify / Node 22 | `https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app` |
+
+Both projects use the monorepo root dependencies (`sourceFilesOutsideRootDirectory=true`) and preview-only SSO protection, so production deployments are intended to be publicly reachable while preview deployments remain protected. The API project has team OIDC token generation enabled.
+
+The MeBuMIP frontend API fallback now points to the verified API project domain. Production CORS defaults to the verified frontend project domain; development retains localhost. The MeBuMIP API project has a separate KMS workload-identity issuer, scoped to its Production environment only:
+
+- Issuer: `501ff21c-7c24-4e9e-b23e-789256cd6edd`
+- Active key: `5d401897-e851-438f-a56c-b28453aff756`
+- Project grant: `prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ`
+- Claims: `service=zuri-mebumip-api`, `config_scope=runtime:read`
+
+No deployments have been created; both projects have no latest deployment and are not live. Production deployment remains blocked until a MongoDB replica-set URI, MFA encryption key, audit key migration, and Resend delivery credentials are available. The Atlas connector is suggested but still requires owner connection.
