@@ -164,6 +164,7 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     assert.equal(discovery.statusCode, 200, discovery.body);
     assert.equal(discovery.json().discovered, 1);
     assert.equal(discovery.json().instagramLinked, 1);
+    assert.equal(discovery.json().unavailable, 0);
     assert.equal(JSON.stringify(discovery.json()).includes("EAAG_route_page_token"), false);
     assert.equal(discovery.headers["cache-control"], "no-store, max-age=0");
     const assets = await app.inject({
