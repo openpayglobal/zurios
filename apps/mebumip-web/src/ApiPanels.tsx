@@ -163,21 +163,23 @@ export function AdminData({ resource }: { resource: Resource }) {
   useEffect(() => {
     let active = true;
     const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : resource === "sessions" ? "/v1/auth/sessions" : resource === "settings" ? "/v1/mac/settings" : "/v1/mac/audit-events?limit=50";
-    if (resource === "admins") fetch((await getMeBuMIPApiBase()) + "/v1/mac/admin-invitations", { credentials: "include" }).then((response) => response.ok ? response.json() : null).then((body) => { if (active && body) setPendingAdminInvitations(body.items ?? []); }).catch(() => undefined);
-    fetch((await getMeBuMIPApiBase()) + path, { credentials: "include" })
-      .then(async (response) => {
-        const body = await response.json();
-        if (response.status === 401) throw new Error("Sign in above to view protected platform data.");
-        if (!response.ok) throw new Error(response.status === 403 ? "Your platform role does not have permission to view this data." : "API request failed.");
-        if (active) { setData(body as ApiData); setError(""); }
-      }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Could not load data."); })
+    void getMeBuMIPApiBase().then(async (base) => {
+      if (resource === "admins") {
+        void fetch(base + "/v1/mac/admin-invitations", { credentials: "include" }).then((response) => response.ok ? response.json() : null).then((body) => { if (active && body) setPendingAdminInvitations(body.items ?? []); }).catch(() => undefined);
+      }
+      const response = await fetch(base + path, { credentials: "include" });
+      const body = await response.json();
+      if (response.status === 401) throw new Error("Sign in above to view protected platform data.");
+      if (!response.ok) throw new Error(response.status === 403 ? "Your platform role does not have permission to view this data." : "API request failed.");
+      if (active) { setData(body as ApiData); setError(""); }
+    }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Could not load data."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [resource]);
   useEffect(() => {
     if (resource !== "tenants" || !selectedTenantId) return;
     let active = true;
-    fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" })
+    void getMeBuMIPApiBase().then((base) => fetch(base + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" }))
       .then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Could not load tenant membership."); if (active) { setTenantMembers(body.members ?? []); setTenantInvitations(body.invitations ?? []); } })
       .catch((cause) => { if (active) setTenantMessage(cause instanceof Error ? cause.message : "Could not load tenant membership."); });
     return () => { active = false; };
