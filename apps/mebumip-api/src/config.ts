@@ -125,6 +125,9 @@ const runtimeSchema = envSchema.superRefine((value, context) => {
   if (value.META_APP_ID && (!value.META_APP_SECRET || !value.META_REDIRECT_URI || !value.META_GRAPH_API_VERSION || !value.META_TOKEN_ENCRYPTION_KEYRING || !value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "A Meta app requires its app secret, HTTPS redirect URI, explicit Graph API version and dedicated token-encryption key ring" });
   }
+  if (value.META_APP_ID && value.SESSION_COOKIE_SAME_SITE === "Strict") {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["SESSION_COOKIE_SAME_SITE"], message: "Meta OAuth browser callbacks require SameSite=Lax (or Secure SameSite=None) so the initiating session cookie is sent on the provider redirect" });
+  }
   if (value.META_APP_ID && value.META_REDIRECT_URI) {
     const redirect = new URL(value.META_REDIRECT_URI);
     const localhost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
