@@ -314,12 +314,12 @@ export async function planAuditChainBackfill(db: Db) {
     sequence: { $exists: true },
     previousHash: { $type: "string" },
     eventHash: { $type: "string" },
-  };
+  } as const;
   const legacyFilter = {
     sequence: { $exists: false },
     previousHash: { $exists: false },
     eventHash: { $exists: false },
-  };
+  } as const;
   const [totalCount, sequencedCount, legacyCount] = await Promise.all([
     events.countDocuments({}),
     events.countDocuments(completeChainFilter),
@@ -372,12 +372,12 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         sequence: { $exists: true },
         previousHash: { $type: "string" },
         eventHash: { $type: "string" },
-      };
+      } as const;
       const legacyFilter = {
         sequence: { $exists: false },
         previousHash: { $exists: false },
         eventHash: { $exists: false },
-      };
+      } as const;
       const [totalCount, sequencedCount, legacyCount] = await Promise.all([
         collection.countDocuments({}, { session }),
         collection.countDocuments(completeChainFilter, { session }),
@@ -430,7 +430,7 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         if (result.modifiedCount !== 1) throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
         previousHash = eventHash;
       }
-      await db.collection("auditCounters").updateOne(
+      await db.collection<{ _id: string; sequence: number; updatedAt: Date }>("auditCounters").updateOne(
         { _id: "global" },
         { $set: { sequence, updatedAt: new Date() } },
         { upsert: true, session },
