@@ -158,3 +158,18 @@ No deployments have been created; both projects have no latest deployment and ar
 - Confirmed the existing Zuri OS projects still have SSO protection set to `all_except_custom_domains`. Their Vercel default domains are therefore protected from public end users. The frontend's latest deployment is READY but has no production target; the API's latest deployment is ERROR and has no production target.
 - The new MeBuMIP projects are configured for preview-only SSO, but neither has a deployment yet.
 - No public production access policy was changed. Making the existing Zuri OS default production URLs public requires changing SSO protection to preview-only, or assigning a verified custom domain. This is held for owner approval.
+
+
+## Live MAC runtime configuration implemented — 2026-11-21
+
+The central Zuri OS API now has a versioned MongoDB-backed runtime configuration store and the MAC has controls for approved origins and public settings:
+
+- `GET /platform/admin/runtime-config` and `PUT /platform/admin/runtime-config` provide permission-gated read/update operations, idempotency, immutable history and audit evidence.
+- `GET /platform/public/runtime-config` returns only the public projection and supports ETag/304 responses.
+- `GET /platform/internal/runtime-config` validates Vercel team OIDC issuer, audience, owner, project ID, exact project subject and Production environment before returning service-scoped configuration.
+- Fastify CORS now reads the approved browser-origin list from MAC's runtime registry, with a five-second cache and deployment bootstrap fallback.
+- Public access-request feature flag and privacy notice URL are now read from MAC runtime settings, so authorized changes do not require redeployment.
+- MAC UI can edit the two approved API origins, the verified browser-origin allowlist, privacy notice URL and access-request flag. Custom domains are rejected until Vercel ownership verification is added to the verified-domain registry.
+- Unit tests cover exact HTTPS origin validation, rejection of unverified domains, de-duplication and safe defaults.
+
+The internal endpoint intentionally returns no secret values yet. MongoDB bootstrap URI, MFA encryption, provider credentials and other secrets remain blocked until an encryption KMS/HSM and secure bootstrap path are available. The live non-secret runtime-config and origin updates are implemented; the full secret-fetch lifecycle is not yet complete.
