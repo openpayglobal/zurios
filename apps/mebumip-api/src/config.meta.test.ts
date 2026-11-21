@@ -18,6 +18,7 @@ test("accepts a complete explicit Meta app configuration", () => {
 
 test("rejects malformed Meta app IDs and Graph API versions", () => {
   assert.equal(parseConfig({ ...base, META_APP_ID: "app-123" }).success, false);
+  assert.equal(parseConfig({ ...base, META_APP_ID: "123" }).success, false);
   assert.equal(parseConfig({ ...base, META_GRAPH_API_VERSION: "27.0" }).success, false);
   assert.equal(parseConfig({ ...base, META_GRAPH_API_VERSION: "v27" }).success, false);
 });
