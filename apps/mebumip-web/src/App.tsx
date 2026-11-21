@@ -12,7 +12,7 @@ type Section = "dashboard" | "objectives" | "tenants" | "administrators" | "sess
 type Objective = { id: string; title: string; phase: string; status: string; description: string; icon: typeof Facebook };
 
 const objectives: Objective[] = [
-  { id: "A", title: "Facebook & Instagram management", phase: "Phase 2", status: "Planned", description: "Pages, professional accounts, publishing, inbox and insights.", icon: Instagram },
+  { id: "A", title: "Facebook & Instagram management", phase: "Phase 2", status: "In progress", description: "Tenant OAuth, Page discovery and linked Instagram account metadata are implemented; publishing and account management remain.", icon: Instagram },
   { id: "B", title: "Facebook & Instagram advertising", phase: "Phase 3", status: "Planned", description: "Ad accounts, campaigns, audiences, spend controls and reporting.", icon: BarChart3 },
   { id: "C", title: "WhatsApp Business Platform", phase: "Phase 4", status: "Planned", description: "Embedded Signup, WABAs, phone numbers, templates, messaging and webhooks.", icon: MessageCircle },
   { id: "D", title: "Multi-business Meta management", phase: "Phase 5", status: "Planned", description: "Tenant onboarding, isolated workspaces, delegated roles and usage controls.", icon: Building2 },
@@ -22,7 +22,7 @@ const objectives: Objective[] = [
 const phases: Array<[string, string, string, string]> = [
   ["0", "Product governance & Meta prerequisites", "In progress", "Meta portfolio creation deferred by owner"],
   ["1", "Standalone foundation, MAC & MAD", "In progress", "Authentication, tenant membership, MFA and API wiring"],
-  ["2", "Facebook & Instagram", "Not started", "Objective A"],
+  ["2", "Facebook & Instagram", "In progress", "OAuth, Page discovery and token security foundation; management workflows remain"],
   ["3", "Advertising management", "Not started", "Objective B"],
   ["4", "WhatsApp Business Platform", "Not started", "Objective C"],
   ["5", "Multi-business SaaS", "Not started", "Objective D"],
@@ -86,13 +86,13 @@ function App() {
         <div className="content">
           <div className="welcome">
             <div><div className="eyebrow">MASTER ADMINISTRATION · {section === "dashboard" || section === "objectives" ? "MAD" : "MAC"}</div><h1>{section === "dashboard" ? "Master Admin Dashboard" : selected.label}</h1><p>{section === "dashboard" ? "Operational visibility across the Zuri MeBuMIP platform." : section === "objectives" ? "Track all five approved objectives through their planned delivery phases." : "Master control plane for the Zuri MeBuMIP platform."}</p></div>
-            <div className="date-pill"><Activity size={15}/> Programme status · 19 Nov 2026</div>
+            <div className="date-pill"><Activity size={15}/> Programme status · 20 Nov 2026</div>
           </div>
 
           <AuthPanel />
           {section === "dashboard" && <>
             <AdminData resource="overview" />
-            <div className="notice"><CircleAlert size={18}/><div><strong>Meta Business Portfolio not connected</strong><span>Live Meta integrations are intentionally deferred. The platform foundation can be developed and tested using mock adapters until the owner completes Meta setup.</span></div><span className="notice-tag">EXPECTED</span></div>
+            <div className="notice"><CircleAlert size={18}/><div><strong>Meta Business Portfolio not connected</strong><span>Tenant-authorized OAuth and Page discovery API foundations are implemented, but no live Meta account is connected. Activation still requires owner-supplied app credentials, approved permissions and Meta App Review.</span></div><span className="notice-tag">EXPECTED</span></div>
             <div className="section-head"><div><h2>Five strategic objectives</h2><p>All objectives remain in scope; delivery is sequenced by phase.</p></div><button className="text-btn" onClick={() => setSection("objectives")}>View roadmap <ArrowUpRight size={15}/></button></div>
             <div className="objective-grid">{objectives.map((item) => <ObjectiveCard key={item.id} item={item}/>)}</div>
             <div className="bottom-grid">
@@ -107,7 +107,7 @@ function App() {
           {section === "administrators" && <AdminData resource="admins" />}
           {section === "sessions" && <AdminData resource="sessions" />}
           {section === "settings" && <AdminData resource="settings" />}
-          {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Facebook, Instagram, advertising and WhatsApp connection flows will be enabled in their respective delivery phases. No customer credentials or Meta tokens are configured in this development shell." phase="Phases 2–4 · Objectives A–C"/>}
+          {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Tenant-authorized OAuth connection, Page discovery and encrypted token handling APIs are implemented. This shell still needs tenant-user connect/discovery UX and owner Meta app configuration; no customer Meta account or token is connected." phase="Objective A · OAuth and Page discovery API foundation"/>}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
           {section === "security" && <AdminData resource="audit" />}
           
@@ -124,7 +124,7 @@ function Metric({icon: Icon,label,value,detail}:{icon:typeof Activity;label:stri
 }
 function ObjectiveCard({item}:{item:Objective}) {
   const Icon = item.icon;
-  return <article className="objective-card"><div className="objective-top"><div className="objective-icon"><Icon size={18}/></div><span className="objective-id">OBJECTIVE {item.id}</span><Status>{item.status}</Status></div><h3>{item.title}</h3><p>{item.description}</p><div className="objective-foot"><span>{item.phase}</span><span>Delivery queued <ArrowDownRight size={14}/></span></div></article>;
+  return <article className="objective-card"><div className="objective-top"><div className="objective-icon"><Icon size={18}/></div><span className="objective-id">OBJECTIVE {item.id}</span><Status>{item.status}</Status></div><h3>{item.title}</h3><p>{item.description}</p><div className="objective-foot"><span>{item.phase}</span><span>{item.status === "In progress" ? "Foundation underway" : "Delivery queued"} <ArrowDownRight size={14}/></span></div></article>;
 }
 function EmptyState({icon:Icon,title,detail,phase}:{icon:typeof Activity;title:string;detail:string;phase:string}) {
   return <div className="empty-panel"><div className="empty-icon"><Icon size={24}/></div><span className="eyebrow">MASTER ADMIN CONSOLE · MAC</span><h2>{title}</h2><p>{detail}</p><span className="phase-chip">{phase}</span><div className="empty-foot"><BadgeCheck size={16}/> Module is included in the approved product scope.</div></div>;
