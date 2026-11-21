@@ -1,20 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultPlatformRuntimeConfig, normalizeOriginList, normalizeVerifiedHttpsOrigin } from "./runtime-config-store.js";
+import { defaultPlatformRuntimeConfig, normalizeOriginList, normalizeVerifiedApiOrigin } from "./runtime-config-store.js";
 
-test("accepts exact HTTPS origins for verified Vercel projects", () => {
-  assert.equal(normalizeVerifiedHttpsOrigin("https://zurios.vercel.app"), "https://zurios.vercel.app");
-  assert.equal(normalizeVerifiedHttpsOrigin("https://zuri-mebumip-openpayglobal-5300s-projects.vercel.app"), "https://zuri-mebumip-openpayglobal-5300s-projects.vercel.app");
+test("accepts exact HTTPS origins for verified API projects", () => {
+  assert.equal(normalizeVerifiedApiOrigin("https://zurios-api-openpayglobal-5300s-projects.vercel.app"), "https://zurios-api-openpayglobal-5300s-projects.vercel.app");
+  assert.equal(normalizeVerifiedApiOrigin("https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app"), "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app");
 });
 
-test("rejects non-HTTPS, path-bearing and credential-bearing origins", () => {
-  assert.throws(() => normalizeVerifiedHttpsOrigin("http://zurios.vercel.app"), /EXACT_HTTPS_ORIGIN/);
-  assert.throws(() => normalizeVerifiedHttpsOrigin("https://zurios.vercel.app/admin"), /EXACT_HTTPS_ORIGIN/);
-  assert.throws(() => normalizeVerifiedHttpsOrigin("https://user:pass@zurios.vercel.app"), /EXACT_HTTPS_ORIGIN/);
+test("rejects non-HTTPS, path-bearing and credential-bearing API origins", () => {
+  assert.throws(() => normalizeVerifiedApiOrigin("http://zurios-api-openpayglobal-5300s-projects.vercel.app"), /MUST_BE_EXACT_HTTPS_ORIGIN/);
+  assert.throws(() => normalizeVerifiedApiOrigin("https://zurios-api-openpayglobal-5300s-projects.vercel.app/admin"), /MUST_BE_EXACT_HTTPS_ORIGIN/);
+  assert.throws(() => normalizeVerifiedApiOrigin("https://user:pass@zurios-api-openpayglobal-5300s-projects.vercel.app"), /MUST_BE_EXACT_HTTPS_ORIGIN/);
 });
 
-test("rejects domains that have not been verified in Vercel", () => {
-  assert.throws(() => normalizeVerifiedHttpsOrigin("https://attacker.example"), /DOMAIN_NOT_VERIFIED/);
+test("rejects browser domains that are not verified Vercel frontend projects", () => {
+  assert.throws(() => normalizeOriginList(["https://attacker.example"]), /DOMAIN_NOT_VERIFIED/);
 });
 
 test("deduplicates approved browser origins", () => {
