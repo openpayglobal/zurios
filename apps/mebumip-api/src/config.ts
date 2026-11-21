@@ -29,7 +29,7 @@ const envSchema = z.object({
   META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
 });
 
-const parsed = envSchema.superRefine((value, context) => {
+const runtimeSchema = envSchema.superRefine((value, context) => {
   if (value.SESSION_COOKIE_SAME_SITE === "None" && value.NODE_ENV !== "production") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["SESSION_COOKIE_SAME_SITE"], message: "SameSite=None requires production HTTPS cookies" });
   }
@@ -130,7 +130,11 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && value.META_REDIRECT_URI && !value.META_REDIRECT_URI.startsWith("https://")) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_REDIRECT_URI"], message: "Production Meta OAuth redirect URI must use HTTPS" });
   }
-}).safeParse(process.env);
+});
+export function parseConfig(environment: NodeJS.ProcessEnv) {
+  return runtimeSchema.safeParse(environment);
+}
+const parsed = parseConfig(process.env);
 if (!parsed.success) {
   throw new Error(`Invalid Zuri MeBuMIP API configuration: ${parsed.error.message}`);
 }
