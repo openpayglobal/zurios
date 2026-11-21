@@ -6,6 +6,7 @@ import { MongoClient } from "mongodb";
 import { config, corsOrigins } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerAdminRoutes } from "./admin.js";
+import { registerMetaRoutes } from "./meta-routes.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
@@ -47,8 +48,8 @@ app.get("/health/ready", async (_request, reply) => {
 
 // All application routes are registered only after MongoDB indexes are ready.
 // Authenticated tenant-membership routes enforce active membership, role permissions
-// and recent MFA step-up on sensitive mutations. Meta product routes remain disabled
-// until provider-specific token, webhook, consent and audit controls are implemented.
+// and recent MFA step-up on sensitive mutations. Meta routes self-disable unless the
+// provider credentials, pinned API version and dedicated token-encryption keyring exist.
 app.setNotFoundHandler((_request, reply) => {
   return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
@@ -73,6 +74,7 @@ if (config.MONGODB_URI) {
     registerAuthRoutes(app, db);
     registerTenantMemberRoutes(app, db);
     registerAdminRoutes(app, db);
+    registerMetaRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
   } catch (error) {
