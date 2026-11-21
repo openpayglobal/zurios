@@ -148,3 +148,13 @@ The MeBuMIP frontend API fallback now points to the verified API project domain.
 - Claims: `service=zuri-mebumip-api`, `config_scope=runtime:read`
 
 No deployments have been created; both projects have no latest deployment and are not live. Production deployment remains blocked until a MongoDB replica-set URI, MFA encryption key, audit key migration, and Resend delivery credentials are available. The Atlas connector is suggested but still requires owner connection.
+
+
+## Public activation / Vercel access checkpoint — 2026-11-21
+
+- Corrected the Zuri OS frontend API fallback from the nonexistent `zurios-api.vercel.app` to the Vercel project domain `https://zurios-api-openpayglobal-5300s-projects.vercel.app`.
+- Corrected MeBuMIP frontend API fallbacks to the verified project domain `https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app`.
+- Added production CORS defaults for the verified Zuri OS and MeBuMIP frontend project domains while retaining localhost only in development.
+- Confirmed the existing Zuri OS projects still have SSO protection set to `all_except_custom_domains`. Their Vercel default domains are therefore protected from public end users. The frontend's latest deployment is READY but has no production target; the API's latest deployment is ERROR and has no production target.
+- The new MeBuMIP projects are configured for preview-only SSO, but neither has a deployment yet.
+- No public production access policy was changed. Making the existing Zuri OS default production URLs public requires changing SSO protection to preview-only, or assigning a verified custom domain. This is held for owner approval.
