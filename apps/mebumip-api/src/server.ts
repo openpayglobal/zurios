@@ -9,6 +9,7 @@ import { registerAdminRoutes } from "./admin.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
+import { verifyAuditChain } from "./security.js";
 
 const app = Fastify({ logger: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
   const supplied = request.headers["x-correlation-id"];
@@ -64,6 +65,8 @@ if (config.MONGODB_URI) {
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
     await ensureMeBuMIPIndexes(db);
+    const auditIntegrity = await verifyAuditChain(db);
+    if (!auditIntegrity.valid) throw new Error(`AUDIT_CHAIN_NOT_READY:${JSON.stringify({ checked: auditIntegrity.checked, legacyUnchainedEvents: auditIntegrity.legacyUnchainedEvents, firstInvalidSequence: auditIntegrity.firstInvalidSequence, counterSequence: auditIntegrity.counterSequence, latestSequence: auditIntegrity.latestSequence })}`);
     registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
     registerTenantMemberRoutes(app, db);
