@@ -97,3 +97,18 @@ Two projects were created in the connected Vercel team and linked to the monorep
 Both use Node 22, monorepo source files outside their app root and preview-only SSO protection. The API project has team OIDC token generation enabled. The MeBuMIP API workload identity issuer is `501ff21c-7c24-4e9e-b23e-789256cd6edd` with active key `5d401897-e851-438f-a56c-b28453aff756`, scoped to this API project's Production environment.
 
 Projects are provisioned but not deployed. Production cannot start until required MongoDB, MFA encryption, audit and email provider configuration is available. No production environment values have been fabricated or copied.
+
+
+## 9. Live runtime configuration — implemented
+
+Zuri OS MAC now stores non-secret runtime configuration in the `platformRuntimeConfig` MongoDB document with monotonically increasing revisions and an append-only `platformRuntimeConfigHistory` collection. MAC edits are permission-gated, idempotent and audited.
+
+- Browser-origin allowlist and approved API origins are stored in MAC, not compiled into the Vite bundle.
+- The Fastify CORS hook reads the MAC allowlist with a five-second bounded cache and uses deployment environment values only as a bootstrap fallback.
+- The public runtime endpoint returns an allowlisted projection with ETag/304 support.
+- The internal runtime endpoint verifies the Vercel team OIDC JWT and exact owner/project/environment claims before returning project-scoped non-secret configuration.
+- Public access-request enablement and privacy notice URL are read from MAC, so those controls can change without redeployment.
+- The MAC UI includes edit controls and requires a published HTTPS privacy notice before enabling public access requests.
+- Only the verified Vercel project domains are accepted; custom domains must pass ownership verification before registration.
+
+**Secret boundary:** The internal endpoint currently returns no secret values. Vercel KMS signing issuers are provisioned, but Vercel KMS signing is not general-purpose encryption/decryption. Do not store or return MongoDB URIs, MFA encryption keys, Resend/Meta credentials or provider secrets until a dedicated encryption KMS/HSM and bootstrap design is operational.
