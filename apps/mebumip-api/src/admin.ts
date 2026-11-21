@@ -138,7 +138,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const token = newOpaqueToken(); const now = new Date(); const expiresAt = new Date(now.getTime() + 72 * 60 * 60_000);
     const inserted = await db.collection("tenantInvitations").insertOne({ tenantId, email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt });
     const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
-    if (!delivery.delivered) { await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } }); await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.delivery_failed", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "failure", correlationId: request.id }); return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" }); }
+    if (!delivery.delivered) { await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } }); await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.delivery_failed", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "failure", correlationId: request.id }); return reply.code(503).send({ error: "INVITATION_DELIVERY_UNAVAILABLE" }); }
     await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.created", targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId, outcome: "success", correlationId: request.id });
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
@@ -253,7 +253,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const inserted = await db.collection("platformAdminInvitations").insertOne({ email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt });
     const delivery = await sendPlatformAdminInvitationEmail({ to: email, role: parsed.data.role, token, expiresAt });
     if (!delivery.delivered) {
-      await db.collection("platformAdminInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
+      await db.collection("platformAdminInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
       await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.delivery_failed", targetType: "platform_admin_invitation", targetId: String(inserted.insertedId), outcome: "failure", correlationId: request.id });
       return reply.code(503).send({ error: "PLATFORM_ADMIN_INVITATION_DELIVERY_UNAVAILABLE" });
     }
