@@ -30,7 +30,8 @@ export type AuditChainVerification = {
 };
 
 function auditInput(event: StoredAuditEvent): AuditEventInput & { occurredAt: Date } {
-  if (!(event.occurredAt instanceof Date) || !Number.isFinite(event.occurredAt.getTime())) throw new Error("AUDIT_EVENT_TIMESTAMP_INVALID");
+  const occurredAt = event.occurredAt instanceof Date ? event.occurredAt : new Date(String(event.occurredAt ?? ""));
+  if (!Number.isFinite(occurredAt.getTime())) throw new Error("AUDIT_EVENT_TIMESTAMP_INVALID");
   if (typeof event.actorUserId !== "string" || typeof event.action !== "string" || typeof event.targetType !== "string" ||
       typeof event.outcome !== "string" || typeof event.correlationId !== "string") throw new Error("AUDIT_EVENT_REQUIRED_FIELDS_INVALID");
   return {
@@ -41,7 +42,7 @@ function auditInput(event: StoredAuditEvent): AuditEventInput & { occurredAt: Da
     ...(typeof event.tenantId === "string" ? { tenantId: event.tenantId } : {}),
     outcome: event.outcome as AuditEventInput["outcome"],
     correlationId: event.correlationId,
-    occurredAt: event.occurredAt,
+    occurredAt,
     ...(Number.isSafeInteger(event.sequence) ? { sequence: event.sequence } : {}),
     ...(typeof event.previousHash === "string" ? { previousHash: event.previousHash } : {}),
     ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as AuditEventInput["metadata"] } : {}),
@@ -66,7 +67,7 @@ export async function verifyAuditChain(db: Db): Promise<AuditChainVerification> 
       const input = auditInput(event);
       const calculatedHash = auditEventHash(input);
       if (sequence !== expectedSequence || event.previousHash !== previousHash ||
-          calculatedHash !== event.eventHash || !verifyAuditEvent(event)) {
+          calculatedHash !== event.eventHash || !verifyAuditEvent({ ...event, occurredAt: input.occurredAt })) {
         firstInvalidSequence = sequence;
         reason = "AUDIT_CHAIN_INTEGRITY_FAILED";
         break;
@@ -200,7 +201,7 @@ export function verifyAuditArchiveBundle(value: unknown) {
     try {
       const input = auditInput(event);
       if (sequence !== index + 1 || event.previousHash !== previousHash ||
-          event.eventHash !== auditEventHash(input) || !verifyAuditEvent(event)) {
+          event.eventHash !== auditEventHash(input) || !verifyAuditEvent({ ...event, occurredAt: input.occurredAt })) {
         return { valid: false, checked: index, firstInvalidSequence: sequence, reason: "ARCHIVE_EVENT_CHAIN_INVALID" };
       }
       previousHash = String(event.eventHash);
