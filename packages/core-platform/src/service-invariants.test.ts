@@ -2,8 +2,28 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import type {Db} from "mongodb";
 import {appendAuditEvent} from "./audit-service.js";
+import {createOrganization} from "./organization-service.js";
 import {isFeatureEnabled} from "./feature-flags.js";
 import {runMigrations,type Migration} from "./migrate.js";
+
+test("organization creation persists all required document fields",async()=>{
+ let inserted:any;
+ const collection={insertOne:async(doc:any)=>{inserted=doc;return {acknowledged:true};}};
+ const db={collection:()=>collection} as unknown as Db;
+ const created=await createOrganization(db,"tenant-1","actor-1",{
+  code:"HQ",name:"Head Office",type:"company"
+ });
+ assert.equal(inserted.tenantId,"tenant-1");
+ assert.equal(inserted.organizationId,created.organizationId);
+ assert.equal(inserted.code,"HQ");
+ assert.equal(inserted.name,"Head Office");
+ assert.equal(inserted.type,"company");
+ assert.deepEqual(inserted.path,[]);
+ assert.equal(inserted.status,"active");
+ assert.equal(inserted.createdBy,"actor-1");
+ assert.equal(inserted.updatedBy,"actor-1");
+ assert.equal(Object.hasOwn(inserted,"parentOrganizationId"),false);
+});
 
 test("audit writer requires actor identity and redacts credential-like metadata",async()=>{
  let written:any;
