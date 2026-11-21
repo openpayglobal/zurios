@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { createMetaGraphClient, createMetaTokenVault, getMetaIntegrationReadiness } from "./meta-provider.js";
+import { createMetaGraphClient, createMetaOAuthService, createMetaTokenVault, getMetaIntegrationReadiness } from "./meta-provider.js";
 
 test("configured Meta apps require App Secret Proof on Graph API requests", async () => {
   const appSecret = "test_meta_app_secret_0123456789";
@@ -64,4 +64,35 @@ test("readiness diagnostics expose configuration presence without secret values"
   assert.equal(readiness.webhookVerificationConfigured, true);
   assert.equal(JSON.stringify(readiness).includes("test_meta_app_secret_0123456789"), false);
   assert.equal(JSON.stringify(readiness).includes("verification-token-value"), false);
+});
+
+test("creates a versioned Business Login service from explicit app configuration", () => {
+  const service = createMetaOAuthService({
+    NODE_ENV: "test",
+    META_APP_ID: "123456789012345",
+    META_APP_SECRET: "meta-app-secret-for-oauth-tests-0123456789",
+    META_REDIRECT_URI: "https://app.example.test/v1/meta/oauth/callback",
+    META_GRAPH_API_VERSION: "v27.0",
+    META_LOGIN_CONFIG_ID: "business_config_2026",
+    META_TOKEN_ENCRYPTION_KEYRING: undefined,
+    META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: undefined,
+    META_MARKETING_API_VERSION: undefined,
+    META_WEBHOOK_VERIFY_TOKEN: undefined,
+  });
+  const url = new URL(service.buildAuthorizationUrl({ state: "state_token_012345678901234567890123456789", mode: "business" }));
+  assert.equal(url.pathname, "/v27.0/dialog/oauth");
+  assert.equal(url.searchParams.get("config_id"), "business_config_2026");
+  assert.equal(getMetaIntegrationReadiness({
+    NODE_ENV: "test",
+    META_APP_ID: "123456789012345",
+    META_APP_SECRET: "meta-app-secret-for-oauth-tests-0123456789",
+    META_REDIRECT_URI: "https://app.example.test/v1/meta/oauth/callback",
+    META_GRAPH_API_VERSION: "v27.0",
+    META_LOGIN_CONFIG_ID: "business_config_2026",
+    META_TOKEN_ENCRYPTION_KEYRING: undefined,
+    META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: undefined,
+    META_MARKETING_API_VERSION: undefined,
+    META_WEBHOOK_VERIFY_TOKEN: undefined,
+  }).businessLoginConfigured, true);
+  assert.throws(() => createMetaOAuthService({ NODE_ENV: "test" } as never), /META_OAUTH_NOT_CONFIGURED/);
 });
