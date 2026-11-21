@@ -49,6 +49,8 @@ This directory is the authoritative entry point for ecosystem-wide specification
 - [Vercel Deployment Topology](./operations/VERCEL-DEPLOYMENT-TOPOLOGY.md) — canonical frontend/API projects, environment boundaries and release gates.
 - [MAC-to-Vercel Runtime Configuration Operations](./operations/MAC-VERCEL-RUNTIME-CONFIGURATION.md) — runtime fetch flow, configuration classes, OIDC security, cache/revocation and rollout sequence.
 - [MAC/Vercel Runtime Configuration Progress](./project/MAC-VERCEL-RUNTIME-CONFIGURATION-PROGRESS.md) — verified inventory, current implementation state and blockers.
+- [User Workflow and Infrastructure Progress](./project/USER-WORKFLOW-INFRASTRUCTURE-PROGRESS.md) — identity/workspace journey, customer onboarding, generated keyrings, Vercel project wiring and launch blockers.
+- [MeBuMIP End-User Workflow](./ux/MEBUMIP-END-USER-WORKFLOW.md) — customer onboarding, team invitation, Meta connection and end-user experience.
 - [PR #13 / PR #14 Security Integration and Acceptance Plan](./operations/PR13-PR14-SECURITY-INTEGRATION-ACCEPTANCE.md) — branch reconciliation, audit-chain invariants, regression matrix and merge/release gates.
 
 ## Full Zuri OS baseline specifications
