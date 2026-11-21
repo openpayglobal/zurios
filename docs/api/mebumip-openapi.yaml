@@ -76,6 +76,94 @@ paths:
         "200": {description: Read-only operational aggregates}
         "401": {description: Authentication required}
         "403": {description: Platform metrics-read permission required}
+  /v1/workspace/onboarding:
+    get:
+      tags: [Customer Workspace]
+      operationId: getCustomerWorkspaceOnboarding
+      summary: Read onboarding progress for an authorized tenant workspace
+      parameters:
+        - {name: tenantId, in: query, required: true, schema: {type: string, minLength: 1}}
+      responses:
+        "200": {description: Tenant-scoped onboarding checklist, business profile, member count and redacted connection metadata}
+        "401": {description: Authentication required}
+        "403": {description: Active tenant membership and permission required}
+  /v1/workspace/onboarding/business-profile:
+    put:
+      tags: [Customer Workspace]
+      operationId: updateCustomerBusinessProfile
+      summary: Save the active tenant business profile with an atomic audit event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId, legalName, displayName, industry, countryCode, timezone, contactEmail]
+              properties:
+                tenantId: {type: string}
+                legalName: {type: string, minLength: 2, maxLength: 200}
+                displayName: {type: string, minLength: 2, maxLength: 120}
+                industry: {type: string, minLength: 2, maxLength: 100}
+                countryCode: {type: string, pattern: "^[A-Z]{2}$"}
+                timezone: {type: string, minLength: 3, maxLength: 80}
+                website: {type: string, format: uri}
+                contactEmail: {type: string, format: email}
+      responses:
+        "200": {description: Profile saved and audit event committed}
+        "400": {description: Invalid profile}
+        "401": {description: Authentication required}
+        "403": {description: Tenant write permission required}
+  /v1/workspace/onboarding/meta/connect:
+    post:
+      tags: [Customer Workspace]
+      operationId: beginCustomerMetaConnection
+      summary: Begin Meta OAuth connection when provider prerequisites are configured
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId]
+              properties:
+                tenantId: {type: string}
+      responses:
+        "401": {description: Authentication required}
+        "403": {description: Tenant Meta connection permission required}
+        "503": {description: Meta OAuth is not configured; no connection is created}
+  /v1/tenants/{tenantId}/members:
+    get:
+      tags: [Customer Workspace]
+      operationId: listCustomerWorkspaceMembers
+      summary: List members and pending invitations for an authorized tenant
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Tenant members and redacted pending invitations}
+        "401": {description: Authentication required}
+        "403": {description: Tenant membership read permission required}
+  /v1/tenants/{tenantId}/invitations:
+    post:
+      tags: [Customer Workspace]
+      operationId: inviteCustomerWorkspaceMember
+      summary: Invite a team member after MFA step-up
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: {type: string, format: email}
+                role: {type: string, enum: [tenant_admin, publisher, advertiser, support_agent, viewer]}
+      responses:
+        "201": {description: Invitation sent}
+        "401": {description: Authentication required}
+        "403": {description: Tenant write permission or recent MFA step-up required}
+        "503": {description: Invitation email delivery unavailable}
 components:
   securitySchemes:
     bearerAuth:
