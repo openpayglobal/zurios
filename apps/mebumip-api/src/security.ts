@@ -213,12 +213,12 @@ export function signAuditExport(events: Array<Record<string, unknown>>, generate
   if(ring){
    const keyId=ring.activeKeyId,key=ring.keys[keyId]!;
    const versionedManifest={...manifest,format:"zuri-mebumip-audit-export-v2"};
-   const payload=JSON.stringify({keyId,...versionedManifest,eventSignatures:events.map((event)=>{const integrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,signature:typeof integrity?.signature==="string"?integrity.signature:null};})});
+   const payload=JSON.stringify({keyId,...versionedManifest,eventSignatures:events.map((event)=>{const integrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,previousHash:event.previousHash??null,eventHash:event.eventHash??null,signature:typeof integrity?.signature==="string"?integrity.signature:null};})});
    return {...versionedManifest,integrity:{algorithm:"HMAC-SHA256-v2" as const,keyId,signature:createHmac("sha256",key).update(payload).digest("hex")}};
   }
   const key=legacyAuditSigningKey(signingKey);
   if(!key)return {...manifest,integrity:{algorithm:"unsigned" as const,signature:null}};
-  const payload=JSON.stringify({...manifest,eventSignatures:events.map((event)=>{const integrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,signature:typeof integrity?.signature==="string"?integrity.signature:null};})});
+  const payload=JSON.stringify({...manifest,eventSignatures:events.map((event)=>{const integrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,previousHash:event.previousHash??null,eventHash:event.eventHash??null,signature:typeof integrity?.signature==="string"?integrity.signature:null};})});
   return {...manifest,integrity:{algorithm:"HMAC-SHA256" as const,signature:createHmac("sha256",key).update(payload).digest("hex")}};
 }
 
