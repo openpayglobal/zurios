@@ -32,6 +32,7 @@ The Meta routes are not registered unless all required provider and token-vault 
 - `META_APP_ID`
 - `META_APP_SECRET`
 - `META_REDIRECT_URI` — HTTPS outside local development; HTTP is permitted only for explicit loopback development configuration.
+- `SESSION_COOKIE_SAME_SITE` — must be `Lax` for the cross-site top-level OAuth callback (or `None` only with production HTTPS/Secure cookies); `Strict` is rejected when Meta is configured.
 - `META_GRAPH_API_VERSION` — explicit version, never an unpinned default.
 - `META_TOKEN_ENCRYPTION_KEYRING` — JSON object of key IDs to 32-byte hex keys.
 - `META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID` — must name a non-legacy key in that ring.
