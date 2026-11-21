@@ -306,3 +306,142 @@ export function AdminData({ resource }: { resource: Resource }) {
     {items.length === 0 ? <p>No active sessions found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Device / browser</th><th>Created</th><th>Expires</th><th>Action</th></tr></thead><tbody>{items.map((item, index) => { const id = String(item.id ?? ""); return <tr key={id || index}><td>{String(item.userAgent ?? "Unknown device")}{item.current ? <small>Current session</small> : null}</td><td>{item.createdAt ? new Date(String(item.createdAt)).toLocaleString() : ""}</td><td>{item.expiresAt ? new Date(String(item.expiresAt)).toLocaleString() : ""}</td><td>{item.current ? "Current" : <button type="button" onClick={() => void revokeSession(id)}>Revoke</button>}</td></tr>; })}</tbody></table></div>}</div>;
   return <div className="api-data"><h3>Audit events · latest {items.length}</h3><div className="api-audit-actions"><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("verify")}>{auditAction === "verify" ? "Verifying…" : "Verify latest 500"}</button><button type="button" disabled={auditAction !== ""} onClick={() => void runAuditAction("export")}>{auditAction === "export" ? "Preparing…" : "Prepare export"}</button><button type="button" disabled={auditAction !== ""} onClick={() => void prepareAuditArchive()}>{auditAction === "archive" ? "Preparing…" : "Prepare archive batch"}</button></div>{auditResult && <p role="status">{auditResult}</p>}{data.retention && <p>{data.retention}</p>}{items.length === 0 ? <p>No audit events found.</p> : <div className="api-table-wrap"><table><thead><tr><th>Action</th><th>Actor</th><th>Outcome</th><th>Time</th></tr></thead><tbody>{items.map((item, index) => <tr key={String(item._id ?? index)}><td>{String(item.action ?? "")}</td><td>{String(item.actorUserId ?? "")}</td><td>{String(item.outcome ?? "")}</td><td>{item.occurredAt ? new Date(String(item.occurredAt)).toLocaleString() : ""}</td></tr>)}</tbody></table></div>}</div>;
 }
+
+type TenantMembership = { tenantId: string; role: string; status: string };
+type MetaConnection = { connectionId: string; providerUserId: string; providerUserName?: string; grantedScopes: string[]; status: string };
+type MetaPageAsset = { providerAssetId: string; name: string; tasks: string[]; instagramBusinessAccount?: { id: string; username?: string }; status: string };
+
+export function MetaConnectionsPanel() {
+  const callbackParams = new URLSearchParams(window.location.search);
+  const [memberships, setMemberships] = useState<TenantMembership[]>([]);
+  const [tenantId, setTenantId] = useState(callbackParams.get("tenantId") ?? "");
+  const [connections, setConnections] = useState<MetaConnection[]>([]);
+  const [connectionId, setConnectionId] = useState(callbackParams.get("connectionId") ?? "");
+  const [assets, setAssets] = useState<MetaPageAsset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState("");
+  const [message, setMessage] = useState(() => {
+    const status = callbackParams.get("meta_connection");
+    return status === "connected" ? "Meta account connected. Review its Pages and run discovery." : status === "denied" ? "Meta authorization was declined." : status === "failed" ? "Meta connection could not be completed. Review configuration and try again." : "";
+  });
+  const [stepUpCode, setStepUpCode] = useState("");
+  const [stepUpMessage, setStepUpMessage] = useState("");
+  const [stepUpReady, setStepUpReady] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    fetch(API_BASE + "/v1/auth/me", { credentials: "include" })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(response.status === 401 ? "Sign in above with an active tenant-member account." : "Could not read the current identity.");
+        const items = (body.tenantMemberships ?? []) as TenantMembership[];
+        if (active) {
+          setMemberships(items);
+          setTenantId((current) => items.some((item) => item.tenantId === current) ? current : items[0]?.tenantId ?? "");
+        }
+      })
+      .catch((cause) => { if (active) setMessage(cause instanceof Error ? cause.message : "Could not load tenant memberships."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!tenantId) { setConnections([]); setConnectionId(""); return; }
+    let active = true;
+    fetch(API_BASE + "/v1/tenants/" + encodeURIComponent(tenantId) + "/meta/connections", { credentials: "include" })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error === "UNAUTHORIZED" ? "Sign in to continue." : body.error === "TENANT_ACCESS_DENIED" ? "Your tenant role cannot view Meta connections." : body.error ?? "Could not load Meta connections.");
+        const items = (body.items ?? []) as MetaConnection[];
+        if (active) {
+          setConnections(items);
+          setConnectionId((current) => items.some((item) => item.connectionId === current) ? current : items[0]?.connectionId ?? "");
+          setMessage((current) => current || "Meta connection records loaded. No provider token is exposed to this browser.");
+        }
+      })
+      .catch((cause) => { if (active) setMessage(cause instanceof Error ? cause.message : "Could not load Meta connections."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [tenantId, refreshCount]);
+
+  useEffect(() => {
+    if (!tenantId || !connectionId) { setAssets([]); return; }
+    let active = true;
+    fetch(API_BASE + "/v1/tenants/" + encodeURIComponent(tenantId) + "/meta/connections/" + encodeURIComponent(connectionId) + "/assets", { credentials: "include" })
+      .then(async (response) => {
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error ?? "Could not load Page assets.");
+        if (active) setAssets((body.items ?? []) as MetaPageAsset[]);
+      })
+      .catch((cause) => { if (active) setMessage(cause instanceof Error ? cause.message : "Could not load Page assets."); });
+    return () => { active = false; };
+  }, [tenantId, connectionId, refreshCount]);
+
+  async function verifyStepUp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy("step-up"); setStepUpMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "MFA verification failed.");
+      setStepUpReady(true); setStepUpCode(""); setStepUpMessage("MFA verified. Sensitive Meta actions are enabled for five minutes.");
+    } catch (cause) { setStepUpReady(false); setStepUpMessage(cause instanceof Error ? cause.message : "MFA verification failed."); }
+    finally { setBusy(""); }
+  }
+
+  async function startMetaConnection() {
+    if (!tenantId) return;
+    setBusy("connect"); setMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/tenants/" + encodeURIComponent(tenantId) + "/meta/oauth/start", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({}) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA before connecting a Meta account." : body.error ?? "Could not start Meta authorization.");
+      window.location.assign(body.authorizationUrl);
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Could not start Meta authorization."); setBusy(""); }
+  }
+
+  async function discoverPages() {
+    if (!tenantId || !connectionId) return;
+    setBusy("discover"); setMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/tenants/" + encodeURIComponent(tenantId) + "/meta/connections/" + encodeURIComponent(connectionId) + "/assets/discover", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({}) });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA before discovering Pages." : body.error ?? "Page discovery failed.");
+      setAssets((body.items ?? []) as MetaPageAsset[]);
+      setMessage("Discovery complete: " + body.discovered + " Pages, " + body.instagramLinked + " linked Instagram accounts, " + body.unavailable + " Pages marked unavailable.");
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Page discovery failed."); }
+    finally { setBusy(""); }
+  }
+
+  async function disconnectMetaConnection() {
+    if (!tenantId || !connectionId || !window.confirm("Disconnect this Meta account and erase locally stored user and Page tokens?")) return;
+    setBusy("disconnect"); setMessage("");
+    try {
+      const response = await fetch(API_BASE + "/v1/tenants/" + encodeURIComponent(tenantId) + "/meta/connections/" + encodeURIComponent(connectionId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA before disconnecting." : body.error ?? "Disconnect failed.");
+      setMessage("Local tokens erased. Meta remote permission revocation: " + body.remoteRevocation + ".");
+      setConnectionId(""); setAssets([]); setRefreshCount((value) => value + 1);
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Disconnect failed."); }
+    finally { setBusy(""); }
+  }
+
+  if (loading) return <div className="api-data"><p>Loading tenant Meta integration…</p></div>;
+  if (memberships.length === 0) return <div className="api-data"><h3>Meta connections</h3><p>This API requires an active tenant membership. A platform administrator role by itself does not grant tenant access. Sign in with a tenant owner, tenant administrator or appropriately delegated member account.</p>{message && <p role="status">{message}</p>}</div>;
+
+  return <div className="api-data meta-connections">
+    <h3>Meta connections · tenant workspace</h3>
+    <p>OAuth and Page discovery are connected to the API. Provider tokens stay encrypted server-side and are never sent to this browser.</p>
+    <div className="api-auth"><form onSubmit={(event) => { event.preventDefault(); setRefreshCount((value) => value + 1); }}><div><strong>Active tenant</strong><small>Select a workspace where your membership grants Meta permissions.</small></div><select value={tenantId} onChange={(event) => { setTenantId(event.target.value); setConnectionId(""); setAssets([]); }}><option value="">Select tenant</option>{memberships.map((item) => <option key={item.tenantId} value={item.tenantId}>{item.tenantId} · {item.role}</option>)}</select><button type="submit">Refresh</button></form></div>
+    <form className="api-auth" onSubmit={verifyStepUp}><div><strong>MFA step-up</strong><small>Required for Meta connect, Page discovery and disconnect. Verification lasts five minutes.</small></div><input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} placeholder="6-digit authenticator code" value={stepUpCode} onChange={(event) => setStepUpCode(event.target.value)} required/><button type="submit" disabled={busy === "step-up"}>{busy === "step-up" ? "Verifying…" : "Verify MFA"}</button></form>
+    {stepUpMessage && <p role="status">{stepUpMessage}</p>}
+    <div className="api-admin-actions"><button type="button" disabled={!tenantId || busy !== ""} onClick={() => void startMetaConnection()}>{busy === "connect" ? "Opening Meta…" : "Connect Meta account"}</button><button type="button" disabled={!tenantId || !connectionId || busy !== ""} onClick={() => void discoverPages()}>{busy === "discover" ? "Discovering Pages…" : "Discover Pages"}</button><button type="button" disabled={!tenantId || !connectionId || busy !== ""} onClick={() => void disconnectMetaConnection()}>{busy === "disconnect" ? "Disconnecting…" : "Disconnect account"}</button><button type="button" disabled={busy !== ""} onClick={() => setRefreshCount((value) => value + 1)}>Refresh data</button></div>
+    {message && <p role="status">{message}</p>}
+    <h4>Connected Meta accounts</h4>
+    {connections.length === 0 ? <p>No Meta account is connected to this tenant. Connect a test account after configuring the owner-managed Meta app and callback URI.</p> : <div className="api-table-wrap"><table><thead><tr><th>Account</th><th>Meta user ID</th><th>Granted permissions</th><th>Status</th></tr></thead><tbody>{connections.map((item) => <tr key={item.connectionId} onClick={() => setConnectionId(item.connectionId)}><td><button type="button" onClick={() => setConnectionId(item.connectionId)}>{item.providerUserName ?? item.connectionId}</button></td><td>{item.providerUserId}</td><td>{item.grantedScopes.join(", ")}</td><td>{item.status}</td></tr>)}</tbody></table></div>}
+    {connections.length > 0 && <div className="api-auth"><form onSubmit={(event) => { event.preventDefault(); setRefreshCount((value) => value + 1); }}><div><strong>Selected connection</strong><small>Choose which Meta account to discover Pages for.</small></div><select value={connectionId} onChange={(event) => setConnectionId(event.target.value)}>{connections.map((item) => <option key={item.connectionId} value={item.connectionId}>{item.providerUserName ?? item.providerUserId} · {item.connectionId}</option>)}</select><button type="submit">Load assets</button></form></div>}
+    <h4>Facebook Pages and linked Instagram Business accounts</h4>
+    {assets.length === 0 ? <p>No Page assets discovered for this connection yet. Run Discover Pages after MFA verification.</p> : <div className="api-table-wrap"><table><thead><tr><th>Facebook Page</th><th>Page ID</th><th>Tasks</th><th>Instagram Business account</th><th>Status</th></tr></thead><tbody>{assets.map((item) => <tr key={item.providerAssetId}><td>{item.name}</td><td>{item.providerAssetId}</td><td>{item.tasks.join(", ")}</td><td>{item.instagramBusinessAccount ? (item.instagramBusinessAccount.username ?? item.instagramBusinessAccount.id) : "Not linked"}</td><td>{item.status}</td></tr>)}</tbody></table></div>}
+    <p>Publishing, media, comments, inbox, insights, Instagram eligibility checks and webhook operations are not yet enabled. Disconnect attempts Meta permission revocation and always erases local encrypted tokens.</p>
+  </div>;
+}
