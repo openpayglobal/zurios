@@ -1,0 +1,78 @@
+# MAC Infrastructure and Secrets Management
+
+**Owner:** Blockchain Innovations LTD  
+**Product:** Zuri OS / Zuri MeBuMIP  
+**Status:** Design and control-plane setup in progress  
+**Date:** 2026-11-21
+
+## 1. Control-plane rule
+
+MAC is the authoritative inventory and governance surface for runtime infrastructure configuration, secrets, keyrings, approved origins and provider connections. Vercel workloads retrieve authorized runtime configuration without redeployment. Vercel project environment variables remain limited to bootstrap/deployment inputs that cannot be fetched from MAC.
+
+MAC must never return secret plaintext after initial credential submission or generation. Secret values are write-only, encrypted at rest, access-controlled, audited and redacted from logs, API responses, diffs and exports.
+
+## 2. Resource lifecycle
+
+Every resource follows: discover/provision → validate → classify → encrypt/store → approve → activate → monitor → rotate/revoke → audit.
+
+| Resource | MAC behavior | External dependency |
+|---|---|---|
+| JWT signing keyring | Generate asymmetric signing keys via managed KMS where supported; store key IDs, algorithm, JWKS metadata, active/retiring/revoked state and rotation history | KMS issuer/project grant; runtime signer/verifier integration |
+| MFA encryption keyring | Generate 256-bit data-encryption keys, wrap them with a dedicated encryption KMS, store ciphertext and key IDs, support re-encryption/rotation | A real encrypt/decrypt KMS or HSM is required; Vercel KMS JWT signing is not an encryption API |
+| Audit-signing keyring | Generate signing keys, retain historical public verification material, support key rotation without breaking historic verification | KMS/HSM or audited key custody; current audit implementation must be migrated compatibly |
+| MongoDB production connection | Initiate cluster/project/database-user provisioning where provider API authorization exists; validate TLS, authentication, replica-set/sharded topology and transaction support; store URI encrypted and mask it | MongoDB/Atlas organization/project credentials, cluster quota, database user and network allowlist |
+| Approved API origins | Discover Vercel project domains, verify ownership/HTTPS, normalize exact origins and maintain environment-specific allowlists; reject wildcards and localhost in production | Verified Vercel domain ownership and domain configuration |
+| Live provider credentials | Initiate OAuth or provider-issued credential flows, validate scopes and token health, encrypt server-side, rotate/revoke and audit | Meta app/portfolio, App Review/permissions, business verification and provider-issued credentials |
+
+## 3. Vercel KMS workload identity resource created
+
+The connected Vercel team had no KMS issuers. A managed issuer was created for the API workload:
+
+- Issuer name: `Zuri OS MAC Runtime Workload Identity`
+- Issuer ID: `5653e1ff-fd71-4a0d-8720-380cdfcaf2c4`
+- Algorithm: RS256
+- Project grant: API project `prj_vkIcPCsN1TW3WOturczl3FcWEJkq`
+- Team: `team_Gn7gvUwfzUbCZpxOIRrYK5gD`
+- Environment: Production only
+- Claims constrained to `service=zurios-api` and `config_scope=runtime:read`
+- Initial signing key was generated and activated by Vercel. Private key material is not exportable.
+
+This is a workload-identity signing key, not the user-session JWT keyring, MFA encryption keyring or audit-signing keyring. Runtime integration must use `@vercel/oidc` to obtain the deployment OIDC token and `@vercel/kms` `signJWT` to mint the constrained MAC token, then MAC must verify it against the issuer's published JWKS and exact claims. Do not put a Vercel API bearer token in project environment variables.
+
+## 4. Critical bootstrapping boundary
+
+The running API needs a database connection before it can read a MongoDB URI from a configuration record stored in that same database. This is a bootstrap dependency, not a UI omission.
+
+The production database connection must be provisioned by the authorized database provider (or a separate control-plane secret manager) and then registered in MAC. MAC cannot safely create a working MongoDB cluster URI from random bytes. Until the database provider API and credentials are connected, MAC can validate and securely register an externally provisioned URI but cannot create the cluster itself.
+
+Likewise, provider access tokens must be issued by Meta or another provider after consent; they cannot be invented by MAC.
+
+## 5. Vercel runtime configuration boundary
+
+- Runtime settings and provider credentials change through MAC's versioned runtime API; running deployments poll/refresh by revision/ETag and do not redeploy.
+- The API is the only reader of private and secret values.
+- Browser apps receive only a schema-validated public projection.
+- Preview and production are isolated. Production secrets cannot be read by preview deployments.
+- Build-time Vite values and bootstrap connectivity remain distinct from live runtime values.
+- A failed authorization, unknown key, stale/revoked credential or invalid workload token fails closed.
+
+## 6. Activation gates
+
+- A secure encryption KMS/HSM is configured before MAC stores MFA/provider secret plaintext.
+- MAC service uses a dedicated service identity and exact Vercel project/environment claims.
+- Every secret mutation requires platform permission, recent MFA step-up, reason and idempotency key.
+- Every secret read is attributable; audit metadata contains key IDs and outcomes, never values.
+- Key rotation keeps old verification/decryption keys until all dependent records are migrated and verified.
+- MongoDB validation proves replica-set or sharded topology with transaction support.
+- API origins are exact HTTPS origins under verified domains.
+- Provider connections have least-privilege scopes, expiry monitoring and revoke/disconnect paths.
+
+## 7. Current blockers
+
+- No Vercel KMS issuer had existed; the production-only API workload issuer above is now created.
+- KMS JWT signing does not provide arbitrary symmetric encryption/decryption; an encryption KMS/HSM is still required for app-managed secret storage.
+- No production MongoDB cluster/replica-set credential is confirmed.
+- No verified Meta app/portfolio credentials or provider-issued live tokens are configured.
+- The existing MeBuMIP MAC settings API is read-only; secret lifecycle UI/API remains to be implemented.
+- The Zuri OS integration candidate contains an access request/workspace journey, but public access requests default off and the current MeBuMIP web UI is still an administration shell.
+
