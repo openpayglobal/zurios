@@ -434,23 +434,33 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const now = new Date();
     const token = newOpaqueToken();
     const expiresAt = new Date(now.getTime() + 30 * 60_000);
-    await db.collection("passwordRecoveries").updateMany(
-      { userId: String(user._id), usedAt: { $exists: false }, revokedAt: { $exists: false } },
-      { $set: { revokedAt: now, revokeReason: "superseded" } },
+    const recovery = await withAuditTransaction(
+      db,
+      async (session) => {
+        await db.collection("passwordRecoveries").updateMany(
+          { userId: String(user._id), usedAt: { $exists: false }, revokedAt: { $exists: false } },
+          { $set: { revokedAt: now, revokeReason: "superseded" } },
+          { session },
+        );
+        return db.collection("passwordRecoveries").insertOne({
+          userId: String(user._id), tokenHash: hashToken(token), createdAt: now, expiresAt,
+        }, { session });
+      },
+      (created) => ({ actorUserId: String(user._id), action: "auth.password.recovery.requested", targetType: "password_recovery", targetId: String(created.insertedId), outcome: "success", correlationId: request.id }),
     );
-    const recovery = await db.collection("passwordRecoveries").insertOne({
-      userId: String(user._id), tokenHash: hashToken(token), createdAt: now, expiresAt,
-    });
     const delivery = await sendPasswordRecoveryEmail({ to: email, token, expiresAt });
     if (!delivery.delivered) {
-      await db.collection("passwordRecoveries").updateOne(
-        { _id: recovery.insertedId, usedAt: { $exists: false } },
-        { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } },
+      await withAuditTransaction(
+        db,
+        (session) => db.collection("passwordRecoveries").updateOne(
+          { _id: recovery.insertedId, usedAt: { $exists: false } },
+          { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } },
+          { session },
+        ),
+        () => ({ actorUserId: String(user._id), action: "auth.password.recovery.delivery_failed", targetType: "password_recovery", targetId: String(recovery.insertedId), outcome: "failure", correlationId: request.id }),
       );
-      await writeAudit(db, request, String(user._id), "auth.password.recovery.delivery_failed", "user", "failure");
       return reply.code(202).send({ status: "if_account_exists_email_sent" });
     }
-    await writeAudit(db, request, String(user._id), "auth.password.recovery.requested", "user", "success");
     return reply.code(202).send({ status: "if_account_exists_email_sent" });
   });
 
