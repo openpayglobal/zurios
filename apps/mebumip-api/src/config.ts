@@ -135,7 +135,6 @@ const runtimeSchema = envSchema.superRefine((value, context) => {
   if (!value.META_APP_ID && (value.META_APP_SECRET || value.META_REDIRECT_URI || value.META_WEBHOOK_VERIFY_TOKEN || value.META_LOGIN_CONFIG_ID)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "Meta app secret, redirect URI, webhook verify token and Login Config ID require META_APP_ID" });
   }
-  }
 });
 export function parseConfig(environment: NodeJS.ProcessEnv) {
   return runtimeSchema.safeParse(environment);
