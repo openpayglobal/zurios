@@ -61,8 +61,9 @@ try{
  const unassigned=await ensureAccount(db,"demo.unassigned@zuri.test","Demo Unassigned Identity",[]);
  await db.collection("memberships").updateMany({userId:unassigned.userId,status:{$in:["active","invited","suspended"]}},{$set:{status:"revoked",updatedAt:new Date(),updatedBy:actor}});
  await db.collection("sessions").updateMany({userId:unassigned.userId,revokedAt:{$exists:false}},{$set:{revokedAt:new Date(),updatedAt:new Date(),updatedBy:actor}});
- const pending=await db.collection("demoSeedRuns").findOne({_id:"baseline-v1"});
- await db.collection("demoSeedRuns").updateOne({_id:"baseline-v1"},{$set:{completedAt:new Date(),databaseName,accountEmails:[standard.emailNormalized,multi.emailNormalized,unassigned.emailNormalized],tenantIds:[primary.tenantId,secondary.tenantId]},$setOnInsert:{createdAt:new Date()}},{upsert:true});
+ const demoSeedRuns=db.collection<{_id:string;createdAt:Date;completedAt:Date;databaseName:string;accountEmails:string[];tenantIds:string[]}>("demoSeedRuns");
+ const pending=await demoSeedRuns.findOne({_id:"baseline-v1"});
+ await demoSeedRuns.updateOne({_id:"baseline-v1"},{$set:{completedAt:new Date(),databaseName,accountEmails:[standard.emailNormalized,multi.emailNormalized,unassigned.emailNormalized],tenantIds:[primary.tenantId,secondary.tenantId]},$setOnInsert:{createdAt:new Date()}},{upsert:true});
  process.stdout.write(JSON.stringify({status:"seeded",database:databaseName,accounts:[
   {scenario:"standard-member",email:standard.emailNormalized},
   {scenario:"multi-workspace-member",email:multi.emailNormalized},
