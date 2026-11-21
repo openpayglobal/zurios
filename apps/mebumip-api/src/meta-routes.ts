@@ -94,6 +94,7 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db): void {
       userId: resolved.principal.userId,
       sessionId: String(resolved.sessionId),
       redirectUri: configured.redirectUri,
+      requestedScopes: scopes,
     };
     const created = await states.create(context, request.id);
     const authorizationUrl = oauth.buildAuthorizationUrl({ state: created.state, scopes });
@@ -123,8 +124,9 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db): void {
     if (parsed.data.error) return reply.code(400).send({ error: "META_AUTHORIZATION_DENIED" });
 
     try {
-      const shortLived = await oauth.exchangeAuthorizationCodeAndValidate(parsed.data.code!, META_PAGES_INSTAGRAM_SCOPES);
-      const longLived = await oauth.exchangeLongLivedTokenAndValidate(shortLived.accessToken, META_PAGES_INSTAGRAM_SCOPES);
+      const requiredScopes = (pending.requestedScopes ?? META_PAGES_INSTAGRAM_SCOPES) as MetaOAuthScope[];
+      const shortLived = await oauth.exchangeAuthorizationCodeAndValidate(parsed.data.code!, requiredScopes);
+      const longLived = await oauth.exchangeLongLivedTokenAndValidate(shortLived.accessToken, requiredScopes);
       const connection = await createMetaConnection(db, vault, {
         tenantId: pending.tenantId,
         actorUserId: pending.userId,
