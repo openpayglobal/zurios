@@ -12,7 +12,7 @@ The MeBuMIP API now has a reusable Meta Graph transport client in `apps/mebumip-
 - HTTPS requests to the official `graph.facebook.com` origin.
 - Bearer-token authorization headers; access tokens are rejected in query/body parameters.
 - Provider error normalization with code, subcode, type and trace ID.
-- Bounded retries for transient GET requests only.
+- Bounded retries for transient GET requests only, including Meta temporary/throttling codes 1, 2, 4, 17 and 341.
 - No automatic retry for POST/DELETE operations.
 - Retry-After support for rate limits.
 - Safe pagination that accepts only the official Graph API host and the same configured version, and strips an embedded access token before replay.
@@ -29,7 +29,7 @@ The 20 November 2026 research snapshot identifies Graph API v27.0 on Meta's land
 ## 3. Request contract
 
 - Pass the token only through `accessToken`; the client sets `Authorization: Bearer ...`.
-- Pass a relative Graph resource path, e.g. `me/accounts` or `act_<id>/campaigns`. Absolute URLs, query fragments, traversal segments and duplicated version prefixes are rejected.
+- Pass a relative Graph resource path, e.g. `me/accounts` or `page-id/feed`. Absolute URLs, query fragments, traversal segments and duplicated version prefixes are rejected.
 - GET requests may use bounded retries for network failures, HTTP 429/5xx and provider-marked transient errors.
 - POST/DELETE are never automatically retried. Mutating application services must use idempotency keys and an outbox where external effects are involved.
 - Form fields are encoded as URL-encoded body parameters. Never put access tokens, app secrets or webhook secrets in body/query fields.
