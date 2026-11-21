@@ -43,6 +43,7 @@ Meta token keys must be different from MFA encryption keys and audit signing key
 - Requested permissions are allowlisted and stored with the state. The callback validates the exact requested set, not a caller-supplied callback scope list.
 - OAuth initiation and callback have dedicated database-backed rate-limit windows.
 - Provider fetches use the pinned Graph version, no redirects, omitted credentials/cookies, no-store caching and no referrer. App Secret Proof is required for Graph API requests.
+- Meta HTTP responses set `Cache-Control: no-store`, `Pragma: no-cache` and `Referrer-Policy: no-referrer`. Fastify automatic request logging is disabled; structured access logs record only the route template, method, status and correlation ID, never OAuth callback query strings containing state or authorization codes.
 - Provider errors are normalized; tokens and app secrets are not returned in API payloads or application warning logs.
 - Access-token ciphertext is tenant/connection-bound using AES-256-GCM authenticated associated data.
 - Connection create/disconnect and OAuth state create/consume are audited transactionally. Remote permission revocation follows Meta's documented User Permissions endpoint; if the remote call fails or the token has expired, the local token is still erased and the outcome is recorded.
