@@ -378,11 +378,10 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         previousHash: { $exists: false },
         eventHash: { $exists: false },
       } as const;
-      const [totalCount, sequencedCount, legacyCount] = await Promise.all([
-        collection.countDocuments({}, { session }),
-        collection.countDocuments(completeChainFilter, { session }),
-        collection.countDocuments(legacyFilter, { session }),
-      ]);
+      // MongoDB does not support parallel operations on one transaction session.
+      const totalCount = await collection.countDocuments({}, { session });
+      const sequencedCount = await collection.countDocuments(completeChainFilter, { session });
+      const legacyCount = await collection.countDocuments(legacyFilter, { session });
       const malformedCount = totalCount - sequencedCount - legacyCount;
       if (malformedCount > 0) throw new Error("PARTIAL_AUDIT_CHAIN_FIELDS");
       if (sequencedCount > 0 && legacyCount > 0) throw new Error("LEGACY_AND_CHAINED_EVENTS_MIXED");
