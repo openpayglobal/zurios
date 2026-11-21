@@ -35,7 +35,9 @@ const callbackSchema = z.object({
   message: "Exactly one of code or provider error is required",
 });
 
-function configuredServices() {
+export interface MetaRouteDependencies { fetchImpl?: typeof fetch; }
+
+function configuredServices(dependencies: MetaRouteDependencies) {
   if (!config.META_APP_ID || !config.META_APP_SECRET || !config.META_REDIRECT_URI ||
       !config.META_GRAPH_API_VERSION || !config.META_TOKEN_ENCRYPTION_KEYRING ||
       !config.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID) return null;
@@ -48,6 +50,7 @@ function configuredServices() {
       version: config.META_GRAPH_API_VERSION,
       redirectUri: config.META_REDIRECT_URI,
       allowInsecureLocalhost,
+      ...(dependencies.fetchImpl ? { fetchImpl: dependencies.fetchImpl } : {}),
       ...(config.META_LOGIN_CONFIG_ID ? { loginConfigId: config.META_LOGIN_CONFIG_ID } : {}),
     }),
     vault: new MetaTokenVault({ keyring, activeKeyId: config.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID }),
@@ -64,8 +67,8 @@ function hasRecentStepUp(stepUpUntil: Date | undefined): boolean {
  * Meta connection routes are deliberately absent unless the complete provider and
  * token-vault configuration is present. No route accepts or returns provider tokens.
  */
-export function registerMetaRoutes(app: FastifyInstance, db: Db): void {
-  const configured = configuredServices();
+export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: MetaRouteDependencies = {}): void {
+  const configured = configuredServices(dependencies);
   if (!configured) {
     app.log.info("Meta integration routes disabled: provider and token-vault configuration is incomplete");
     return;
