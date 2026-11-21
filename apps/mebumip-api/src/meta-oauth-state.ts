@@ -32,6 +32,7 @@ export interface MetaOAuthStateServiceOptions {
   redirectUri: string;
   ttlMs?: number;
   now?: () => Date;
+  allowInsecureLocalhost?: boolean;
 }
 
 function stateHash(state: string): string {
@@ -43,7 +44,7 @@ function requiredText(value: string, field: string): string {
   return value.trim();
 }
 
-function normalizeRedirectUri(value: string): string {
+function normalizeRedirectUri(value: string, allowInsecureLocalhost = false): string {
   let redirect: URL;
   try {
     redirect = new URL(value);
@@ -51,7 +52,9 @@ function normalizeRedirectUri(value: string): string {
     throw new Error("META_OAUTH_REDIRECT_URI_INVALID");
   }
   const localDevelopmentHost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
-  if (redirect.username || redirect.password || redirect.hash || (redirect.protocol !== "https:" && !localDevelopmentHost)) {
+  const secureTransport = redirect.protocol === "https:";
+  const permittedLocalHttp = redirect.protocol === "http:" && allowInsecureLocalhost && localDevelopmentHost;
+  if (redirect.username || redirect.password || redirect.hash || (!secureTransport && !permittedLocalHttp)) {
     throw new Error("META_OAUTH_REDIRECT_URI_INVALID");
   }
   return redirect.toString();
@@ -61,11 +64,13 @@ export class MetaOAuthStateService {
   private readonly ttlMs: number;
   private readonly now: () => Date;
   private readonly redirectUri: string;
+  private readonly allowInsecureLocalhost: boolean;
 
   constructor(private readonly db: Db, options: MetaOAuthStateServiceOptions) {
     this.ttlMs = options.ttlMs ?? 5 * 60_000;
     this.now = options.now ?? (() => new Date());
-    this.redirectUri = normalizeRedirectUri(options.redirectUri);
+    this.allowInsecureLocalhost = options.allowInsecureLocalhost === true;
+    this.redirectUri = normalizeRedirectUri(options.redirectUri, this.allowInsecureLocalhost);
     if (!Number.isSafeInteger(this.ttlMs) || this.ttlMs < 60_000 || this.ttlMs > 15 * 60_000) throw new Error("META_OAUTH_STATE_TTL_INVALID");
   }
 
@@ -74,7 +79,7 @@ export class MetaOAuthStateService {
     const userId = requiredText(context.userId, "user_id");
     const sessionId = requiredText(context.sessionId, "session_id");
     const correlationId = requiredText(correlationIdInput, "correlation_id");
-    if (normalizeRedirectUri(context.redirectUri) !== this.redirectUri) throw new Error("META_OAUTH_REDIRECT_URI_MISMATCH");
+    if (normalizeRedirectUri(context.redirectUri, this.allowInsecureLocalhost) !== this.redirectUri) throw new Error("META_OAUTH_REDIRECT_URI_MISMATCH");
     const state = randomBytes(32).toString("base64url");
     const createdAt = this.now();
     const expiresAt = new Date(createdAt.getTime() + this.ttlMs);
