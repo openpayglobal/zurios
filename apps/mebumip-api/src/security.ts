@@ -213,7 +213,7 @@ export function verifyAuditChainEvents(events: Array<Record<string, unknown>>, e
       ...(event.metadata && typeof event.metadata === "object" ? { metadata: event.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
       sequence, previousHash: event.previousHash, occurredAt,
     });
-    if (event.eventHash !== auditDigest(payload) || !verifyAuditEvent(event)) return false;
+    if (event.eventHash !== auditDigest(payload) || !verifyAuditEvent({ ...event, occurredAt })) return false;
     previousHash = event.eventHash;
     expectedSequence += 1;
   }
