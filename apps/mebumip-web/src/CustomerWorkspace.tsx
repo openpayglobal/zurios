@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 
-const WORKFLOW_API = import.meta.env.VITE_MEBUMIP_API_BASE ?? "http://localhost:4100";
+const WORKFLOW_API = import.meta.env.VITE_MEBUMIP_API_BASE ?? "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app";
 type Membership = { tenantId: string; role: string; status: string };
 type Onboarding = {
   tenantId: string;
