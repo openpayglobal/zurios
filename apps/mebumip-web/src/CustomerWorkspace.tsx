@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { getMeBuMIPApiBase } from "./runtime-api";
 
 type Membership = { tenantId: string; role: string; status: string };
 type Onboarding = {
