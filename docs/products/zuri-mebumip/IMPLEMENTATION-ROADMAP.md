@@ -31,7 +31,7 @@ Objective A has entered implementation, but Phase 2 is not complete:
 - Implemented: tenant-authorized standard OAuth start/callback; hashed, single-use state bound to tenant/user/session/scopes; app/token/scope validation; encrypted user-token persistence; tenant-scoped connection list/disconnect; Meta remote permission revoke attempt with explicit outcome.
 - Implemented: tenant-authorized Page discovery/list; bounded same-origin pagination; encrypted Page access tokens bound to tenant/connection/Page; linked Instagram Business ID/username metadata; stale Page and Instagram-link reconciliation; transactional Page-token key rotation.
 - Verified at code checkpoint `8b9ea3cf2babcd285fc81f7d5257658bc4920bc8`: full CI and MeBuMIP Phase 1 workflows passed, including OpenAPI 3.1, route drift, docs mirror, typecheck, tests and builds.
-- Remaining: Page-level management/publishing/media/inbox/comments/insights, Instagram eligibility/operations, Business Login HTTP flow, webhooks/deauthorization, token health/re-authorisation jobs, frontend UX, Meta App Review and production provider tests.
+- Implemented UI: tenant membership selector, MFA step-up, browser OAuth return, connection listing/disconnect, Page discovery and token-free Page/Instagram metadata display.\n- Remaining: Page-level management/publishing/media/inbox/comments/insights, Instagram eligibility/operations, Business Login HTTP flow, webhooks/deauthorization, token health/re-authorisation jobs, UX polish, Meta App Review and production provider tests.
 - No live Meta account is connected. Owner Meta app credentials, approved scopes, business verification and production authorization remain prerequisites.
 
 ## Objective-to-phase traceability
