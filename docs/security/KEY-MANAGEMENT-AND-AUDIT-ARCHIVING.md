@@ -3,7 +3,7 @@
 **Owner:** Blockchain Innovations LTD  
 **Status:** Engineering standard; provider and retention choices require owner approval  
 **Applies to:** Zuri OS shared platform and Zuri MeBuMIP  
-**Last reviewed:** 2026-11-20
+**Last reviewed:** 2026-11-21
 
 ## 1. Purpose and governing references
 
@@ -84,6 +84,23 @@ Safe rotation sequence:
 7. Record the key ID transition and verification counts, never key material.
 
 A re-sign operation must never silently rewrite historical event content or claim the original signature was produced by a replacement key. Key compromise/revocation requires a separate incident procedure and must not silently invalidate evidence.
+
+### Legacy audit-chain backfill — privileged maintenance only
+
+The backfill utility is dry-run by default:
+
+```sh
+pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+Apply mode is intentionally separate from the runtime API database identity and requires a dedicated, short-lived maintenance URI:
+
+```sh
+AUDIT_MIGRATION_MONGODB_URI='<approved-maintenance-uri>' AUDIT_CHAIN_BACKFILL_APPLY=true pnpm --filter @zuri/mebumip-api audit:backfill
+```
+
+The CLI refuses apply mode if `AUDIT_MIGRATION_MONGODB_URI` is absent. The maintenance identity must be approved for the bounded audit-event updates and counter write, used only during the maintenance window, and removed afterwards. The runtime application identity must not be granted audit-event update/delete permissions. Before apply: verify a restorable backup, review the dry-run plan, stop competing writers or schedule an approved maintenance window, obtain independent approval, and retain the resulting verification output. The apply transaction refuses partial/mixed histories, invalid fields, or more than 5,000 legacy events. No production apply operation is claimed.
+
 
 ## 5. Independent immutable audit archive
 
