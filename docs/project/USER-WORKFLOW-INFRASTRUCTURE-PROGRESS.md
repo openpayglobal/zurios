@@ -210,3 +210,19 @@ This is separate from MeBuMIP's customer workspace workflow, which is also imple
 ### Access-request visibility correction
 
 The sign-in screen and the no-membership workspace chooser now always display the “Request Zuri OS access” entry. It is enabled only when MAC has a published HTTPS privacy notice and the administrator turns on the runtime access-request flag. When disabled, the UI explains the exact prerequisite instead of silently hiding the workflow.
+
+
+## Demo identities and sign-in auto-fill — 2026-11-21
+
+Implemented in PR #18 source:
+
+- Added `apps/api/scripts/seed-demo-accounts.ts` and `pnpm --filter @zuri/api demo:seed`.
+- The seeder requires an explicit enable flag, a dedicated `zuri_demo*` database name, a MongoDB URI and a 16+ character demo password. It refuses production execution and refuses to modify identities/tenants not created by the demo seeder.
+- Added three synthetic scenarios: standard member (one workspace), multi-workspace member (two workspaces) and active identity with no membership.
+- Seeded users are created through the existing single-use invitation acceptance/password-hashing path. Re-running rotates the demo password hash and revokes existing sessions; the no-membership identity is reconciled to zero active memberships.
+- No platform-operator grants, privileged wildcard roles, MFA bypasses, real provider connections or production identities are created.
+- Added a sign-in demo selector. It only fills the email/password fields; it does not submit the form or bypass the ordinary login, MFA, rate-limit or membership checks.
+- Auto-fill is hidden unless explicitly enabled for local development or a Vercel Preview build. It additionally requires a preview-only `VITE_DEMO_PASSWORD` of at least 16 characters and `VITE_VERCEL_ENV=preview` for Vercel Preview. Do not configure any demo variables in Production.
+- Added `docs/operations/ZURI-OS-DEMO-ACCOUNTS.md` with setup, isolation, rotation and acceptance guidance.
+
+**Verification status:** source changes committed; exact-head CI/typecheck/build and an isolated demo-database seed/login smoke test are pending. No demo database was provisioned and no credentials were generated in this repository session.
