@@ -94,7 +94,7 @@ export function registerCustomerWorkflowRoutes(app: FastifyInstance, db: Db): vo
           tenantId,
           outcome: "success",
           correlationId: request.id,
-          metadata: { changedFields: Object.keys(profile) },
+          metadata: { changedFields: Object.keys(profile).join(",") },
         }, session);
       }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
     } finally {
