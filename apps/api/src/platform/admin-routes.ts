@@ -442,6 +442,44 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     });
    }catch(error){return fail(error,reply);}
   });
+
+  app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.read")},async(request,reply)=>{
+   try{
+    let topology={replicaSet:false,writablePrimary:false,transactionsAvailable:false};
+    try{
+     const hello=await db.command({hello:1});
+     topology={
+      replicaSet:typeof hello.setName==="string"&&hello.setName.length>0,
+      writablePrimary:hello.isWritablePrimary===true,
+      transactionsAvailable:typeof hello.logicalSessionTimeoutMinutes==="number"&&hello.logicalSessionTimeoutMinutes>0
+     };
+    }catch{}
+    const managedSigning=[
+     {id:"5653e1ff-fd71-4a0d-8720-380cdfcaf2c4",name:"Zuri OS MAC Runtime Workload Identity",purpose:"Vercel workload identity",keyId:"75899278-1e19-4444-bec0-141dc4d17eb0",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"16d2fb82-30b7-4a0d-8c4e-49fb1de92919",name:"Zuri OS User Session JWT Signing",purpose:"User session JWT signing",keyId:"2900b63b-5eed-4689-8726-b05a4618967f",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"55210f93-c052-45a5-aeb8-e083ed0d5dce",name:"Zuri OS Audit Event Signing",purpose:"Audit event signing",keyId:"da6060ee-9fda-4389-a652-281c256be6d2",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"}
+    ];
+    const origins=(process.env.CORS_ORIGINS??"").split(",").map(value=>value.trim()).filter(Boolean);
+    return reply.header("cache-control","no-store").send({data:{
+     generatedAt:new Date().toISOString(),
+     environment:process.env.NODE_ENV??"unknown",
+     database:{configured:Boolean(process.env.MONGODB_URI),topology,source:"deployment_bootstrap",note:"The API requires a bootstrap database connection before it can read MAC runtime configuration. A provider-issued production URI must be validated and registered through a separate secure provisioning step; the URI is never returned."},
+     keyrings:{
+      userSessionJwt:{legacyConfigured:Boolean(config.jwtSecret),legacyAlgorithm:"HS256",managedSigning,status:"KMS_keys_provisioned_pending_application_migration"},
+      mfaEncryption:{configured:Boolean(process.env.MFA_ENCRYPTION_KEY),source:"deployment_bootstrap",status:"encryption_KMS_HSM_required_for_MAC_managed_rotation"},
+      auditSigning:{configured:Boolean(process.env.AUDIT_SIGNING_KEY||process.env.AUDIT_SIGNING_KEYRING),managedSigning:managedSigning.filter(key=>key.purpose==="Audit event signing"),status:"KMS_key_provisioned_pending_audit_pipeline_migration"}
+     },
+     apiOrigins:{items:origins,source:"deployment_bootstrap",status:"MAC_verified_origin_registry_pending"},
+     providers:{
+      meta:{configured:false,status:"provider_authorization_required"},
+      whatsapp:{configured:false,status:"provider_authorization_required"},
+      email:{configured:Boolean(process.env.RESEND_API_KEY&&process.env.MAIL_FROM),status:process.env.RESEND_API_KEY&&process.env.MAIL_FROM?"configured":"not_configured"}
+     },
+     secretStore:{status:"blocked",reason:"Vercel KMS provides managed JWT/message signing, not general symmetric encryption/decryption. Configure a dedicated encryption KMS/HSM before storing provider, database or MFA secret values in MAC."},
+     note:"Metadata only. No private key, JWT secret, database URI or provider credential is returned."
+    }});
+   }catch(error){request.log.error({err:error,correlationId:request.id},"Infrastructure inventory failed");return reply.code(500).send({error:"INFRASTRUCTURE_INVENTORY_UNAVAILABLE"});}
+  });
   app.post("/platform/admin/tenants/:tenantId/lifecycle-requests",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.lifecycle.request")},async(request,reply)=>{
    const p=principal(request);try{
     const params=z.object({tenantId:z.string().min(1)}).parse(request.params),body=tenantLifecycleRequestSchema.parse(request.body);
