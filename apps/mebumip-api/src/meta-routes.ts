@@ -86,6 +86,14 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
   });
   const { oauth, graph, vault } = configured;
 
+  app.addHook("onRequest", async (request, reply) => {
+    if ((request.routeOptions.url ?? "").includes("/meta/")) {
+      reply.header("cache-control", "no-store, max-age=0");
+      reply.header("pragma", "no-cache");
+      reply.header("referrer-policy", "no-referrer");
+    }
+  });
+
   app.post("/v1/tenants/:tenantId/meta/oauth/start", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
