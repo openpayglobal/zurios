@@ -2,17 +2,16 @@ import { config } from "./config.js";
 import { MetaGraphClient, type MetaGraphClientOptions } from "./meta-graph-client.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
 
-export interface MetaProviderConfig {
-  META_APP_ID?: string;
-  META_APP_SECRET?: string;
-  META_REDIRECT_URI?: string;
-  META_GRAPH_API_VERSION?: string;
-  META_MARKETING_API_VERSION?: string;
-  META_TOKEN_ENCRYPTION_KEYRING?: string;
-  META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID?: string;
-  META_WEBHOOK_VERIFY_TOKEN?: string;
-}
-
+export type MetaProviderConfig = Pick<typeof config,
+  | "META_APP_ID"
+  | "META_APP_SECRET"
+  | "META_REDIRECT_URI"
+  | "META_GRAPH_API_VERSION"
+  | "META_MARKETING_API_VERSION"
+  | "META_TOKEN_ENCRYPTION_KEYRING"
+  | "META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID"
+  | "META_WEBHOOK_VERIFY_TOKEN"
+>;
 export function createMetaGraphClient(
   providerConfig: MetaProviderConfig,
   runtimeOptions: Pick<MetaGraphClientOptions, "fetchImpl" | "timeoutMs" | "maxRetries" | "sleep"> = {},
