@@ -111,7 +111,7 @@ export async function discoverMetaPages(
   vault: MetaTokenVault,
   graph: MetaGraphClient,
   input: { tenantId: string; connectionId: string; actorUserId: string; correlationId: string; now?: Date },
-): Promise<{ items: MetaPageAssetSummary[]; discovered: number; instagramLinked: number }> {
+): Promise<{ items: MetaPageAssetSummary[]; discovered: number; instagramLinked: number; unavailable: number }> {
   const tenantId = requiredText(input.tenantId, "tenant_id");
   const connectionId = requiredText(input.connectionId, "connection_id");
   const actorUserId = requiredText(input.actorUserId, "actor_user_id");
