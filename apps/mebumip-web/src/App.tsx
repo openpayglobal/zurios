@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AdminData, AuthPanel } from "./ApiPanels";
+import { CustomerWorkspace } from "./CustomerWorkspace";
 import {
   Activity, ArrowDownRight, ArrowUpRight, BadgeCheck, BarChart3, Bell,
   Blocks, Building2, CheckCircle2, ChevronDown, CircleAlert, Command,
@@ -8,7 +9,7 @@ import {
   Users, Waypoints, Workflow, X
 } from "lucide-react";
 
-type Section = "dashboard" | "objectives" | "tenants" | "administrators" | "sessions" | "connections" | "integrations" | "security" | "settings";
+type Section = "dashboard" | "objectives" | "tenants" | "administrators" | "sessions" | "connections" | "integrations" | "security" | "settings" | "customer-workspace";
 type Objective = { id: string; title: string; phase: string; status: string; description: string; icon: typeof Facebook };
 
 const objectives: Objective[] = [
@@ -40,6 +41,7 @@ const nav: { id: Section; label: string; icon: typeof LayoutDashboard; group: st
   { id: "integrations", label: "API integrations", icon: Workflow, group: "MAC · CONTROL" },
   { id: "security", label: "Security & audit", icon: ShieldCheck, group: "MAC · GOVERNANCE" },
   { id: "settings", label: "Platform settings", icon: Settings2, group: "MAC · GOVERNANCE" },
+  { id: "customer-workspace", label: "Customer workspace", icon: Building2, group: "CUSTOMER · WORKSPACE" },
 ];
 
 function Status({ children }: { children: string }) {
@@ -64,7 +66,7 @@ function App() {
           <button className="icon-btn close-nav" onClick={() => setMobileNav(false)} aria-label="Close"><X size={18}/></button>
         </div>
         <div className="workspace"><div className="workspace-icon">BI</div><div><strong>Blockchain Innovations LTD</strong><small>Platform owner workspace</small></div><ChevronDown size={15}/></div>
-        {["MAD · MONITORING", "MAC · CONTROL", "MAC · GOVERNANCE"].map((group) => (
+        {["MAD · MONITORING", "MAC · CONTROL", "MAC · GOVERNANCE", "CUSTOMER · WORKSPACE"].map((group) => (
           <div className="nav-group" key={group}>
             <p>{group}</p>
             {nav.filter((item) => item.group === group).map((item) => {
@@ -107,6 +109,7 @@ function App() {
           {section === "administrators" && <AdminData resource="admins" />}
           {section === "sessions" && <AdminData resource="sessions" />}
           {section === "settings" && <AdminData resource="settings" />}
+          {section === "customer-workspace" && <CustomerWorkspace />}
           {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Facebook, Instagram, advertising and WhatsApp connection flows will be enabled in their respective delivery phases. No customer credentials or Meta tokens are configured in this development shell." phase="Phases 2–4 · Objectives A–C"/>}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
           {section === "security" && <AdminData resource="audit" />}
