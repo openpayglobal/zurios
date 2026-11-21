@@ -38,7 +38,7 @@ test("demo seeder creates least-privilege member, multi-workspace and unassigned
   if(!multiLogin.mfaRequired){assert.equal(multiLogin.workspaceSelectionRequired,true);assert.equal(multiLogin.workspaces.length,2);}
   const unassignedLogin=await login(db,cfg,{email:"demo.unassigned@zuri.test",password,ipHash:"demo-seed-test"});
   assert.equal(unassignedLogin.mfaRequired,false);
-  if(!unassignedLogin.mfaRequired){assert.equal(unassignedLogin.workspaceSelectionRequired,false);assert.equal(unassignedLogin.accessRequestAvailable,true);}
+  if(!unassignedLogin.mfaRequired&&!unassignedLogin.workspaceSelectionRequired)assert.equal(unassignedLogin.accessRequestAvailable,true);else assert.fail("Unassigned demo account must not receive workspace access.");
   const rerun=spawnSync("pnpm",["exec","tsx","scripts/seed-demo-accounts.ts"],{
    cwd:process.cwd(),encoding:"utf8",
    env:{...process.env,NODE_ENV:"test",VERCEL_ENV:"",DEMO_SEED_ENABLED:"true",DEMO_DATABASE_NAME:databaseName,MONGODB_URI:uri!,DEMO_SEED_PASSWORD:password}
