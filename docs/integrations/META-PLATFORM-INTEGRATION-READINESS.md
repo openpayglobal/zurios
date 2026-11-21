@@ -193,3 +193,10 @@ The provider foundation now includes:
 - Configuration validation for numeric app IDs, explicit Graph/Marketing API versions, HTTPS redirect URIs (localhost HTTP only in non-production), app-secret proof, and a dedicated token keyring separate from audit/MFA keys.
 
 The implementation has no live Meta credentials and does not yet exchange authorization codes, create callback routes, discover/select Page or Instagram assets, refresh/re-authorize tokens with Meta, subscribe/verify webhooks, publish content, run Marketing API operations or complete Meta App Review. Objective A is still foundation work, not feature complete; Objectives B–E remain not started.
+
+
+## 14. OAuth protocol service and encrypted connection persistence (2026-11-21)
+
+The Phase 2 provider foundation now also includes a versioned Meta OAuth service for standard and Business Login authorization URLs, allowlisted scopes, authorization-code exchange and long-lived-token exchange. The token exchange uses Meta's documented HTTPS GET endpoint; the app secret, code and temporary exchange token therefore appear in the outbound provider URL by protocol. The implementation uses the exact Meta Graph origin, versioned path, disabled redirects/cookies/cache/referrers, timeout and generic error handling. Production egress/APM logging must redact client_secret, code and fb_exchange_token query parameters.
+
+The encrypted Meta connection service persists tenant-scoped AES-256-GCM envelopes, exposes metadata-only summaries, enforces tenant isolation and token/data-access expiry, audits key rotation and revocation, and clears ciphertext on disconnect. The OAuth state service stores only a hash and atomically consumes tenant/user/session-bound state against the exact configured redirect URI. The remaining work is the authenticated callback route, callback-to-connection orchestration, asset discovery/authorization, page and Instagram account binding, webhook lifecycle, publishing and app review. No live Meta credentials or connected customer are claimed.
