@@ -270,6 +270,32 @@ export async function appendAuditEvent(db: Db, input: AuditEventInput) {
   } finally { await session.endSession(); }
 }
 
+
+/**
+ * Commit a domain mutation and its audit event in the same MongoDB transaction.
+ * The work and audit factories may be retried by withTransaction and must not
+ * perform external side effects; use an outbox for mail and remote delivery.
+ */
+export async function withAuditTransaction<T>(
+  db: Db,
+  work: (session: ClientSession) => Promise<T>,
+  auditInput: (result: T) => AuditEventInput,
+): Promise<T> {
+  const session = db.client.startSession();
+  let outcome: { value: T } | undefined;
+  try {
+    await session.withTransaction(async () => {
+      const value = await work(session);
+      await appendAuditEventInTransaction(db, auditInput(value), session);
+      outcome = { value };
+    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
+    if (!outcome) throw new Error("AUDITED_TRANSACTION_RESULT_MISSING");
+    return outcome.value;
+  } finally {
+    await session.endSession();
+  }
+}
+
 export async function verifyAuditChain(db: Db) {
   const collection = db.collection<ChainedAuditEvent>("auditEvents");
   const completeChainFilter = {
