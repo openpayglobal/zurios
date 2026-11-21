@@ -77,9 +77,9 @@ Preconditions:
 
 Procedure:
 
-1. Run `pnpm --filter @zuri/mebumip-api audit:backfill` with production connectivity using the temporary migration identity. This is a dry run.
+1. Run `AUDIT_MIGRATION_MONGODB_URI=<read-only-maintenance-uri> pnpm --filter @zuri/mebumip-api audit:backfill`. This is a dry run and should use a temporary read-only maintenance identity.
 
-The dry run reads `MONGODB_URI`. Apply mode requires a separate, short-lived `AUDIT_MIGRATION_MONGODB_URI` with the approved maintenance identity; the script refuses to fall back to the application runtime URI. Keep this URI in the secret manager, never in shell history, CI logs or evidence output.
+When `AUDIT_MIGRATION_MONGODB_URI` is supplied, both dry-run and apply use that URI; without it, dry-run falls back to `MONGODB_URI`. Apply mode requires the separate, short-lived maintenance URI and refuses to fall back to the application runtime URI. For apply, use a separately approved time-bounded write-maintenance credential. Keep both URIs in the secret manager, never in shell history, CI logs or evidence output.
 2. Review the complete sanitized output, count, ordering and detected legacy/mixed-history conditions with the independent approver.
 3. If the count exceeds 5,000, or the utility reports mixed histories/invalid records, stop. Do not split or force the migration; create a separately reviewed reconciliation design.
 4. **Sequenced pre-chain events require separate handling.** Earlier MeBuMIP builds allocated a sequence before predecessor hashes/event hashes were introduced. Those records are classified as malformed/partial by the current backfill utility and are intentionally not auto-renumbered or rewritten. If the dry run finds any record with a sequence but incomplete chain metadata, stop and preserve the original bytes/signatures. A separately approved reconciliation must verify the original signature with the correct historical key, prove sequence continuity, preserve the old signature as signed provenance, and then add the new chain metadata. Do not delete, reset or silently renumber those events.
