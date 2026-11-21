@@ -18,8 +18,8 @@ export interface MetaPageAssetDocument extends Document {
   name: string;
   tasks: string[];
   instagramBusinessAccount?: MetaInstagramBusinessAccount;
-  pageAccessTokenCiphertext: string;
-  status: "active";
+  pageAccessTokenCiphertext: string | null;
+  status: "active" | "unavailable";
   discoveredAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -34,7 +34,7 @@ export interface MetaPageAssetSummary {
   name: string;
   tasks: string[];
   instagramBusinessAccount?: MetaInstagramBusinessAccount;
-  status: "active";
+  status: "active" | "unavailable";
   discoveredAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -179,7 +179,17 @@ export async function discoverMetaPages(
           },
         })), { session, ordered: true });
       }
-      return { discovered: documents.length, instagramLinked: documents.filter((item) => item.instagramBusinessAccount).length };
+      const discoveredIds = documents.map((document) => document.providerAssetId);
+      const stale = await collection.updateMany(
+        { tenantId, connectionId, providerAssetId: { $nin: discoveredIds }, status: "active" },
+        { $set: { status: "unavailable", pageAccessTokenCiphertext: null, updatedAt: now } },
+        { session },
+      );
+      return {
+        discovered: documents.length,
+        instagramLinked: documents.filter((item) => item.instagramBusinessAccount).length,
+        unavailable: stale.modifiedCount,
+      };
     },
     (result) => ({
       actorUserId,
@@ -189,7 +199,7 @@ export async function discoverMetaPages(
       tenantId,
       outcome: "success",
       correlationId,
-      metadata: { pageCount: result.discovered, instagramLinkedCount: result.instagramLinked },
+      metadata: { pageCount: result.discovered, instagramLinkedCount: result.instagramLinked, unavailableCount: result.unavailable },
     }),
   );
   return {
@@ -203,9 +213,33 @@ export async function listMetaPageAssets(db: Db, tenantIdInput: string, connecti
   const tenantId = requiredText(tenantIdInput, "tenant_id");
   const connectionId = requiredText(connectionIdInput, "connection_id");
   const documents = await db.collection<MetaPageAssetDocument>("metaAssets")
-    .find({ tenantId, connectionId, status: "active" })
+    .find({ tenantId, connectionId })
     .sort({ name: 1, providerAssetId: 1 })
     .limit(2_000)
     .toArray();
   return documents.map(toSummary);
+}
+
+/** Internal-only Page token access. Never expose this value from an HTTP route. */
+export async function getMetaPageAccessToken(
+  db: Db,
+  vault: MetaTokenVault,
+  tenantIdInput: string,
+  connectionIdInput: string,
+  pageIdInput: string,
+): Promise<string> {
+  const tenantId = requiredText(tenantIdInput, "tenant_id");
+  const connectionId = requiredText(connectionIdInput, "connection_id");
+  const pageId = requiredText(pageIdInput, "page_id", 64);
+  if (!/^\\d{1,64}$/.test(pageId)) throw new Error("META_ASSET_PAGE_ID_INVALID");
+  const connection = await db.collection("metaConnections").findOne({ tenantId, connectionId, status: "connected" });
+  if (!connection) throw new Error("META_CONNECTION_NOT_FOUND");
+  const asset = await db.collection<MetaPageAssetDocument>("metaAssets").findOne({
+    tenantId, connectionId, providerAssetId: pageId, status: "active",
+  });
+  if (!asset?.pageAccessTokenCiphertext) throw new Error("META_ASSET_NOT_FOUND");
+  return vault.decrypt(asset.pageAccessTokenCiphertext, {
+    tenantId,
+    connectionId: connectionId + ":page:" + pageId,
+  });
 }
