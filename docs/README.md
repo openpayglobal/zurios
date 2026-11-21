@@ -34,6 +34,7 @@ This directory is the authoritative entry point for ecosystem-wide specification
 
 - [Meta Platform Integration Readiness and Version Governance](./integrations/META-PLATFORM-INTEGRATION-READINESS.md) — Graph/Marketing API versioning, Tech Provider/App Review, Pages/Instagram, advertising, WhatsApp, webhooks and multi-business requirements.
 - [Meta Graph API Client Contract](./integrations/META-GRAPH-CLIENT-CONTRACT.md) — version-pinned transport, bearer-token handling, safe retries, pagination and the remaining Objective A integration work.
+- [Meta Graph Integration Implementation Contract](./integrations/META-GRAPH-INTEGRATION.md) — implemented tenant-authorized OAuth lifecycle, session-bound state, encrypted connection persistence, API routes, verification evidence and explicit remaining product gaps.
 
 ## Security engineering standards
 
