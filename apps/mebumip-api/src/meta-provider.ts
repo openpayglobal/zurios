@@ -1,6 +1,8 @@
 import { config } from "./config.js";
 import { MetaGraphClient, type MetaGraphClientOptions } from "./meta-graph-client.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
+import { MetaOAuthStateService, type MetaOAuthStateServiceOptions } from "./meta-oauth-state.js";
+import type { Db } from "mongodb";
 
 export type MetaProviderConfig = Pick<typeof config,
   | "META_APP_ID"
@@ -37,6 +39,19 @@ export function createMetaTokenVault(providerConfig: MetaProviderConfig): MetaTo
     keyring: keyring as Record<string, string>,
     activeKeyId: providerConfig.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID,
   });
+}
+
+export function createMetaOAuthStateService(
+  db: Db,
+  providerConfig: MetaProviderConfig,
+  options: Omit<MetaOAuthStateServiceOptions, "redirectUri"> = {},
+): MetaOAuthStateService {
+  if (!providerConfig.META_REDIRECT_URI) throw new Error("META_OAUTH_REDIRECT_URI_REQUIRED");
+  return new MetaOAuthStateService(db, { ...options, redirectUri: providerConfig.META_REDIRECT_URI });
+}
+
+export function createConfiguredMetaOAuthStateService(db: Db): MetaOAuthStateService {
+  return createMetaOAuthStateService(db, config);
 }
 
 export function createConfiguredMetaGraphClient(): MetaGraphClient {
