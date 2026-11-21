@@ -911,7 +911,7 @@ paths:
       operationId: updatePlatformRuntimeConfiguration
       summary: Update approved origins and public runtime settings without redeployment
       parameters:
-        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16}}
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
