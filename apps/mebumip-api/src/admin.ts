@@ -162,9 +162,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
     const parsed = z.object({ role: z.enum(["tenant_admin", "publisher", "advertiser", "support_agent", "viewer"]).optional(), status: z.enum(["active", "suspended"]).optional() }).refine((value) => value.role !== undefined || value.status !== undefined).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
-    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" }, status: { $in: ["active", "suspended"] } }, { $set: { ...parsed.data, updatedAt: new Date() } });
-    if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.membership.updated", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id, metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) } });
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("memberships").updateOne(
+            { tenantId, userId, role: { $ne: "tenant_owner" }, status: { $in: ["active", "suspended"] } },
+            { $set: { ...parsed.data, updatedAt: new Date() } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("MEMBERSHIP_NOT_FOUND_OR_PROTECTED");
+          return result;
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "platform.tenant.membership.updated", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id, metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) } }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MEMBERSHIP_NOT_FOUND_OR_PROTECTED") return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
+      throw error;
+    }
     return reply.send({ status: "updated" });
   });
 
@@ -175,9 +190,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
     const { tenantId, userId } = request.params as { tenantId: string; userId: string };
     if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
-    const result = await db.collection("memberships").updateOne({ tenantId, userId, role: { $ne: "tenant_owner" }, status: { $in: ["active", "suspended"] } }, { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } });
-    if (!result.matchedCount) return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.membership.removed", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id });
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("memberships").updateOne(
+            { tenantId, userId, role: { $ne: "tenant_owner" }, status: { $in: ["active", "suspended"] } },
+            { $set: { status: "removed", removedAt: new Date(), removedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("MEMBERSHIP_NOT_FOUND_OR_PROTECTED");
+          return result;
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "platform.tenant.membership.removed", targetType: "tenant_membership", targetId: userId, tenantId, outcome: "success", correlationId: request.id }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MEMBERSHIP_NOT_FOUND_OR_PROTECTED") return reply.code(404).send({ error: "MEMBERSHIP_NOT_FOUND_OR_PROTECTED" });
+      throw error;
+    }
     return reply.code(204).send();
   });
 
@@ -188,9 +218,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!resolved.stepUpUntil || resolved.stepUpUntil.getTime() <= Date.now()) return reply.code(403).send({ error: "STEP_UP_REQUIRED", action: "POST /v1/auth/step-up" });
     const { tenantId, invitationId } = request.params as { tenantId: string; invitationId: string };
     if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(invitationId)) return reply.code(400).send({ error: "INVALID_IDENTIFIER" });
-    const result = await db.collection("tenantInvitations").updateOne({ _id: new ObjectId(invitationId), tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokedBy: resolved.principal.userId } });
-    if (!result.matchedCount) return reply.code(404).send({ error: "PENDING_INVITATION_NOT_FOUND" });
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.revoked", targetType: "tenant_invitation", targetId: invitationId, tenantId, outcome: "success", correlationId: request.id });
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("tenantInvitations").updateOne(
+            { _id: new ObjectId(invitationId), tenantId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
+            { $set: { revokedAt: new Date(), revokedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("PENDING_INVITATION_NOT_FOUND");
+          return result;
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "platform.tenant.invitation.revoked", targetType: "tenant_invitation", targetId: invitationId, tenantId, outcome: "success", correlationId: request.id }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "PENDING_INVITATION_NOT_FOUND") return reply.code(404).send({ error: "PENDING_INVITATION_NOT_FOUND" });
+      throw error;
+    }
     return reply.code(204).send();
   });
   app.get("/v1/mac/admins", async (request, reply) => {
