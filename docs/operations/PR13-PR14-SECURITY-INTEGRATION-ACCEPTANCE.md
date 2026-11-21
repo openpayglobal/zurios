@@ -124,6 +124,14 @@ Passing the integration tests is not production acceptance. The following remain
 - Owner approval for production configuration, migrations, access-request enablement and release promotion.
 - External ODEI repository requirements must be retrieved and reconciled before claiming that its requirements are fulfilled.
 
+### Follow-up hardening applied on PR #14 branch (2026-11-20)
+
+A concrete cookie-CSRF gap identified during source review was corrected on the PR #14 branch:
+- Unsafe cookie-authenticated requests now require an explicit `Origin` header whose value exactly matches the configured `corsOrigins` allowlist, in addition to the existing CSRF cookie/header/session-token checks.
+- The MongoDB-backed integration test now rejects missing Origin and hostile Origin values and exercises the accepted configured development origin. The subsequent MFA cookie step-up test also supplies that trusted Origin.
+- Commits: `7141cd02c4ba445e2bbfb7f7b338dd2ab1906030` (enforcement), `7377310f2c915add94b87b1b47739696486bf3aa` (negative/positive tests), `57206a26311d9b9ff455984f8f8fc6e2f34f2c49` (trusted Origin in MFA cookie flow).
+- This change is not yet reported as CI-verified. The integration test requires the workflow's MongoDB service; passing GitHub CI must be observed on the exact final commit before considering the fix accepted.
+
 ## 8. Current evidence and status
 
 - PR #13 and PR #14 remain separate, open and unmerged.
