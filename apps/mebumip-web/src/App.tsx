@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AdminData, AuthPanel } from "./ApiPanels";
+import { AdminData, AuthPanel, MetaConnectionsPanel } from "./ApiPanels";
 import {
   Activity, ArrowDownRight, ArrowUpRight, BadgeCheck, BarChart3, Bell,
   Blocks, Building2, CheckCircle2, ChevronDown, CircleAlert, Command,
@@ -48,7 +48,9 @@ function Status({ children }: { children: string }) {
 }
 
 function App() {
-  const [section, setSection] = useState<Section>("dashboard");
+  const requestedSection = new URLSearchParams(window.location.search).get("section");
+  const initialSection: Section = nav.some((item) => item.id === requestedSection) ? requestedSection as Section : "dashboard";
+  const [section, setSection] = useState<Section>(initialSection);
   const [mobileNav, setMobileNav] = useState(false);
   const [query, setQuery] = useState("");
   const selected = nav.find((item) => item.id === section)!;
@@ -107,7 +109,7 @@ function App() {
           {section === "administrators" && <AdminData resource="admins" />}
           {section === "sessions" && <AdminData resource="sessions" />}
           {section === "settings" && <AdminData resource="settings" />}
-          {section === "connections" && <EmptyState icon={Plug} title="Meta connections" detail="Tenant-authorized OAuth connection, Page discovery and encrypted token handling APIs are implemented. This shell still needs tenant-user connect/discovery UX and owner Meta app configuration; no customer Meta account or token is connected." phase="Objective A · OAuth and Page discovery API foundation"/>}
+          {section === "connections" && <MetaConnectionsPanel />}
           {section === "integrations" && <EmptyState icon={Workflow} title="API integrations" detail="Versioned REST APIs, outbound webhooks, client credentials and the Zuri OS adapter are planned here. External applications will receive tenant-scoped permissions." phase="Phase 6 · Objective E"/>}
           {section === "security" && <AdminData resource="audit" />}
           
