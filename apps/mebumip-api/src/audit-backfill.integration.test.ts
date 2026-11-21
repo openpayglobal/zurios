@@ -76,6 +76,37 @@ test("audit-chain backfill refuses partial chain metadata instead of rewriting p
   }
 });
 
+test("audit-chain backfill refuses histories larger than the bounded transaction limit", {
+  skip: !mongoUri ? "MONGODB_TEST_URI is not configured" : false,
+}, async () => {
+  const client = new MongoClient(mongoUri!, { serverSelectionTimeoutMS: 5_000 });
+  const db = client.db(`mebumip_audit_oversized_${process.pid}_${Date.now()}`);
+  try {
+    await client.connect();
+    await db.command({ ping: 1 });
+    await ensureMeBuMIPIndexes(db);
+    const now = Date.now();
+    await db.collection("auditEvents").insertMany(Array.from({ length: 5_001 }, (_, index) => ({
+      actorUserId: "legacy-user",
+      action: "legacy.bulk",
+      targetType: "test",
+      outcome: "success",
+      correlationId: `legacy-bulk-${index}`,
+      occurredAt: new Date(now + index),
+    })));
+    const plan = await planAuditChainBackfill(db);
+    assert.equal(plan.legacyCount, 5_001);
+    assert.equal(plan.maximumSupported, 5_000);
+    assert.equal(plan.applyAllowed, false);
+    assert.match(plan.reason ?? "", /BACKFILL_LIMIT_EXCEEDED/);
+    await assert.rejects(() => applyAuditChainBackfill(db), /AUDIT_BACKFILL_LIMIT_EXCEEDED/);
+    assert.equal(await db.collection("auditEvents").countDocuments({ sequence: { $exists: true } }), 0);
+  } finally {
+    await db.dropDatabase().catch(() => undefined);
+    await client.close();
+  }
+});
+
 test("legacy audit-chain backfill is dry-run-first, bounded, and refuses mixed histories", {
   skip: !mongoUri ? "MONGODB_TEST_URI is not configured" : false,
 }, async () => {
