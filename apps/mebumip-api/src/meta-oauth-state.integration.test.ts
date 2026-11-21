@@ -35,7 +35,7 @@ test("Meta OAuth state is hashed, tenant/session-bound, single-use and audited",
     assert.equal(await service.consume(created.state, { tenantId: context.tenantId, userId: context.userId, sessionId: "session-other" }, "oauth-wrong-session"), null);
     const consumed = await service.consume(created.state, context, "oauth-consume-1");
     assert.equal(consumed?.redirectUri, redirectUri);
-    assert.deepEqual(consumed?.requestedScopes, context.requestedScopes);
+    assert.deepEqual(consumed?.requestedScopes, [...context.requestedScopes].sort());
     assert.equal(await service.consume(created.state, context, "oauth-replay"), null);
 
     const concurrent = await service.create(context, "oauth-create-2");
