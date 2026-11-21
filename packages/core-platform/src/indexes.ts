@@ -19,3 +19,26 @@ export async function ensureCoreIndexes(db:Db):Promise<void>{
  ];
  await Promise.all(specs.map(([name,key,options])=>db.collection(name).createIndex(key,options)));
 }
+
+export async function ensureIdentitySelectionIndexes(db:Db):Promise<void>{
+ const specs:Array<[string,Record<string,1|-1>,Record<string,unknown>?]>=[
+  ["auth_challenges",{challengeId:1},{unique:true}],
+  ["auth_challenges",{expiresAt:1},{expireAfterSeconds:0}],
+  ["workspace_selection_challenges",{selectionId:1},{unique:true}],
+  ["workspace_selection_challenges",{tokenHash:1},{unique:true}],
+  ["workspace_selection_challenges",{expiresAt:1},{expireAfterSeconds:0}],
+  ["workspace_selection_challenges",{userId:1,usedAt:1}],
+  ["auth_rate_limits",{key:1},{unique:true}],
+  ["auth_rate_limits",{expiresAt:1},{expireAfterSeconds:0}],
+  ["access_requests",{requestId:1},{unique:true}],
+  ["access_requests",{status:1,requestedAt:-1}],
+  ["access_requests",{emailNormalized:1,requestedAt:-1}]
+ ];
+ await Promise.all(specs.map(([name,key,options])=>db.collection(name).createIndex(key,options)));
+}
+
+export async function ensureAuditArchiveReceiptIndexes(db:Db):Promise<void>{
+ await db.collection("auditArchiveReceipts").createIndex({objectKey:1},{unique:true});
+ await db.collection("auditArchiveReceipts").createIndex({fromSequence:1,toSequence:1});
+ await db.collection("auditArchiveReceipts").createIndex({archivedAt:-1});
+}

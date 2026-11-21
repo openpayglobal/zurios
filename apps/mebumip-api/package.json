@@ -8,7 +8,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test src/*.test.ts",
+    "mfa:rekey": "tsx src/rekey-mfa.ts",
+    "audit:backfill": "tsx scripts/backfill-audit-chain.ts",
+    "audit:archive": "tsx scripts/export-audit-archive.ts",
+    "audit:archive:verify": "tsx scripts/verify-audit-archive.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

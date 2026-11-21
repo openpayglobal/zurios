@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEq
 import { config } from "./config.js";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
 function base32Encode(input: Buffer): string {
   let bits = 0, value = 0, output = "";
   for (const byte of input) {
@@ -23,21 +24,102 @@ function base32Decode(input: string): Buffer {
 }
 export function generateTotpSecret(): string { return base32Encode(randomBytes(20)); }
 
+export interface MfaEncryptionKeyRing {
+  keys: Record<string, Buffer>;
+  activeKeyId: string;
+  legacyKey?: Buffer;
+}
+
+export function createMfaEncryptionService(keyRing: MfaEncryptionKeyRing) {
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyRing.activeKeyId) || !Object.hasOwn(keyRing.keys, keyRing.activeKeyId) || !keyRing.keys[keyRing.activeKeyId]) {
+    throw new Error("MFA_ACTIVE_ENCRYPTION_KEY_NOT_AVAILABLE");
+  }
+  if (keyRing.legacyKey && keyRing.legacyKey.length !== 32) throw new Error("INVALID_MFA_LEGACY_ENCRYPTION_KEY");
+  for (const [keyId, key] of Object.entries(keyRing.keys)) {
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || key.length !== 32) throw new Error("INVALID_MFA_ENCRYPTION_KEY_RING");
+  }
+
+  function encrypt(secret: string): string {
+    const keyId = keyRing.activeKeyId;
+    const iv = randomBytes(12);
+    const cipher = createCipheriv("aes-256-gcm", keyRing.keys[keyId]!, iv);
+    cipher.setAAD(Buffer.from("zuri-mebumip:mfa:v2:" + keyId));
+    const encrypted = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
+    return ["v2", keyId, iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
+  }
+
+  function decrypt(encoded: string): string {
+    const parts = encoded.split(".");
+    let key: Buffer | undefined;
+    let ivText: string | undefined;
+    let tagText: string | undefined;
+    let bodyText: string | undefined;
+
+    if (parts.length === 5 && parts[0] === "v2") {
+      const keyId = parts[1]!;
+      key = Object.hasOwn(keyRing.keys, keyId) ? keyRing.keys[keyId] : undefined;
+      if (!key) throw new Error("MFA_ENCRYPTION_KEY_ID_NOT_AVAILABLE");
+      [, , ivText, tagText, bodyText] = parts;
+    } else if (parts.length === 3) {
+      // Legacy ciphertext used a single unversioned environment key.
+      key = keyRing.legacyKey;
+      [ivText, tagText, bodyText] = parts;
+      if (!key) throw new Error("MFA_LEGACY_ENCRYPTION_KEY_NOT_AVAILABLE");
+    } else {
+      throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
+    }
+
+    const iv = Buffer.from(ivText!, "base64url");
+    const tag = Buffer.from(tagText!, "base64url");
+    const body = Buffer.from(bodyText!, "base64url");
+    if (iv.length !== 12 || tag.length !== 16 || body.length === 0) throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
+    const decipher = createDecipheriv("aes-256-gcm", key, iv);
+    if (parts.length === 5) decipher.setAAD(Buffer.from("zuri-mebumip:mfa:v2:" + parts[1]!));
+    decipher.setAuthTag(tag);
+    return Buffer.concat([decipher.update(body), decipher.final()]).toString("utf8");
+  }
+
+  return { encrypt, decrypt };
+}
+
+function configuredMfaEncryptionService() {
+  const keys = Object.create(null) as Record<string, Buffer>;
+  if (config.MFA_ENCRYPTION_KEYRING) {
+    const parsed = JSON.parse(config.MFA_ENCRYPTION_KEYRING) as Record<string, string>;
+    for (const [keyId, key] of Object.entries(parsed)) keys[keyId] = Buffer.from(key, "hex");
+  }
+  if (config.MFA_ENCRYPTION_KEY) {
+    const environmentLegacyKey = Buffer.from(config.MFA_ENCRYPTION_KEY, "hex");
+    if (keys.legacy && !timingSafeEqual(keys.legacy, environmentLegacyKey)) throw new Error("MFA_LEGACY_KEY_CONFIGURATION_CONFLICT");
+    keys.legacy = environmentLegacyKey;
+  }
+  const activeKeyId = config.MFA_ENCRYPTION_ACTIVE_KEY_ID ?? (config.MFA_ENCRYPTION_KEY ? "legacy" : "");
+  return createMfaEncryptionService({
+    keys,
+    activeKeyId,
+    ...(keys.legacy ? { legacyKey: keys.legacy } : {}),
+  });
+}
+
+
+export function getMfaEncryptionKeyId(encoded: string): string {
+  const parts = encoded.split(".");
+  if (parts.length === 5 && parts[0] === "v2" && /^[a-zA-Z0-9_-]{1,64}$/.test(parts[1] ?? "")) return parts[1]!;
+  if (parts.length === 3) return "legacy-unversioned";
+  throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
+}
+
+export function getActiveMfaEncryptionKeyId(): string {
+  return config.MFA_ENCRYPTION_ACTIVE_KEY_ID ?? (config.MFA_ENCRYPTION_KEY ? "legacy" : "");
+}
+
 export function encryptMfaSecret(secret: string): string {
-  if (!config.MFA_ENCRYPTION_KEY) throw new Error("MFA_ENCRYPTION_KEY_NOT_CONFIGURED");
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", Buffer.from(config.MFA_ENCRYPTION_KEY, "hex"), iv);
-  const encrypted = Buffer.concat([cipher.update(secret, "utf8"), cipher.final()]);
-  return [iv.toString("base64url"), cipher.getAuthTag().toString("base64url"), encrypted.toString("base64url")].join(".");
+  return configuredMfaEncryptionService().encrypt(secret);
 }
 export function decryptMfaSecret(encoded: string): string {
-  if (!config.MFA_ENCRYPTION_KEY) throw new Error("MFA_ENCRYPTION_KEY_NOT_CONFIGURED");
-  const [ivText, tagText, bodyText] = encoded.split(".");
-  if (!ivText || !tagText || !bodyText) throw new Error("INVALID_ENCRYPTED_MFA_SECRET");
-  const decipher = createDecipheriv("aes-256-gcm", Buffer.from(config.MFA_ENCRYPTION_KEY, "hex"), Buffer.from(ivText, "base64url"));
-  decipher.setAuthTag(Buffer.from(tagText, "base64url"));
-  return Buffer.concat([decipher.update(Buffer.from(bodyText, "base64url")), decipher.final()]).toString("utf8");
+  return configuredMfaEncryptionService().decrypt(encoded);
 }
+
 export function generateTotpCode(secret: string, now = Date.now()): string {
   const key = base32Decode(secret);
   const counter = Math.floor(now / 30_000);
@@ -55,7 +137,6 @@ export function verifyTotp(secret: string, token: string, now = Date.now()): boo
   }
   return false;
 }
-
 
 /** Generate one-time printable recovery codes. Persist only hashToken(code) values. */
 export function generateMfaRecoveryCodes(count = 10): string[] {

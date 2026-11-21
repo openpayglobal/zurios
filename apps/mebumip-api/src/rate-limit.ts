@@ -1,10 +1,11 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import type { Db } from "mongodb";
+type RateLimitCounter = { _id: string; count: number; expiresAt: Date };
 import { createHash } from "node:crypto";
 
 const POLICIES = [
   { match: (path: string) => path === "/v1/platform/bootstrap", limit: 3, windowMs: 60 * 60_000 },
-  { match: (path: string) => path === "/v1/auth/login" || path === "/v1/auth/register", limit: 8, windowMs: 15 * 60_000 },
+  { match: (path: string) => path === "/v1/auth/login" || path === "/v1/auth/register" || path === "/v1/auth/register-platform-admin" || path === "/v1/auth/password/recovery" || path === "/v1/auth/password/reset", limit: 8, windowMs: 15 * 60_000 },
   { match: (path: string) => path === "/v1/auth/step-up" || path === "/v1/auth/mfa/enable", limit: 8, windowMs: 5 * 60_000 },
   { match: (path: string) => path === "/v1/auth/mfa/setup", limit: 5, windowMs: 60 * 60_000 },
   { match: (path: string) => path.startsWith("/v1/"), limit: 180, windowMs: 60_000 },
@@ -28,13 +29,12 @@ export function registerDatabaseRateLimit(app: FastifyInstance, db: Db): void {
     const now = Date.now();
     const windowStart = Math.floor(now / policy.windowMs) * policy.windowMs;
     const key = clientKey(request, windowStart);
-    const counters = db.collection("rateLimitCounters");
-    await counters.updateOne(
+    const counters = db.collection<RateLimitCounter>("rateLimitCounters");
+    const counter = await counters.findOneAndUpdate(
       { _id: key },
       { $inc: { count: 1 }, $setOnInsert: { expiresAt: new Date(windowStart + policy.windowMs * 2) } },
-      { upsert: true },
+      { upsert: true, returnDocument: "after", projection: { count: 1 } },
     );
-    const counter = await counters.findOne({ _id: key }, { projection: { count: 1 } });
     const remaining = Math.max(0, policy.limit - (counter?.count ?? policy.limit));
     reply.header("x-ratelimit-limit", String(policy.limit));
     reply.header("x-ratelimit-remaining", String(remaining));

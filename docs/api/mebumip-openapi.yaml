@@ -1,0 +1,84 @@
+openapi: 3.1.0
+info:
+  title: Zuri MeBuMIP API
+  version: 1.0.0
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+  description: |
+    API contract for Zuri Meta Business Management and Integration Platform.
+    This specification describes the currently implemented MAC/MAD audit endpoints.
+servers:
+  - url: /
+    description: API root; deployment base URL is configured per environment.
+security:
+  - bearerAuth: []
+tags:
+  - name: MAC Audit
+    description: Privileged audit verification, export and archive preparation.
+  - name: MAD
+    description: Read-only operational visibility.
+paths:
+  /v1/mac/audit-events:
+    get:
+      tags: [MAC Audit]
+      operationId: listMeBuMIPAuditEvents
+      summary: List recent audit events
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: before, in: query, required: false, schema: {type: string, description: MongoDB ObjectId cursor}}
+      responses:
+        "200": {description: Audit event page; includes a stable cursor and retention notice}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+  /v1/mac/audit-events/verify:
+    get:
+      tags: [MAC Audit]
+      operationId: verifyRecentMeBuMIPAuditEvents
+      summary: Verify signatures and sequence continuity for the latest 500 audit events
+      responses:
+        "200": {description: "Counts of verified, unsigned and invalid events plus detected sequence gaps"}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+  /v1/mac/audit-events/export:
+    get:
+      tags: [MAC Audit]
+      operationId: exportMeBuMIPAuditEvents
+      summary: Download a signed audit export page and manifest
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+        - {name: before, in: query, required: false, schema: {type: string, description: MongoDB ObjectId cursor}}
+      responses:
+        "200": {description: Signed export manifest and event records; export is not an independent immutable archive}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+  /v1/mac/audit-events/archive:
+    get:
+      tags: [MAC Audit]
+      operationId: prepareImmutableMeBuMIPAuditArchive
+      summary: Prepare a signed, contiguous, content-addressed archive package for external immutable storage
+      parameters:
+        - {name: fromSequence, in: query, required: true, schema: {type: integer, minimum: 1}}
+        - {name: toSequence, in: query, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        "200": {description: Signed archive package download with SHA-256 and content-addressed object-key headers; prepared but not stored}
+        "400": {description: Invalid sequence range}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+        "409": {description: "Sequence gap, unsigned manifest or invalid event signature"}
+        "503": {description: Audit signing key is not configured}
+  /v1/mad/overview:
+    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

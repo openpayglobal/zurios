@@ -9,3 +9,12 @@ Run the API on port 4100 and the web app on port 5174. Set `VITE_MEBUMIP_API_BAS
 The sign-in panel calls `POST /v1/auth/login` and stores the short-lived bearer token in browser session storage. Sign out revokes the session through the API. The dashboard reads live aggregates from `GET /v1/mad/overview`; the MAC business directory reads `GET /v1/mac/tenants`; and Security & Audit reads `GET /v1/mac/audit-events`. API authorization remains authoritative; frontend navigation is not a security boundary.
 
 Do not use persistent local storage for access tokens. Use HTTPS in every shared or production environment. Production deployment should consider a same-site, secure, HttpOnly cookie/BFF architecture to reduce JavaScript token exposure.
+
+
+The browser authenticates with credentialed HttpOnly session cookies; access tokens are not stored in browser storage. State-changing requests send the session-bound CSRF token from the non-HttpOnly CSRF cookie. Production deployment must use HTTPS and the exact configured CORS origins.
+
+
+The sign-in panel includes password recovery request and one-time token reset flows. Recovery email delivery requires the configured Resend provider and verified sender address; no reset token is displayed in API responses.
+
+
+Platform administrator invitations can be accepted by existing signed-in users or used to register a new platform administrator from the one-time email token. MAC invitation creation and revocation require platform-owner authorization and MFA step-up.

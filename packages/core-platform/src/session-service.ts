@@ -2,6 +2,7 @@ import {createHash,randomBytes,randomUUID} from "node:crypto";
 import type {Db} from "mongodb";
 import {coreCollections} from "./repositories.js";
 import {newId} from "./ids.js";
+import type {SessionDocument} from "./types.js";
 const digest=(value:string)=>createHash("sha256").update(value).digest("hex");
 const MAX_SESSION_TTL_SECONDS=60*60*24*90;
 export async function createSession(db:Db,tenantId:string,userId:string,membershipId:string,ttlSeconds:number){
@@ -12,7 +13,8 @@ export async function createSession(db:Db,tenantId:string,userId:string,membersh
  if(!user)throw new Error("ACTIVE_USER_REQUIRED");
  if(!membership)throw new Error("ACTIVE_MEMBERSHIP_REQUIRED");
  const raw=randomBytes(48).toString("base64url"),now=new Date(),sessionId=newId("ses"),tokenFamilyId=randomUUID(),expiresAt=new Date(now.getTime()+ttlSeconds*1000);
- await c.sessions.insertOne({tenantId,sessionId,userId,membershipId,refreshTokenHash:digest(raw),refreshTokenHistory:[],tokenFamilyId,expiresAt,lastUsedAt:now,createdAt:now,updatedAt:now,createdBy:userId,updatedBy:userId});
+ const doc:SessionDocument={tenantId,sessionId,userId,membershipId,refreshTokenHash:digest(raw),refreshTokenHistory:[],tokenFamilyId,expiresAt,lastUsedAt:now,createdAt:now,updatedAt:now,createdBy:userId,updatedBy:userId};
+ await c.sessions.insertOne(doc);
  return {sessionId,refreshToken:raw,expiresAt};
 }
 /** Atomic compare-and-swap rotation. Random invalid tokens cannot revoke a session. Proven reuse revokes the token family. */

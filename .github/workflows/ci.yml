@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [main, develop, "feature/**"]
+    branches: [main, develop, "feature/**", "feat/mac-runtime-config-vercel-oidc"]
   pull_request:
-    branches: [main, develop]
+    branches: [main, develop, integration/pr13-pr14-security-reconciliation]
 permissions:
   contents: read
 jobs:
@@ -39,10 +39,14 @@ jobs:
           echo "MongoDB replica set did not become primary"
           docker logs zuri-mongo
           exit 1
-      - name: Validate OpenAPI 3.1 contract
+      - name: Validate Zuri OS Platform OpenAPI 3.1 contract
         run: pnpm --package=@redocly/cli dlx redocly lint docs/api/openapi.yaml
+      - name: Validate MeBuMIP OpenAPI 3.1 contract
+        run: pnpm --package=@redocly/cli dlx redocly lint docs/api/mebumip-openapi.yaml
       - name: Check OpenAPI route drift
         run: pnpm --filter @zuri/api openapi:check
+      - name: Check product documentation mirrors
+        run: pnpm docs:check
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build

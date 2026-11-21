@@ -2,6 +2,7 @@ import {randomUUID} from "node:crypto";
 import type {ClientSession,Db} from "mongodb";
 import {z} from "zod";
 import {coreCollections} from "./repositories.js";
+import type {AuditEventDocument} from "./types.js";
 const eventSchema=z.object({tenantId:z.string().min(1),actor:z.object({userId:z.string().min(1).optional(),service:z.string().min(1).optional(),ipHash:z.string().max(128).optional(),userAgent:z.string().max(512).optional()}).refine(v=>Boolean(v.userId||v.service),{message:"Audit actor must be identified"}),action:z.string().min(2).max(160),resourceType:z.string().min(2).max(120),resourceId:z.string().max(200).optional(),outcome:z.enum(["success","denied","failure"]),correlationId:z.string().max(200).optional(),metadata:z.record(z.unknown()).default({})});
 const sensitiveKey=/(password|secret|token|authorization|cookie|otp|recovery|credential|private.?key)/i;
 function redact(value:unknown,depth=0):unknown{
@@ -19,7 +20,7 @@ export async function appendAuditEvent(db:Db,input:unknown,session?:ClientSessio
  const event=eventSchema.parse(input),now=new Date();
  const {actor,resourceId,correlationId,metadata,...rest}=event;
  const safeActor={...(actor.userId!==undefined?{userId:actor.userId}:{}),...(actor.service!==undefined?{service:actor.service}:{}),...(actor.ipHash!==undefined?{ipHash:actor.ipHash}:{}),...(actor.userAgent!==undefined?{userAgent:actor.userAgent}:{})};
- const doc={eventId:randomUUID(),occurredAt:now,...rest,actor:safeActor,...(resourceId!==undefined?{resourceId}:{}),...(correlationId!==undefined?{correlationId}:{}),metadata:redact(metadata) as Record<string,unknown>};
+ const doc:AuditEventDocument={eventId:randomUUID(),occurredAt:now,...rest,actor:safeActor,...(resourceId!==undefined?{resourceId}:{}),...(correlationId!==undefined?{correlationId}:{}),metadata:redact(metadata) as Record<string,unknown>};
  await coreCollections(db).auditEvents.insertOne(doc,session?{session}:{});
  return {eventId:doc.eventId,occurredAt:doc.occurredAt};
 }
