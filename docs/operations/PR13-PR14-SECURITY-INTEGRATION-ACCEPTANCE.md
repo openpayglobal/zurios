@@ -171,3 +171,6 @@ The PR #14 branch now:
 - Adds a MongoDB integration test proving partial chain metadata is rejected without rewriting the event.
 
 The original full-collection chain verification and archive export still necessarily traverse the complete history; a separate streaming-verification change is a follow-up optimization. Backfill remains dry-run-first, requires an explicit apply flag, a backup, approval and a controlled maintenance window. No migration has been run against production data.
+
+
+The chain verifier was also changed to stream complete chain records in sequence order instead of materializing and sorting the entire audit collection in application memory. It separately counts all incomplete/legacy records, and uses the sparse unique sequence index for the ordered chain cursor. This keeps verification memory bounded while ensuring partial records still cause a failed integrity result. The archive exporter remains intentionally full-output because it must produce the requested archive bundle.
