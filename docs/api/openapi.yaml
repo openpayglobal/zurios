@@ -957,6 +957,7 @@ paths:
       summary: Read the non-secret public runtime configuration with ETag support
       responses:
         "200": {description: Public settings and API origins}
+        "400": {description: Invalid conditional request header}
         "304": {description: Configuration has not changed}
         "503": {description: Runtime configuration is temporarily unavailable}
   /platform/internal/runtime-config:
