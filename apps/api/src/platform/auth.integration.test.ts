@@ -215,6 +215,18 @@ test("invitation acceptance and password login use active tenant membership", {s
   const me=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
   assert.equal(me.statusCode,200);
   assert.equal(me.json().principal.userId,user.userId);
+  const routeMembership=await db.collection("memberships").findOne({tenantId:tenant.tenantId,userId:user.userId,status:"active"});
+  assert.ok(routeMembership);
+  await db.collection("memberships").updateOne({membershipId:routeMembership.membershipId},{$set:{validUntil:new Date(Date.now()-60_000)}});
+  const expiredExistingSession=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
+  assert.equal(expiredExistingSession.statusCode,401,"an existing session must stop authenticating after membership expiry");
+  await db.collection("memberships").updateOne({membershipId:routeMembership.membershipId},{$unset:{validUntil:""}});
+  await db.collection("memberships").updateOne({membershipId:routeMembership.membershipId},{$set:{validFrom:new Date(Date.now()+60_000)}});
+  const futureExistingSession=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
+  assert.equal(futureExistingSession.statusCode,401,"an existing session must not authenticate before membership validity begins");
+  await db.collection("memberships").updateOne({membershipId:routeMembership.membershipId},{$unset:{validFrom:""}});
+  const restoredExistingSession=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
+  assert.equal(restoredExistingSession.statusCode,200,"restoring membership validity should restore the still-active session");
   const routeLogout=await app.inject({method:"POST",url:"/auth/logout",headers:{authorization:"Bearer "+routeBody.accessToken}});
   assert.equal(routeLogout.statusCode,204);
   const meAfterLogout=await app.inject({method:"GET",url:"/auth/me",headers:{authorization:"Bearer "+routeBody.accessToken}});
