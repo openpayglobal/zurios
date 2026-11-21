@@ -267,19 +267,40 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const target = await db.collection("users").findOne({ _id: new ObjectId(userId), platformRole: { $in: ["platform_admin", "platform_operator", "platform_auditor"] } });
     if (!target) return reply.code(404).send({ error: "PLATFORM_ADMIN_NOT_FOUND_OR_PROTECTED" });
     const now = new Date();
-    const set: Record<string, unknown> = { updatedAt: now, platformAdminUpdatedBy: resolved.principal.userId };
-    if (parsed.data.role) set.platformRole = parsed.data.role;
-    if (parsed.data.status) set.platformAdminStatus = parsed.data.status;
-    await db.collection("users").updateOne({ _id: target._id }, { $set: set });
-    if (parsed.data.status === "suspended") {
-      await db.collection("sessions").updateMany({ userId, revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "platform_admin_suspended" } });
+    let updatedState: { role: string; status: string };
+    try {
+      updatedState = await withAuditTransaction(
+        db,
+        async (session) => {
+          const set: Record<string, unknown> = { updatedAt: now, platformAdminUpdatedBy: resolved.principal.userId };
+          if (parsed.data.role) set.platformRole = parsed.data.role;
+          if (parsed.data.status) set.platformAdminStatus = parsed.data.status;
+          const updated = await db.collection("users").updateOne(
+            { _id: target._id, platformRole: { $in: ["platform_admin", "platform_operator", "platform_auditor"] } },
+            { $set: set },
+            { session },
+          );
+          if (updated.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_NOT_FOUND_OR_PROTECTED");
+          if (parsed.data.status === "suspended") {
+            await db.collection("sessions").updateMany(
+              { userId, revokedAt: { $exists: false } },
+              { $set: { revokedAt: now, revokeReason: "platform_admin_suspended" } },
+              { session },
+            );
+          }
+          return { role: parsed.data.role ?? String(target.platformRole), status: parsed.data.status ?? String(target.platformAdminStatus ?? "active") };
+        },
+        (state) => ({
+          actorUserId: resolved.principal.userId, action: "platform.admin.updated", targetType: "platform_admin", targetId: userId,
+          outcome: "success", correlationId: request.id,
+          metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) },
+        }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "PLATFORM_ADMIN_NOT_FOUND_OR_PROTECTED") return reply.code(404).send({ error: "PLATFORM_ADMIN_NOT_FOUND_OR_PROTECTED" });
+      throw error;
     }
-    await appendAuditEvent(db, {
-      actorUserId: resolved.principal.userId, action: "platform.admin.updated", targetType: "platform_admin", targetId: userId,
-      outcome: "success", correlationId: request.id,
-      metadata: { ...(parsed.data.role ? { role: parsed.data.role } : {}), ...(parsed.data.status ? { status: parsed.data.status } : {}) },
-    });
-    return reply.send({ id: userId, role: parsed.data.role ?? target.platformRole, status: parsed.data.status ?? target.platformAdminStatus ?? "active" });
+    return reply.send({ id: userId, role: updatedState.role, status: updatedState.status });
   });
 
   app.get("/v1/mac/admin-invitations", async (request, reply) => {
