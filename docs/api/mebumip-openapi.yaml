@@ -74,12 +74,123 @@ paths:
       tags: [Meta Integrations]
       operationId: startTenantMetaOAuth
       summary: Start a tenant-scoped Meta authorization flow
-      description: Requires an active tenant membership with meta:connections:write and recent MFA step-up. The server persists only a hash of a one-time state bound to the tenant, user and session.
+      description: Requires active tenant permission meta:connections:write and recent MFA step-up. The server persists only a hash of a one-time state bound to the tenant, user, session, callback URI and requested scopes.
       security:
         - bearerAuth: []
         - cookieAuth: []
       parameters:
-        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}    get:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}$'}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [public_profile, pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_metadata, instagram_basic, instagram_content_publish, instagram_manage_comments]
+      responses:
+        "200":
+          description: Meta authorization URL and one-time state expiry; no provider token is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaOAuthStartResponse"
+        "400": {description: Invalid or unsupported scope request}
+        "401": {description: Authentication required}
+        "403": {description: Tenant permission or recent MFA step-up required}
+        "429": {description: OAuth initiation rate limit exceeded}
+  /v1/meta/oauth/callback:
+    get:
+      tags: [Meta Integrations]
+      operationId: completeTenantMetaOAuth
+      summary: Complete a Meta authorization callback
+      description: Requires the same authenticated user and session that initiated the flow, current tenant connection permission and recent MFA step-up. The one-time state is consumed before exchanging and validating the code. Provider tokens are encrypted before persistence and are never returned.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: state, in: query, required: true, schema: {type: string, minLength: 32, maxLength: 128}}
+        - {name: code, in: query, required: false, schema: {type: string, minLength: 8, maxLength: 4096}}
+        - {name: error, in: query, required: false, schema: {type: string, maxLength: 128}}
+        - {name: error_description, in: query, required: false, schema: {type: string, maxLength: 2048}}
+      responses:
+        "201":
+          description: Provider identity validated and encrypted connection created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, connection]
+                properties:
+                  status: {type: string, const: connected}
+                  connection: {$ref: "#/components/schemas/MetaConnectionSummary"}
+        "400": {description: Invalid, expired, replayed state or provider authorization denied}
+        "401": {description: Original authenticated session required}
+        "403": {description: Original user/session, tenant permission or MFA step-up mismatch}
+        "409": {description: This Meta provider identity is already connected to the tenant}
+        "429": {description: OAuth callback rate limit exceeded}
+        "502": {description: Provider exchange or token validation failed}
+  /v1/tenants/{tenantId}/meta/connections:
+    get:
+      tags: [Meta Integrations]
+      operationId: listTenantMetaConnections
+      summary: List Meta connections for a tenant
+      description: Returns provider identity and granted permission metadata only. Encrypted access tokens are excluded.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}$'}}
+      responses:
+        "200":
+          description: Tenant Meta connections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaConnectionSummary"}
+        "401": {description: Authentication required}
+        "403": {description: Tenant connection-read permission required}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}:
+    delete:
+      tags: [Meta Integrations]
+      operationId: disconnectTenantMetaConnection
+      summary: Disconnect a tenant Meta connection and erase its local token
+      description: Requires tenant meta:connections:write permission and recent MFA step-up. The API attempts remote Meta permission revocation, then always clears the local encrypted token and audits the remote outcome.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}$'}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Local token erased; remote permission revocation outcome is explicit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, remoteRevocation]
+                properties:
+                  status: {type: string, const: disconnected}
+                  remoteRevocation: {type: string, enum: [succeeded, failed, not_attempted]}
+        "401": {description: Authentication required}
+        "403": {description: Tenant connection-write permission or recent MFA step-up required}
+        "404": {description: Connection not found in this tenant}
+  /v1/mad/overview:
+    get:
       tags: [MAD]
       operationId: getMeBuMIPOperationalOverview
       summary: Read operational aggregates for the MAD dashboard
