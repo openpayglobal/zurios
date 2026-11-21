@@ -65,7 +65,7 @@ function App() {
           <div><strong>ZURI <span>MeBuMIP</span></strong><small>BUSINESS INTEGRATION PLATFORM</small></div>
           <button className="icon-btn close-nav" onClick={() => setMobileNav(false)} aria-label="Close"><X size={18}/></button>
         </div>
-        <div className="workspace"><div className="workspace-icon">BI</div><div><strong>Blockchain Innovations LTD</strong><small>Platform owner workspace</small></div><ChevronDown size={15}/></div>
+        <div className="workspace"><div className="workspace-icon">BI</div><div><strong>Tenant workspace</strong><small>Choose an active membership in Meta connections</small></div><ChevronDown size={15}/></div>
         {["MAD · MONITORING", "MAC · CONTROL", "MAC · GOVERNANCE"].map((group) => (
           <div className="nav-group" key={group}>
             <p>{group}</p>
