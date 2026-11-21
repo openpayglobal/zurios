@@ -205,3 +205,8 @@ The original user journey is present in the current integration source and is no
 The UI already contains the “Choose your workspace” screen, workspace switcher and “Request Zuri OS access” flow. The reason this was not visible in the live product is deployment/access state, not absence of the workflow in source: PR #15 remains the integration base, PR #18 is still a draft implementation PR, the existing Zuri OS Vercel projects have no production deployment target, their default domains are SSO-protected, and public access requests remain disabled until an approved HTTPS privacy notice is saved in MAC.
 
 This is separate from MeBuMIP's customer workspace workflow, which is also implemented in PR #18 but not yet deployed.
+
+
+### Access-request visibility correction
+
+The sign-in screen and the no-membership workspace chooser now always display the “Request Zuri OS access” entry. It is enabled only when MAC has a published HTTPS privacy notice and the administrator turns on the runtime access-request flag. When disabled, the UI explains the exact prerequisite instead of silently hiding the workflow.
