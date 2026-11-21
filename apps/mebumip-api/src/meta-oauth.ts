@@ -231,15 +231,30 @@ export class MetaOAuthService {
     };
   }
 
-  async exchangeAuthorizationCodeAndValidate(code: string): Promise<MetaOAuthToken & { identity: MetaValidatedUserToken }> {
+  assertRequiredScopes(identity: MetaValidatedUserToken, requiredScopes: readonly MetaOAuthScope[]): void {
+    const invalid = requiredScopes.filter((scope) => !ALLOWED_SCOPES.has(scope));
+    if (invalid.length) throw new MetaOAuthError("Requested Meta permission is not allowlisted", { status: 0 });
+    const missing = requiredScopes.filter((scope) => !identity.scopes.includes(scope));
+    if (missing.length) throw new MetaOAuthError("Meta authorization did not grant all required permissions", { status: 200 });
+  }
+
+  async exchangeAuthorizationCodeAndValidate(
+    code: string,
+    requiredScopes: readonly MetaOAuthScope[] = [],
+  ): Promise<MetaOAuthToken & { identity: MetaValidatedUserToken }> {
     const token = await this.exchangeAuthorizationCode(code);
     const identity = await this.debugAccessToken(token.accessToken);
+    this.assertRequiredScopes(identity, requiredScopes);
     return { ...token, identity };
   }
 
-  async exchangeLongLivedTokenAndValidate(shortLivedToken: string): Promise<MetaOAuthToken & { identity: MetaValidatedUserToken }> {
+  async exchangeLongLivedTokenAndValidate(
+    shortLivedToken: string,
+    requiredScopes: readonly MetaOAuthScope[] = [],
+  ): Promise<MetaOAuthToken & { identity: MetaValidatedUserToken }> {
     const token = await this.exchangeLongLivedToken(shortLivedToken);
     const identity = await this.debugAccessToken(token.accessToken);
+    this.assertRequiredScopes(identity, requiredScopes);
     return { ...token, identity };
   }
 
