@@ -124,6 +124,13 @@ const runtimeSchema = envSchema.superRefine((value, context) => {
   if (value.META_APP_ID && (!value.META_APP_SECRET || !value.META_REDIRECT_URI || !value.META_GRAPH_API_VERSION || !value.META_TOKEN_ENCRYPTION_KEYRING || !value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "A Meta app requires its app secret, HTTPS redirect URI, explicit Graph API version and dedicated token-encryption key ring" });
   }
+  if (value.META_APP_ID && value.META_REDIRECT_URI) {
+    const redirect = new URL(value.META_REDIRECT_URI);
+    const loopbackHost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
+    if (redirect.protocol !== "https:" && !loopbackHost) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_REDIRECT_URI"], message: "Meta OAuth redirect URI must use HTTPS except for local loopback development" });
+    }
+  }
   if (!value.META_APP_ID && (value.META_APP_SECRET || value.META_REDIRECT_URI || value.META_WEBHOOK_VERIFY_TOKEN)) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "Meta app secret, redirect URI and webhook verify token require META_APP_ID" });
   }
