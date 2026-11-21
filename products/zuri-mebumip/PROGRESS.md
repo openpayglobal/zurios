@@ -430,3 +430,16 @@ Cookie-authenticated unsafe requests require CSRF cookie/header validation and a
 
 
 **Latest full verification checkpoint:** [Full monorepo CI #44873715186](https://github.com/openpayglobal/zurios/actions/runs/44873715186) and [MeBuMIP Phase 1 #44873715155](https://github.com/openpayglobal/zurios/actions/runs/44873715155) passed on `b5584fab2dd0effc0ebf490972cb051fde132bb9`. This checkpoint includes both OpenAPI 3.1 validations, route-drift and product-mirror checks, full monorepo typecheck/tests/build, and API/web typecheck/tests/build with MongoDB replica set. The later request-log redaction and no-store/no-referrer controls are on the newer branch head and await their own exact-head runs.
+
+
+## Facebook Page and linked Instagram asset discovery — 2026-11-20
+
+- Added tenant-authorized Page discovery and Page asset listing endpoints. Discovery requires `social:assets:write` and recent MFA step-up; listing requires `social:assets:read`.
+- Uses the pinned Graph API `me/accounts` edge, same-origin pagination, 20-page/2,000-Page hard bounds, provider token stripping and dedicated discovery rate limits.
+- Page access tokens are encrypted with AES-256-GCM and authenticated associated data bound to tenant, connection and Page. The API returns Page metadata and tasks only; Page tokens are never returned.
+- Captures linked Instagram Business account ID/username from the Page relationship. It does not yet validate Instagram account eligibility or enable publishing.
+- Reconciliation marks Pages no longer returned by Meta as unavailable, clears their Page tokens and removes stale Instagram relationship metadata. Disconnecting the parent Meta connection clears all active Page tokens in the same audit transaction.
+- Added transactional Page-token key rotation helper and integration coverage for pagination, embedded credential stripping, token encryption/decryption, key rotation, cross-tenant denial, stale Page/Instagram relationship cleanup, parent disconnect cleanup and audit-chain verification.
+- Added MeBuMIP OpenAPI paths and the Meta Graph integration contract. Page publishing, Page ownership verification, Instagram eligibility, webhooks, insights, comments/inbox and frontend UX remain outstanding.
+
+**Passing verification checkpoint:** [Full monorepo CI #44874698857](https://github.com/openpayglobal/zurios/actions/runs/44874698857) and [MeBuMIP Phase 1 #44874698885](https://github.com/openpayglobal/zurios/actions/runs/44874698885) passed on `8b9ea3cf2babcd285fc81f7d5257658bc4920bc8`. Full CI passed both OpenAPI 3.1 specs, route-drift, product-doc mirror check, monorepo typecheck/tests/build; Phase 1 passed API/web typecheck/tests/build with MongoDB replica set. The later Meta client-contract documentation correction is on a newer head and its own exact-head checks are pending.
