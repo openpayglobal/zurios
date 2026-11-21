@@ -26,6 +26,16 @@ const managedKmsKeyrings = [
     status: "provisioned_pending_runtime_integration",
   },
   {
+    id: "501ff21c-7c24-4e9e-b23e-789256cd6edd",
+    name: "Zuri MeBuMIP Runtime Workload Identity",
+    purpose: "MeBuMIP Vercel workload identity",
+    keyId: "5d401897-e851-438f-a56c-b28453aff756",
+    algorithm: "RS256",
+    environment: "production",
+    projectId: "prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ",
+    status: "provisioned_pending_runtime_integration",
+  },
+  {
     id: "55210f93-c052-45a5-aeb8-e083ed0d5dce",
     name: "Zuri OS Audit Event Signing",
     purpose: "Audit event signing",
