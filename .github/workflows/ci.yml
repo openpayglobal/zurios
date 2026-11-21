@@ -19,14 +19,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
-      - run: pnpm install --no-frozen-lockfile
-      - name: Upload generated workspace lockfile for reproducibility
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-pnpm-lockfile
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-          retention-days: 1
+      - run: pnpm install --frozen-lockfile
       - name: Start MongoDB replica set
         run: |
           docker run -d --name zuri-mongo -p 27017:27017 mongo:7.0 --replSet rs0 --bind_ip_all
