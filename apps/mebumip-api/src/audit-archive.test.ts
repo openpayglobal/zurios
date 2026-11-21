@@ -1,17 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createAuditEvent } from "./security.js";
+import { createChainedAuditEvent } from "./security.js";
 import { archiveAuditPackage, buildAuditArchivePackage, type ImmutableAuditArchiveSink } from "./audit-archive.js";
 import type { Db } from "mongodb";
 
 process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-with-adequate-entropy";
 
-function event(sequence:number) {
-  return createAuditEvent({actorUserId:"archive-test",action:"archive.test",targetType:"test",outcome:"success",correlationId:"archive-"+sequence,sequence});
+function event(sequence:number, previousHash = sequence === 1 ? "GENESIS" : "a".repeat(64)) {
+  return createChainedAuditEvent({actorUserId:"archive-test",action:"archive.test",targetType:"test",outcome:"success",correlationId:"archive-"+sequence},sequence,previousHash);
+}
+function contiguousEvents() {
+  const first=event(1);
+  const second=event(2,first.eventHash);
+  return [first,second];
 }
 
 test("audit archive package is contiguous, signed, and content addressed",()=>{
-  const archive=buildAuditArchivePackage([event(2),event(1)],1,2,new Date("2026-11-20T00:00:00.000Z"));
+  const [first,second]=contiguousEvents();
+  const archive=buildAuditArchivePackage([second,first],1,2,new Date("2026-11-20T00:00:00.000Z"));
   assert.equal(archive.eventCount,2);
   assert.equal(archive.fromSequence,1);
   assert.equal(archive.toSequence,2);
