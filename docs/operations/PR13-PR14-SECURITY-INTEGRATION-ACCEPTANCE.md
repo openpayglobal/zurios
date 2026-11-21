@@ -242,3 +242,6 @@ The PR #14 keyring-aware chain append already exposed `appendAuditEventInTransac
 - The root pnpm lockfile is now committed and both workflows use frozen installs. The MongoDB test URI is forwarded through Turbo and transaction tests run against a replica set.
 - Vercel preview inspection is still blocked by HTTP 403. The local environment has no Vercel CLI or token, and no active Vercel CLI session is available; no current-head preview is claimed.
 - PR #13 remains open/draft; PR #14 remains open/non-draft and mergeable. Neither is merged. Production release remains blocked by deployment verification, independent WORM storage, backup/restore, production secrets, mail sender verification, legal/privacy approval and independent security review.
+
+
+Privileged audit export was further hardened: the paginated export endpoint now refuses unsigned manifests, records an `audit.events.exported` chain event with sequence range/count/signature algorithm, and returns `Cache-Control: no-store`. The archive-preparation endpoint already records its own chain event and labels the result `prepared-not-archived`; neither endpoint claims WORM storage. Rate limiting now applies dedicated low thresholds to password change and MFA reset in addition to login/recovery, MFA setup/enablement and step-up.
