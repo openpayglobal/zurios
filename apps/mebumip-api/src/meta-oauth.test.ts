@@ -123,6 +123,22 @@ test("validates exchanged user tokens against the configured app and required sc
   assert.equal(result.expiresAt?.getTime(), 1_800_000_000_000);
 });
 
+test("rejects authorization when any required permission was not granted", async () => {
+  const service = new MetaOAuthService(options);
+  const identity = {
+    appId: options.appId,
+    userId: "meta-user-1",
+    tokenType: "USER" as const,
+    scopes: ["pages_show_list"],
+    granularScopes: [],
+    expiresAt: null,
+    dataAccessExpiresAt: null,
+  };
+  assert.doesNotThrow(() => service.assertRequiredScopes(identity, ["pages_show_list"]));
+  assert.throws(() => service.assertRequiredScopes(identity, ["pages_show_list", "instagram_content_publish"]), /did not grant all required permissions/);
+  assert.throws(() => service.assertRequiredScopes(identity, ["email" as never]), /not allowlisted/);
+});
+
 test("rejects tokens that are invalid or belong to a different Meta app", async () => {
   const service = new MetaOAuthService({
     ...options,
