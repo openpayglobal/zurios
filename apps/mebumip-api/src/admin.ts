@@ -1,9 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { appendAuditEvent, hashToken, newOpaqueToken, signAuditExport, verifyAuditChain } from "./security.js";
+import { appendAuditEvent, hashToken, hasPlatformPermission, newOpaqueToken, signAuditExport, verifyAuditChain, verifyAuditEvent, withAuditTransaction } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
-import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 import { buildAuditArchivePackage } from "./audit-archive.js";
 import { config, corsOrigins } from "./config.js";
 import { sendPlatformAdminInvitationEmail, sendTenantInvitationEmail } from "./mail.js";
