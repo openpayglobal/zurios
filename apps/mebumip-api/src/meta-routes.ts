@@ -68,7 +68,7 @@ function configuredServices(dependencies: MetaRouteDependencies) {
 }
 
 function frontendReturnUrl(status: string, tenantId: string, connectionId?: string): string | null {
-  const origin = config.CORS_ORIGINS[0];
+  const origin = config.CORS_ORIGINS.split(",").map((value) => value.trim()).find(Boolean);
   if (!origin) return null;
   const target = new URL("/", origin);
   target.searchParams.set("section", "connections");
