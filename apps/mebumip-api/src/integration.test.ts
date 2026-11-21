@@ -68,7 +68,7 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
   assert.equal(setup.statusCode, 200);
   const enabled = await app.inject({ method: "POST", url: "/v1/auth/mfa/enable", headers, payload: { code: generateTotpCode(setup.json().secret) } });
   assert.equal(enabled.statusCode, 200);
-  const cookieStepUp = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader, "x-csrf-token": decodeURIComponent(csrfCookie) }, payload: { code: generateTotpCode(setup.json().secret) } });
+  const cookieStepUp = await app.inject({ method: "POST", url: "/v1/auth/step-up", headers: { cookie: cookieHeader, "x-csrf-token": decodeURIComponent(csrfCookie), origin: "http://localhost:5174" }, payload: { code: generateTotpCode(setup.json().secret) } });
   assert.equal(cookieStepUp.statusCode, 200);
   const macMembers = await app.inject({ method: "GET", url: "/v1/mac/tenants/" + String(tenant._id) + "/members", headers });
   assert.equal(macMembers.statusCode, 200);
