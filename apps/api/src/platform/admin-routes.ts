@@ -16,6 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
+import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedHttpsOrigin} from "./runtime-config-store.js";
 import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -443,6 +444,44 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    }catch(error){return fail(error,reply);}
   });
 
+
+  app.get("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(_request,reply)=>{
+   const runtime=await readPlatformRuntimeConfig(db);
+   return reply.header("cache-control","no-store").send({data:runtime});
+  });
+  app.put("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   const schema=z.object({
+    allowedOrigins:z.array(z.string().url()).min(1).max(20),
+    apiOrigins:z.object({zuriOs:z.string().url(),mebumip:z.string().url()}).strict(),
+    publicSettings:z.object({
+     accessRequestsEnabled:z.boolean().optional(),
+     privacyNoticeUrl:z.string().url().refine(value=>value.startsWith("https://"),"Privacy notice URL must use HTTPS").nullable().optional(),
+     supportEmail:z.string().email().optional(),
+     supportUrl:z.string().url().optional(),
+     defaultLocale:z.string().min(2).max(12).optional(),
+     defaultCurrency:z.string().regex(/^[A-Z]{3}$/).optional(),
+     timezone:z.string().min(3).max(80).optional()
+    }).strict(),
+    reason:z.string().trim().min(8).max(500)
+   }).strict();
+   try{
+    const body=schema.parse(request.body);
+    const allowedOrigins=normalizeOriginList(body.allowedOrigins);
+    const apiOrigins={zuriOs:normalizeVerifiedHttpsOrigin(body.apiOrigins.zuriOs),mebumip:normalizeVerifiedHttpsOrigin(body.apiOrigins.mebumip)};
+    if(body.publicSettings.accessRequestsEnabled===true&&!body.publicSettings.privacyNoticeUrl)throw new Error("PRIVACY_NOTICE_REQUIRED");
+    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.runtime_config.update",async(session)=>{
+     const current=await readPlatformRuntimeConfig(db);
+     const now=new Date();
+     const revision=current.revision+1;
+     const next={_id:"global" as const,revision,allowedOrigins,apiOrigins,publicSettings:body.publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
+     await db.collection("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{createdAt:now}},{upsert:true,session});
+     await db.collection("platformRuntimeConfigHistory").insertOne({...next,changeId:randomUUID(),actorUserId:p.userId},{session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.runtime_config.updated","runtime_configuration","global","success",{revision,reason:body.reason,allowedOriginCount:allowedOrigins.length,apiOriginKeys:Object.keys(apiOrigins).join(",")},session);
+     return {statusCode:200,body:{status:"updated",revision,updatedAt:now.toISOString(),allowedOrigins,apiOrigins,publicSettings:body.publicSettings}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
   app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.read")},async(request,reply)=>{
    try{
     let topology={replicaSet:false,writablePrimary:false,transactionsAvailable:false};
