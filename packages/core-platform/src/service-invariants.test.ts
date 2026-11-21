@@ -3,8 +3,33 @@ import assert from "node:assert/strict";
 import type {Db} from "mongodb";
 import {appendAuditEvent} from "./audit-service.js";
 import {createOrganization} from "./organization-service.js";
+import {createLocation} from "./location-service.js";
 import {isFeatureEnabled} from "./feature-flags.js";
 import {runMigrations,type Migration} from "./migrate.js";
+
+test("location creation persists all required document fields and defaults",async()=>{
+ let inserted:any;
+ const db={collection:(name:string)=>name==="organizations"?{
+  findOne:async()=>({tenantId:"tenant-1",organizationId:"org-1",path:[],status:"active"})
+ }:{
+  findOne:async()=>null,
+  insertOne:async(doc:any)=>{inserted=doc;return {acknowledged:true};}
+ }} as unknown as Db;
+ const created=await createLocation(db,"tenant-1","actor-1",{
+  organizationId:"org-1",code:"HQ",name:"Head Office",type:"office"
+ });
+ assert.equal(inserted.tenantId,"tenant-1");
+ assert.equal(inserted.locationId,created.locationId);
+ assert.equal(inserted.organizationId,"org-1");
+ assert.equal(inserted.code,"HQ");
+ assert.equal(inserted.name,"Head Office");
+ assert.equal(inserted.type,"office");
+ assert.equal(inserted.timezone,"Africa/Kampala");
+ assert.equal(inserted.status,"active");
+ assert.equal(inserted.createdBy,"actor-1");
+ assert.equal(inserted.updatedBy,"actor-1");
+ assert.equal(Object.hasOwn(inserted,"parentLocationId"),false);
+});
 
 test("organization creation persists all required document fields",async()=>{
  let inserted:any;
@@ -22,7 +47,7 @@ test("organization creation persists all required document fields",async()=>{
  assert.equal(inserted.status,"active");
  assert.equal(inserted.createdBy,"actor-1");
  assert.equal(inserted.updatedBy,"actor-1");
- assert.equal(Object.hasOwn(inserted,"parentOrganizationId"),false);
+ assert.equal(Object.prototype.hasOwnProperty.call(inserted,"parentOrganizationId"),false);
 });
 
 test("audit writer requires actor identity and redacts credential-like metadata",async()=>{
