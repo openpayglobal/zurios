@@ -24,6 +24,7 @@ const envSchema = z.object({
   META_REDIRECT_URI: z.string().url().optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().min(32).optional(),
   META_GRAPH_API_VERSION: z.string().regex(/^v\d+\.\d+$/).optional(),
+  META_LOGIN_CONFIG_ID: z.string().regex(/^[A-Za-z0-9_-]{4,128}$/).optional(),
   META_MARKETING_API_VERSION: z.string().regex(/^v\d+\.\d+$/).optional(),
   META_TOKEN_ENCRYPTION_KEYRING: z.string().max(16384).optional(),
   META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
@@ -126,20 +127,14 @@ const runtimeSchema = envSchema.superRefine((value, context) => {
   }
   if (value.META_APP_ID && value.META_REDIRECT_URI) {
     const redirect = new URL(value.META_REDIRECT_URI);
-    const loopbackHost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
-    if (redirect.protocol !== "https:" && !loopbackHost) {
-      context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_REDIRECT_URI"], message: "Meta OAuth redirect URI must use HTTPS except for local loopback development" });
-    }
-  }
-  if (!value.META_APP_ID && (value.META_APP_SECRET || value.META_REDIRECT_URI || value.META_WEBHOOK_VERIFY_TOKEN)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "Meta app secret, redirect URI and webhook verify token require META_APP_ID" });
-  }
-  if (value.META_APP_ID && value.META_REDIRECT_URI) {
-    const redirect = new URL(value.META_REDIRECT_URI);
-    const localDevelopmentHost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
-    if (redirect.username || redirect.password || redirect.hash || (redirect.protocol !== "https:" && !localDevelopmentHost) || (value.NODE_ENV === "production" && localDevelopmentHost)) {
+    const localhost = ["localhost", "127.0.0.1", "[::1]"].includes(redirect.hostname);
+    if (redirect.username || redirect.password || redirect.hash || (redirect.protocol !== "https:" && (!localhost || value.NODE_ENV === "production"))) {
       context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_REDIRECT_URI"], message: "Meta OAuth redirect URI must be HTTPS; only non-production localhost callbacks may use HTTP" });
     }
+  }
+  if (!value.META_APP_ID && (value.META_APP_SECRET || value.META_REDIRECT_URI || value.META_WEBHOOK_VERIFY_TOKEN || value.META_LOGIN_CONFIG_ID)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "Meta app secret, redirect URI, webhook verify token and Login Config ID require META_APP_ID" });
+  }
   }
 });
 export function parseConfig(environment: NodeJS.ProcessEnv) {
