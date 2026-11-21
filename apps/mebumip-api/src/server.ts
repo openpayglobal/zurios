@@ -64,6 +64,8 @@ if (config.MONGODB_URI) {
     await mongo.connect();
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
+    const topology = await db.admin().command({ hello: 1 });
+    if (typeof topology.setName !== "string" && topology.msg !== "isdbgrid") throw new Error("MONGODB_REPLICA_SET_REQUIRED_FOR_TRANSACTIONAL_AUDIT");
     await ensureMeBuMIPIndexes(db);
     const auditIntegrity = await verifyAuditChain(db);
     if (!auditIntegrity.valid) throw new Error(`AUDIT_CHAIN_NOT_READY:${JSON.stringify({ checked: auditIntegrity.checked, legacyUnchainedEvents: auditIntegrity.legacyUnchainedEvents, firstInvalidSequence: auditIntegrity.firstInvalidSequence, counterSequence: auditIntegrity.counterSequence, latestSequence: auditIntegrity.latestSequence })}`);
