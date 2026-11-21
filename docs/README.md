@@ -86,3 +86,9 @@ Every authoritative specification should state its owner, status, version, appro
 - Do not claim production readiness, compliance certification, Meta approval or a live integration without evidence.
 
 Product mirrors are maintained using `pnpm docs:sync` and verified using `pnpm docs:check`.
+
+## Customer workflow and infrastructure operations
+
+- [MeBuMIP End-User Workflow](./ux/MEBUMIP-END-USER-WORKFLOW.md) — customer journey from access request and identity verification through workspace onboarding, Meta connections, assets, product operations and integrations.
+- [MAC Infrastructure and Secrets Management](./operations/MAC-INFRASTRUCTURE-AND-SECRETS-MANAGEMENT.md) — MAC-managed infrastructure inventory, cryptographic key lifecycles, Vercel KMS workload identity, MongoDB/provider credential provisioning and security boundaries.
+- [User Workflow and Infrastructure Progress](./project/USER-WORKFLOW-INFRASTRUCTURE-PROGRESS.md) — why the workflow is not yet live, what exists in source, KMS resource created, and remaining activation gates.
