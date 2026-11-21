@@ -216,3 +216,8 @@ The current implementation now commits refresh rotation and password reset as si
 ### Request-time membership validity enforcement (2026-11-21)
 
 The API permission resolver already rejected memberships outside their validity window. Defense in depth was added to the request authentication middleware itself: its membership lookup now requires `validFrom <= now` when present and `validUntil > now` when present. An existing bearer session therefore stops resolving to an authenticated principal as soon as its membership expires, even if the session token and session record remain otherwise valid. The integration test covers active, expired, future-start and restored membership states against `GET /auth/me`. This complements the identity-first workspace listing, tenant login, MFA completion, selection and switching validity checks.
+
+
+The bounded backfill now computes the complete hash chain in memory for at most 5,000 validated events, then applies all record updates with one ordered MongoDB `bulkWrite` inside the transaction. This avoids 5,000 sequential network round-trips while preserving atomicity and exact matched/modified-count checks. Integration coverage now verifies that a 5,001-event legacy history is refused before any event is mutated.
+
+The core-platform idempotency API also now documents an important MongoDB transaction invariant: `withTransaction` may retry its callback after transient failures. Mutation callbacks must contain only session-bound database work; external mail, remote APIs and message delivery must be represented by transactional outbox records and performed after commit. The concurrency integration test now asserts committed database effects and replay outcomes rather than assuming the callback is invoked exactly once.
