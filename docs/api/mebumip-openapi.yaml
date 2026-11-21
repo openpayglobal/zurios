@@ -84,7 +84,7 @@ paths:
       parameters:
         - {name: tenantId, in: query, required: true, schema: {type: string, minLength: 1}}
       responses:
-        "200": {description: Tenant-scoped onboarding checklist, business profile, member count and redacted connection metadata}
+        "200": {description: "Tenant-scoped onboarding checklist, business profile, member count and redacted connection metadata"}
         "401": {description: Authentication required}
         "403": {description: Active tenant membership and permission required}
   /v1/workspace/onboarding/business-profile:
@@ -130,7 +130,8 @@ paths:
       responses:
         "401": {description: Authentication required}
         "403": {description: Tenant Meta connection permission required}
-        "503": {description: Meta OAuth is not configured; no connection is created}
+        "202": {description: "Meta OAuth flow accepted when provider configuration is ready"}
+        "503": {description: "Meta OAuth is not configured; no connection is created"}
   /v1/tenants/{tenantId}/members:
     get:
       tags: [Customer Workspace]
@@ -170,7 +171,7 @@ paths:
       operationId: getMacInfrastructureInventory
       summary: Read non-secret infrastructure and keyring readiness metadata
       responses:
-        "200": {description: Masked database topology, KMS keyring metadata, origins and provider readiness}
+        "200": {description: "Masked database topology, KMS keyring metadata, origins and provider readiness"}
         "401": {description: Authentication required}
         "403": {description: Platform settings-read permission required}
   /v1/auth/register:
@@ -194,8 +195,8 @@ paths:
       responses:
         "201": {description: Customer account created and tenant membership activated}
         "400": {description: Invalid registration data or invitation role}
-        "404": {description: Invitation invalid, expired or email mismatch}
-        "409": {description: Existing account, inactive tenant or invitation already used}
+        "404": {description: "Invitation invalid, expired or email mismatch"}
+        "409": {description: "Existing account, inactive tenant or invitation already used"}
         "500": {description: Registration transaction failed}
 components:
   securitySchemes:
