@@ -326,14 +326,20 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const token = newOpaqueToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 48 * 60 * 60_000);
-    const inserted = await db.collection("platformAdminInvitations").insertOne({ email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt });
+    const inserted = await withAuditTransaction(
+      db,
+      (session) => db.collection("platformAdminInvitations").insertOne({ email, role: parsed.data.role, tokenHash: hashToken(token), invitedBy: resolved.principal.userId, createdAt: now, expiresAt }, { session }),
+      (created) => ({ actorUserId: resolved.principal.userId, action: "platform.admin.invitation.created", targetType: "platform_admin_invitation", targetId: String(created.insertedId), outcome: "success", correlationId: request.id }),
+    );
     const delivery = await sendPlatformAdminInvitationEmail({ to: email, role: parsed.data.role, token, expiresAt });
     if (!delivery.delivered) {
-      await db.collection("platformAdminInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
-      await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.delivery_failed", targetType: "platform_admin_invitation", targetId: String(inserted.insertedId), outcome: "failure", correlationId: request.id });
+      await withAuditTransaction(
+        db,
+        (session) => db.collection("platformAdminInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } }, { session }),
+        () => ({ actorUserId: resolved.principal.userId, action: "platform.admin.invitation.delivery_failed", targetType: "platform_admin_invitation", targetId: String(inserted.insertedId), outcome: "failure", correlationId: request.id }),
+      );
       return reply.code(503).send({ error: "PLATFORM_ADMIN_INVITATION_DELIVERY_UNAVAILABLE" });
     }
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.created", targetType: "platform_admin_invitation", targetId: String(inserted.insertedId), outcome: "success", correlationId: request.id });
     return reply.code(201).send({ invitationId: String(inserted.insertedId), email, role: parsed.data.role, expiresAt, delivery: delivery.provider });
   });
 
@@ -345,9 +351,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const { invitationId } = request.params as { invitationId: string };
     if (!ObjectId.isValid(invitationId)) return reply.code(400).send({ error: "INVALID_INVITATION_ID" });
     const revokedAt = new Date();
-    const result = await db.collection("platformAdminInvitations").updateOne({ _id: new ObjectId(invitationId), acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt, revokedBy: resolved.principal.userId } });
-    if (!result.matchedCount) return reply.code(404).send({ error: "PENDING_PLATFORM_ADMIN_INVITATION_NOT_FOUND" });
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.revoked", targetType: "platform_admin_invitation", targetId: invitationId, outcome: "success", correlationId: request.id });
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const result = await db.collection("platformAdminInvitations").updateOne(
+            { _id: new ObjectId(invitationId), acceptedAt: { $exists: false }, revokedAt: { $exists: false } },
+            { $set: { revokedAt, revokedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (!result.matchedCount) throw new Error("PENDING_PLATFORM_ADMIN_INVITATION_NOT_FOUND");
+          return result;
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "platform.admin.invitation.revoked", targetType: "platform_admin_invitation", targetId: invitationId, outcome: "success", correlationId: request.id }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "PENDING_PLATFORM_ADMIN_INVITATION_NOT_FOUND") return reply.code(404).send({ error: "PENDING_PLATFORM_ADMIN_INVITATION_NOT_FOUND" });
+      throw error;
+    }
     return reply.code(204).send();
   });
   app.post("/v1/mac/admin-invitations/accept", async (request, reply) => {
@@ -359,11 +380,31 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     if (!user) return reply.code(401).send({ error: "UNAUTHORIZED" });
     const invitation = await db.collection("platformAdminInvitations").findOne({ tokenHash: hashToken(parsed.data.token), email: user.normalizedEmail, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } });
     if (!invitation) return reply.code(404).send({ error: "PLATFORM_ADMIN_INVITATION_INVALID_OR_EMAIL_MISMATCH" });
-    const claimed = await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { acceptedAt: new Date(), acceptedBy: resolved.principal.userId } });
-    if (claimed.modifiedCount !== 1) return reply.code(409).send({ error: "PLATFORM_ADMIN_INVITATION_ALREADY_USED" });
-    const updated = await db.collection("users").updateOne({ _id: user._id, platformRole: { $exists: false } }, { $set: { platformRole: invitation.role, platformAdminStatus: "active", platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: new Date() } });
-    if (updated.modifiedCount !== 1) { await db.collection("platformAdminInvitations").updateOne({ _id: invitation._id, acceptedBy: resolved.principal.userId }, { $unset: { acceptedAt: "", acceptedBy: "" } }); return reply.code(409).send({ error: "USER_ALREADY_HAS_PLATFORM_ROLE" }); }
-    await appendAuditEvent(db, { actorUserId: resolved.principal.userId, action: "platform.admin.invitation.accepted", targetType: "platform_admin", targetId: resolved.principal.userId, outcome: "success", correlationId: request.id, metadata: { role: String(invitation.role) } });
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const claimed = await db.collection("platformAdminInvitations").updateOne(
+            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: new Date() } },
+            { $set: { acceptedAt: new Date(), acceptedBy: resolved.principal.userId } },
+            { session },
+          );
+          if (claimed.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_INVITATION_ALREADY_USED");
+          const updated = await db.collection("users").updateOne(
+            { _id: user._id, platformRole: { $exists: false } },
+            { $set: { platformRole: invitation.role, platformAdminStatus: "active", platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: new Date() } },
+            { session },
+          );
+          if (updated.modifiedCount !== 1) throw new Error("USER_ALREADY_HAS_PLATFORM_ROLE");
+          return { userId: resolved.principal.userId, role: String(invitation.role) };
+        },
+        (accepted) => ({ actorUserId: accepted.userId, action: "platform.admin.invitation.accepted", targetType: "platform_admin", targetId: accepted.userId, outcome: "success", correlationId: request.id, metadata: { role: accepted.role } }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "PLATFORM_ADMIN_INVITATION_ALREADY_USED") return reply.code(409).send({ error: "PLATFORM_ADMIN_INVITATION_ALREADY_USED" });
+      if (error instanceof Error && error.message === "USER_ALREADY_HAS_PLATFORM_ROLE") return reply.code(409).send({ error: "USER_ALREADY_HAS_PLATFORM_ROLE" });
+      throw error;
+    }
     return reply.send({ status: "accepted", role: invitation.role });
   });
   app.get("/v1/mac/audit-events/verify", async (request, reply) => {
