@@ -151,14 +151,17 @@ test("does not automatically retry side-effecting POST requests", async () => {
   assert.equal(calls, 1);
 });
 
-test("redacts the bearer token from provider error messages", async () => {
+test("redacts bearer tokens, app secrets and app-secret proofs from provider error messages", async () => {
+  const appSecret = "meta-app-secret-that-must-never-be-exposed";
   const client = new MetaGraphClient({
     version: "v27.0",
-    fetchImpl: async () => new Response(JSON.stringify({ error: { message: `Invalid token ${token}; appsecret_proof=secret-proof-value`, type: "OAuthException", code: 190 } }), { status: 400 }),
+    appSecret,
+    fetchImpl: async () => new Response(JSON.stringify({ error: { message: `Invalid token ${token}; secret ${appSecret}; appsecret_proof=secret-proof-value`, type: "OAuthException", code: 190 } }), { status: 400 }),
   });
   await assert.rejects(
     () => client.request("me", { accessToken: token }),
-    (error: unknown) => error instanceof MetaGraphError && error.providerCode === 190 && !error.message.includes(token) && !error.message.includes("secret-proof-value") && error.message.includes("[REDACTED]"),
+    (error: unknown) => error instanceof MetaGraphError && error.providerCode === 190 &&
+      !error.message.includes(token) && !error.message.includes(appSecret) && !error.message.includes("secret-proof-value") && error.message.includes("[REDACTED]"),
   );
 });
 
