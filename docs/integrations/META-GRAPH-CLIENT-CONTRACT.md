@@ -62,3 +62,15 @@ Use `requestNext(nextUrl, accessToken)` for Graph paging links. It validates HTT
 7. App Review, business verification and Tech Provider approvals before live customer access.
 
 Objectives B–E remain separate phases. Marketing API requires its own version and spend safeguards; WhatsApp requires consent/template/webhook lifecycle; multi-business SaaS and external integrations require their own acceptance suites.
+
+
+## App Secret Proof and transport controls
+
+The client accepts an app secret only through its server-side constructor options. When configured, it computes `appsecret_proof = HMAC-SHA256(accessToken, appSecret)` and adds the derived proof to each request; callers cannot override `access_token` or `appsecret_proof` through query/body parameters. A provider paging URL has both credential parameters stripped and the proof is regenerated for the current token. Set `requireAppSecretProof: true` when the Meta app has Require App Secret enabled; construction fails if the secret is absent. The raw app secret and access token must remain in a secret manager/token vault, never in browser code, logs, database URLs or query strings.
+
+Requests disable redirects, cookies, caching and referrers. Redirects fail closed so credentials are never forwarded to an unreviewed redirect target. Automatic retries remain GET-only; POST/DELETE operations are never retried because their side effects may not be idempotent.
+
+Official Meta references checked 2026-11-21:
+- Graph API documentation currently identifies `v27.0` as the latest version: https://developers.facebook.com/docs/graph-api/
+- Meta recommends `appsecret_proof`, an HMAC-SHA256 of the access token using the app secret, for server-side Graph API requests and documents the Require App Secret setting: https://developers.facebook.com/docs/graph-api/guides/secure-requests
+- Meta's error-handling guidance documents provider error codes, transient errors and rate-limit recovery: https://developers.facebook.com/docs/graph-api/guides/error-handling
