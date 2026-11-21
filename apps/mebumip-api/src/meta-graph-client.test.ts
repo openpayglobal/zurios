@@ -13,7 +13,7 @@ test("pins every Graph API request to the explicit version and sends the token o
     fetchImpl: async (input, init) => {
       requestedUrl = String(input);
       authorization = new Headers(init?.headers).get("authorization") ?? "";
-      return new Response(JSON.stringify({ id: "page-1" }), { status: 200 });
+      return new Response(JSON.stringify({ id: "page-1" }), { status: 200, headers: { "facebook-api-version": "v27.0" } });
     },
   });
   const result = await client.request<{ id: string }>("me/accounts", {
@@ -26,6 +26,17 @@ test("pins every Graph API request to the explicit version and sends the token o
   assert.equal(new URL(requestedUrl).searchParams.has("access_token"), false);
   assert.equal(requestedUrl.includes(token), false);
   assert.equal(authorization, `Bearer ${token}`);
+});
+
+test("fails closed when Meta reports a different Graph API version", async () => {
+  const client = new MetaGraphClient({
+    version: "v27.0",
+    fetchImpl: async () => new Response(JSON.stringify({ id: "me" }), {
+      status: 200,
+      headers: { "facebook-api-version": "v26.0" },
+    }),
+  });
+  await assert.rejects(() => client.request("me", { accessToken: token }), /unexpected version/);
 });
 
 test("rejects unversioned, traversal and absolute request paths", async () => {
