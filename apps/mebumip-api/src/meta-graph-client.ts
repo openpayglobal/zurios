@@ -66,7 +66,7 @@ const APP_SECRET_PROOF_QUERY_KEY = "appsecret_proof";
 
 function safeMessage(message: unknown, token: string, appSecret?: string): string {
   const value = typeof message === "string" && message.trim() ? message : "Meta Graph API request failed";
-  const redacted = value.replaceAll(token, "[REDACTED]").replace(/(?:access_token|appsecret_proof)\s*[=:]\s*[^\s&,]+/gi, "credential=[REDACTED]");
+  const redacted = value.replaceAll(token, "[REDACTED]").replace(/(?:access_token|appsecret_proof|input_token|fb_exchange_token|client_secret|code)\s*[=:]\s*[^\s&,]+/gi, "credential=[REDACTED]");
   return (appSecret ? redacted.replaceAll(appSecret, "[REDACTED]") : redacted).slice(0, 500);
 }
 
