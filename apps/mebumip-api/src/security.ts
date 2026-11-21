@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { ObjectId, type ClientSession, type Db, type Document } from "mongodb";
+import { ObjectId, type AnyBulkWriteOperation, type ClientSession, type Db, type Document } from "mongodb";
 
 export const PLATFORM_ROLES = ["platform_owner", "platform_admin", "platform_operator", "platform_auditor"] as const;
 export const TENANT_ROLES = ["tenant_owner", "tenant_admin", "publisher", "advertiser", "support_agent", "viewer"] as const;
@@ -414,6 +414,7 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
 
       let previousHash = AUDIT_GENESIS_HASH;
       let sequence = 0;
+      const operations: AnyBulkWriteOperation<ChainedAuditEvent>[] = [];
       for (const old of legacy) {
         sequence += 1;
         const occurredAt = old.occurredAt instanceof Date ? old.occurredAt : new Date(String(old.occurredAt ?? ""));
@@ -437,13 +438,17 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
         const chained = createChainedAuditEvent(input, sequence, previousHash);
         const eventHash = chained.eventHash;
         if (typeof eventHash !== "string") throw new Error("AUDIT_EVENT_HASH_MISSING");
-        const result = await collection.updateOne(
-          { _id: new ObjectId(String(old._id)), sequence: { $exists: false }, previousHash: { $exists: false }, eventHash: { $exists: false } },
-          { $set: { sequence, previousHash, eventHash, integrity: chained.integrity, occurredAt } },
-          { session },
-        );
-        if (result.modifiedCount !== 1) throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
+        operations.push({
+          updateOne: {
+            filter: { _id: new ObjectId(String(old._id)), sequence: { $exists: false }, previousHash: { $exists: false }, eventHash: { $exists: false } },
+            update: { $set: { sequence, previousHash, eventHash, integrity: chained.integrity, occurredAt } },
+          },
+        });
         previousHash = eventHash;
+      }
+      const result = await collection.bulkWrite(operations, { session, ordered: true });
+      if (result.matchedCount !== legacyCount || result.modifiedCount !== legacyCount) {
+        throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
       }
       await db.collection<{ _id: string; sequence: number; updatedAt: Date }>("auditCounters").updateOne(
         { _id: "global" },
