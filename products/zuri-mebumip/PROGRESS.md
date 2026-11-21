@@ -344,3 +344,32 @@ The product owner has deferred live Meta Business Portfolio/developer-app setup.
 
 
 **Exact-head verification detail (2026-11-21):** PR #14 source/test head `f542bddb1af2358491fcdf2de2b52c087bdfa09a` passed [Full CI #44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) and [MeBuMIP verification #44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363). Each test suite reported 31 passed, 0 failed, 0 skipped. The full run passed both OpenAPI contracts, route-drift checks, docs mirror check, typecheck, tests and build. MeBuMIP passed API typecheck/tests/build and web typecheck/build. This does not establish deployment or production readiness.
+
+
+## Latest implementation checkpoint — 2026-11-21
+
+### Phase 1 security and foundation progress
+
+The MeBuMIP API now has a versioned HMAC audit keyring and predecessor-linked sequence chain; streaming full-chain verification and counter consistency checks; signed export manifests and bounded archive preparation; dry-run-first legacy backfill capped at 5,000 validated events; and a read-only `audit:verify` CLI. Backfill refuses partial/mixed histories and oversized migrations. Archive preparation/export is not a substitute for independent WORM/object-lock storage.
+
+Critical state changes and their audit records are coupled in the same MongoDB snapshot/majority transaction: tenant provisioning, member/invitation lifecycle, platform administrator lifecycle and session revocation, login/logout/session revocation, invited registration, password change/recovery, and MFA setup/enablement/step-up/reset. Email delivery is outside the transaction and delivery failures are separately recorded. A replica-set regression test proves that a domain write and audit counter roll back when signing fails.
+
+Cookie-authenticated unsafe requests require CSRF cookie/header validation and an exact configured Origin. Session, password, recovery and MFA routes have database-backed rate limits; password change and MFA reset use stricter dedicated thresholds. MFA secrets use AES-256-GCM with versioned key IDs and a rotation-capable keyring. The Resend mail adapter remains configuration-dependent; no production delivery is claimed.
+
+### Verification
+
+- [Full monorepo CI #44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) passed on `f542bddb1af2358491fcdf2de2b52c087bdfa09a`.
+- [MeBuMIP Phase 1 verification #44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363) passed on the same commit.
+- [MeBuMIP Phase 1 verification #44868162502](https://github.com/openpayglobal/zurios/actions/runs/44868162502) and [full CI #44868159245](https://github.com/openpayglobal/zurios/actions/runs/44868159245) passed on the signed-export audit enhancement checkpoint `4f9e7c2f689351e208d1bdac59000a8512e5bafa`.
+- The latest route-rate-limit and test checkpoint `6091b3e748155cac3456703579cd0ec6accf7346` has passed API typecheck so far; its MeBuMIP integration tests and full monorepo test/build are still running. Do not mark this newest checkpoint verified until both workflows finish.
+
+### Remaining release gates
+
+- Objectives A–E (Meta Page/Instagram management, advertising, WhatsApp Business API, multi-business Meta SaaS, and company-software integration) remain future phases 2–6. No Meta provider integration, credentials, webhooks, consent flows or live business asset operations are claimed complete.
+- Current feature-branch Vercel deployment is rate-limited. The confirmed READY frontend preview is an older commit; the production frontend is also on an older main commit. The API production deployment is in ERROR on an older branch. No current-head deployment or production promotion is claimed.
+- No production environment variables/secrets are configured for the two retained Vercel projects. MongoDB replica-set URI, JWT/MFA/audit keys, CORS origins, mail-provider credentials/sender and runtime settings require owner configuration.
+- Immutable WORM/object-lock archive storage, retention/legal hold, backup/restore validation, observability and production security review remain outstanding.
+- The owner-provided ODEI repository remains inaccessible to the connected GitHub integration (404); its requirements are not guessed.
+- PR #13 and PR #14 remain separate and unmerged. Reconcile their divergent histories and review the final combined security diff before merge.
+
+**Status:** Phase 1 implementation is materially advanced and its latest verified checkpoint passes CI, but Phase 1 is not production-accepted. Objectives A–E are not started; release gates remain open.
