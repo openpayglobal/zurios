@@ -86,31 +86,3 @@ export async function readPlatformRuntimeConfig(db: Db, session?: ClientSession)
     : await collection.findOne({ _id: "global" });
   return current ?? defaultPlatformRuntimeConfig;
 }
-
-export function normalizeVerifiedHttpsOrigin(value: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("API_ORIGIN_INVALID");
-  }
-  if (
-    url.protocol !== "https:" ||
-    url.origin !== value ||
-    url.username ||
-    url.password ||
-    url.pathname !== "/" ||
-    url.search ||
-    url.hash
-  ) {
-    throw new Error("API_ORIGIN_MUST_BE_EXACT_HTTPS_ORIGIN");
-  }
-  if (!VERIFIED_PROJECT_HOSTS.has(url.hostname)) throw new Error("API_ORIGIN_DOMAIN_NOT_VERIFIED");
-  return url.origin;
-}
-
-export function normalizeOriginList(values: string[]): string[] {
-  const normalized = [...new Set(values.map(normalizeVerifiedHttpsOrigin))];
-  if (normalized.length < 1 || normalized.length > 20) throw new Error("API_ORIGIN_COUNT_INVALID");
-  return normalized;
-}
