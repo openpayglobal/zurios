@@ -52,7 +52,7 @@ export function CustomerWorkspace() {
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Sign in required."); });
     return () => { active = false; };
   }, []);
-  useEffect(() => { if (tenantId) { setData(null); void load(tenantId).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load onboarding.")); } }, [tenantId]);
+  useEffect(() => { if (tenantId) { setData(null); setMembers([]); void load(tenantId).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load onboarding.")); } }, [tenantId]);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
