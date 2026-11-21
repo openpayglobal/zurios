@@ -69,6 +69,15 @@ test("audit chain appends serialize, verify, and detect tampering", {
     assert.equal(verifyAuditArchiveBundle(JSON.parse(JSON.stringify(archive))).valid, true, "serialized archive timestamps must verify offline");
     await db.collection("auditEvents").updateOne({ sequence: 6 }, { $set: { action: "tampered.event" } });
     assert.equal((await verifyAuditChain(db)).valid, false);
+    await db.collection("auditEvents").updateOne({ sequence: 12 }, { $set: { action: "tampered.tail" } });
+    await assert.rejects(() => appendAuditEvent(db, {
+      actorUserId: "audit-concurrency-test",
+      action: "audit.append.after.tamper",
+      targetType: "test",
+      outcome: "success",
+      correlationId: "audit-after-tamper",
+    }), /AUDIT_CHAIN_PREDECESSOR_INVALID/);
+    assert.equal(await db.collection("auditEvents").countDocuments({ sequence: 13 }), 0);
     assert.equal(verifyAuditArchiveBundle(archive).valid, true, "a previously exported immutable bundle remains independently verifiable");
     const tamperedBundle = { ...archive, events: archive.events.map((event, index) => index === 5 ? { ...event, action: "tampered.archive" } : event) };
     assert.equal(verifyAuditArchiveBundle(tamperedBundle).valid, false);
