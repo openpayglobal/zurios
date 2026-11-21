@@ -76,3 +76,13 @@ Likewise, provider access tokens must be issued by Meta or another provider afte
 - The existing MeBuMIP MAC settings API is read-only; secret lifecycle UI/API remains to be implemented.
 - The Zuri OS integration candidate contains an access request/workspace journey, but public access requests default off and the current MeBuMIP web UI is still an administration shell.
 
+
+## Vercel KMS managed signing issuers provisioned — 2026-11-21
+
+Three separate RS256 KMS issuers now exist, each with server-generated active signing key material and a project grant restricted to the `zurios-api` Production project:
+
+- Workload identity: `5653e1ff-fd71-4a0d-8720-380cdfcaf2c4`, key `75899278-1e19-4444-bec0-141dc4d17eb0`.
+- User session JWT signing: `16d2fb82-30b7-4a0d-8c4e-49fb1de92919`, key `2900b63b-5eed-4689-8726-b05a4618967f`.
+- Audit event signing: `55210f93-c052-45a5-aeb8-e083ed0d5dce`, key `da6060ee-9fda-4389-a652-281c256be6d2`.
+
+The API exposes a platform-permission-protected `GET /v1/mac/infrastructure` inventory route and the MeBuMIP MAC now has an Infrastructure & Secrets panel. It returns only non-secret metadata, probes the connected database's replica-set/transaction topology, and reports current environment-based key/origin/provider readiness. KMS keyrings are marked provisioned but pending runtime signer/verifier integration; no claim is made that they already sign application sessions or audit events.
