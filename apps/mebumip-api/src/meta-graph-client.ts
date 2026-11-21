@@ -176,11 +176,12 @@ export class MetaGraphClient {
       try {
         payload = await response.json();
       } catch {
-        if (retryableMethod && response.status >= 500 && attempt + 1 < attempts) {
-          await this.sleep(Math.min(250 * (2 ** attempt), 4_000));
+        const retryableResponse = response.status === 429 || response.status >= 500;
+        if (retryableMethod && retryableResponse && attempt + 1 < attempts) {
+          await this.sleep(retryAfterMs(response.headers.get("retry-after")) ?? Math.min(250 * (2 ** attempt), 4_000));
           continue;
         }
-        throw new MetaGraphError("Meta Graph API returned invalid JSON", { status: response.status, retryable: response.status >= 500 });
+        throw new MetaGraphError("Meta Graph API returned invalid JSON", { status: response.status, retryable: retryableResponse });
       }
       const providerError = payload && typeof payload === "object" && "error" in payload
         ? (payload as { error?: MetaProviderError }).error
