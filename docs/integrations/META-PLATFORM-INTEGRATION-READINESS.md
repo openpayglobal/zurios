@@ -153,7 +153,7 @@ This document defines readiness requirements; it does not mark objectives A–D 
 
 | Objective | Phase | Current programme status |
 |---|---:|---|
-| A — Facebook Pages and Instagram account management | 2 | Not started |
+| A — Facebook Pages and Instagram account management | 2 | Foundation in progress (Graph transport, token vault and OAuth-state primitives; no live asset features) |
 | B — Facebook and Instagram advertising | 3 | Not started |
 | C — WhatsApp Business Platform/API | 4 | Not started |
 | D — Multi-business Meta management | 5 | Not started |
@@ -170,3 +170,14 @@ No live Meta credentials, business portfolio, review approval, webhook subscript
 ## 11. Change history
 
 - 2026-11-20: Initial version based on official Meta Platform Versioning, Graph/Marketing API changelog, App Review, Tech Provider, Webhooks and WhatsApp Business Platform documentation.
+
+
+## 12. Phase 2 transport and credential groundwork (2026-11-21)
+
+The repository now includes:
+- A version-pinned Graph API client with server-side App Secret Proof, bearer-token header handling, strict Graph host/version pagination, bounded GET retries, no automatic POST/DELETE retries, redirect refusal and credential-redacted errors.
+- A dedicated tenant/connection-bound AES-256-GCM Meta token vault with key IDs and re-encryption support; config validation keeps Meta token keys separate from MFA and audit keys.
+- A five-minute, single-use OAuth state store bound to tenant, user and session, backed by a unique state-hash index and TTL index.
+- Safe readiness diagnostics that expose only configured flags and selected API versions, never app secrets, webhook tokens or key material.
+
+These components are mocked/contract-tested and do not require live Meta credentials. The OAuth callback/code exchange, token persistence, asset selection, Page/Instagram operations, webhook subscriptions and Meta App Review remain outstanding. Objective A is therefore in Phase 2 foundation work, not feature-complete; Objectives B–E remain unstarted.
