@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, develop, "feature/**", "feat/mac-runtime-config-vercel-oidc"]
+    branches: [main, develop, "feature/**", "feat/mac-runtime-config-vercel-oidc", "feat/mac-secrets-user-workflow"]
   pull_request:
     branches: [main, develop, integration/pr13-pr14-security-reconciliation]
 permissions:
