@@ -934,7 +934,10 @@ paths:
                   type: object
                   properties:
                     accessRequestsEnabled: {type: boolean}
-                    privacyNoticeUrl: {type: [string, "null"], format: uri}
+                    privacyNoticeUrl:
+                      oneOf:
+                        - {type: string, format: uri}
+                        - {type: "null"}
                     supportEmail: {type: string, format: email}
                     supportUrl: {type: string, format: uri}
                     defaultLocale: {type: string}
@@ -955,6 +958,7 @@ paths:
       responses:
         "200": {description: Public settings and API origins}
         "304": {description: Configuration has not changed}
+        "503": {description: Runtime configuration is temporarily unavailable}
   /platform/internal/runtime-config:
     get:
       tags: [Runtime Configuration]
@@ -976,6 +980,7 @@ components:
       schema: {type: string, minLength: 8, maxLength: 128}
   securitySchemes:
     VercelWorkloadIdentity:
+      description: Short-lived Vercel team OIDC token, restricted to the approved project and Production environment.
       type: http
       scheme: bearer
       bearerFormat: JWT
