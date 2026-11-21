@@ -22,7 +22,7 @@ test("organization creation persists all required document fields",async()=>{
  assert.equal(inserted.status,"active");
  assert.equal(inserted.createdBy,"actor-1");
  assert.equal(inserted.updatedBy,"actor-1");
- assert.equal(Object.hasOwn(inserted,"parentOrganizationId"),false);
+ assert.equal(Object.prototype.hasOwnProperty.call(inserted,"parentOrganizationId"),false);
 });
 
 test("audit writer requires actor identity and redacts credential-like metadata",async()=>{
