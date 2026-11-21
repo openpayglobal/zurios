@@ -867,6 +867,33 @@ paths:
         "201": {description: Platform lifecycle approval request created}
         "403": {$ref: "#/components/responses/Forbidden"}
 
+  /platform/admin/infrastructure:
+    get:
+      tags: [Administration]
+      operationId: getPlatformInfrastructureInventory
+      summary: Read masked infrastructure and cryptographic keyring metadata
+      description: Requires platform tenant-directory read permission. Returns only non-secret metadata; no database URI, JWT secret, private key or provider credential is returned.
+      responses:
+        "200":
+          description: Database topology, KMS issuer metadata, API origins and provider readiness
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      generatedAt: {type: string, format: date-time}
+                      environment: {type: string}
+                      database: {type: object}
+                      keyrings: {type: object}
+                      apiOrigins: {type: object}
+                      providers: {type: object}
+                      secretStore: {type: object}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
 components:
   parameters:
     IdempotencyKey:
