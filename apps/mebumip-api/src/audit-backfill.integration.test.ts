@@ -45,6 +45,34 @@ test("audit chain appends serialize, verify, and detect tampering", {
   }
 });
 
+test("audit-chain backfill refuses partial chain metadata instead of rewriting provenance", {
+  skip: !mongoUri ? "MONGODB_TEST_URI is not configured" : false,
+}, async () => {
+  const client = new MongoClient(mongoUri!, { serverSelectionTimeoutMS: 5_000 });
+  const db = client.db(`mebumip_audit_partial_${process.pid}_${Date.now()}`);
+  try {
+    await client.connect();
+    await db.command({ ping: 1 });
+    await ensureMeBuMIPIndexes(db);
+    await db.collection("auditEvents").insertOne({
+      actorUserId: "legacy-user", action: "legacy.partial", targetType: "test",
+      outcome: "success", correlationId: "legacy-partial", occurredAt: new Date(),
+      sequence: 7, previousHash: "GENESIS",
+    });
+    const plan = await planAuditChainBackfill(db);
+    assert.equal(plan.legacyCount, 0);
+    assert.equal(plan.sequencedCount, 0);
+    assert.equal(plan.malformedCount, 1);
+    assert.equal(plan.applyAllowed, false);
+    assert.match(plan.reason ?? "", /PARTIAL_AUDIT_CHAIN_FIELDS/);
+    await assert.rejects(() => applyAuditChainBackfill(db), /PARTIAL_AUDIT_CHAIN_FIELDS/);
+    assert.equal(await db.collection("auditEvents").countDocuments({ eventHash: { $exists: true } }), 0);
+  } finally {
+    await db.dropDatabase().catch(() => undefined);
+    await client.close();
+  }
+});
+
 test("legacy audit-chain backfill is dry-run-first, bounded, and refuses mixed histories", {
   skip: !mongoUri ? "MONGODB_TEST_URI is not configured" : false,
 }, async () => {
