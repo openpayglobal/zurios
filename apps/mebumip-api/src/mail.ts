@@ -28,7 +28,7 @@ async function deliver(message: MailMessage): Promise<MailDelivery> {
 export function sendTenantInvitationEmail(input: { to: string; tenantName: string; role: string; token: string; expiresAt: Date }): Promise<MailDelivery> {
   const text = "You have been invited to join " + input.tenantName + " as " + input.role + ".\n\nInvitation token: " + input.token + "\n\nThis token expires at " + input.expiresAt.toISOString() + " and can be used once.";
   const html = "<p>You have been invited to join <strong>" + escapeHtml(input.tenantName) + "</strong> as " + escapeHtml(input.role) + ".</p><p>Use this one-time invitation token during registration or invitation acceptance:</p><p><code>" + escapeHtml(input.token) + "</code></p><p>Expires: " + escapeHtml(input.expiresAt.toISOString()) + "</p>";
-  const subjectName = input.tenantName.replace(/[\\r\\n]+/g, " ").slice(0, 160);
+  const subjectName = input.tenantName.replace(/[\r\n]+/g, " ").slice(0, 160);
   return deliver({ to: input.to, subject: "Invitation to " + subjectName, text, html });
 }
 
