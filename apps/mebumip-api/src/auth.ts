@@ -309,12 +309,34 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const token = newOpaqueToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
-    await db.collection("sessions").updateOne(
-      { _id: resolved.sessionId, revokedAt: { $exists: false } },
-      { $set: { revokedAt: now, rotatedAt: now } },
+    const sessions = db.collection("sessions");
+    const newSession = await sessions.insertOne({
+      userId: resolved.principal.userId,
+      tokenHash: hashToken(token),
+      createdAt: now,
+      expiresAt,
+      userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256),
+      ipHash: hashToken(request.ip || "unknown"),
+      rotatedFromSessionId: String(resolved.sessionId),
+    });
+    const rotated = await sessions.updateOne(
+      { _id: resolved.sessionId, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+      { $set: { revokedAt: now, rotatedAt: now, rotatedToSessionId: String(newSession.insertedId) } },
     );
-    await db.collection("sessions").insertOne({ userId: resolved.principal.userId, tokenHash: hashToken(token), createdAt: now, expiresAt, userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256), ipHash: hashToken(request.ip || "unknown") });
-    await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
+    if (rotated.modifiedCount !== 1) {
+      await sessions.deleteOne({ _id: newSession.insertedId });
+      return unauthorized(reply);
+    }
+    try {
+      await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
+    } catch (error) {
+      await sessions.deleteOne({ _id: newSession.insertedId });
+      await sessions.updateOne(
+        { _id: resolved.sessionId, rotatedToSessionId: String(newSession.insertedId) },
+        { $unset: { revokedAt: "", rotatedAt: "", rotatedToSessionId: "" } },
+      );
+      throw error;
+    }
     setSessionCookies(reply, token);
     return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString() });
   });
@@ -341,29 +363,62 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const email = parsed.data.email.trim().toLowerCase();
     const user = await db.collection("users").findOne({ normalizedEmail: email, status: "active" });
-    if (user) {
-      const token = newOpaqueToken();
-      const expiresAt = new Date(Date.now() + 30 * 60_000);
-      await db.collection("users").updateOne({ _id: user._id }, { $set: { passwordResetTokenHash: hashToken(token), passwordResetExpiresAt: expiresAt } });
-      const delivery = await sendPasswordRecoveryEmail({ to: email, token, expiresAt });
-      if (!delivery.delivered) {
-        await db.collection("users").updateOne({ _id: user._id, passwordResetTokenHash: hashToken(token) }, { $unset: { passwordResetTokenHash: "", passwordResetExpiresAt: "" } });
-        await writeAudit(db, request, String(user._id), "auth.password.recovery.delivery_failed", "user", "failure");
-      } else { await writeAudit(db, request, String(user._id), "auth.password.recovery.sent", "user", "success"); }
+    if (!user) return reply.code(202).send({ status: "if_account_exists_email_sent" });
+
+    const now = new Date();
+    const token = newOpaqueToken();
+    const expiresAt = new Date(now.getTime() + 30 * 60_000);
+    await db.collection("passwordRecoveries").updateMany(
+      { userId: String(user._id), usedAt: { $exists: false }, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, revokeReason: "superseded" } },
+    );
+    const recovery = await db.collection("passwordRecoveries").insertOne({
+      userId: String(user._id), tokenHash: hashToken(token), createdAt: now, expiresAt,
+    });
+    const delivery = await sendPasswordRecoveryEmail({ to: email, token, expiresAt });
+    if (!delivery.delivered) {
+      await db.collection("passwordRecoveries").updateOne(
+        { _id: recovery.insertedId, usedAt: { $exists: false } },
+        { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } },
+      );
+      await writeAudit(db, request, String(user._id), "auth.password.recovery.delivery_failed", "user", "failure");
+      return reply.code(202).send({ status: "if_account_exists_email_sent" });
     }
-    return reply.code(202).send({ status: "accepted", message: "If the account exists, password recovery instructions will be sent." });
+    await writeAudit(db, request, String(user._id), "auth.password.recovery.requested", "user", "success");
+    return reply.code(202).send({ status: "if_account_exists_email_sent" });
   });
 
   app.post("/v1/auth/password/reset", async (request, reply) => {
     const parsed = z.object({ token: z.string().min(40).max(200), newPassword: z.string().min(12).max(256) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const now = new Date();
-    const user = await db.collection("users").findOne({ passwordResetTokenHash: hashToken(parsed.data.token), passwordResetExpiresAt: { $gt: now }, status: "active" });
-    if (!user) return reply.code(400).send({ error: "PASSWORD_RESET_TOKEN_INVALID_OR_EXPIRED" });
-    const changed = await db.collection("users").updateOne({ _id: user._id, passwordResetTokenHash: hashToken(parsed.data.token), passwordResetExpiresAt: { $gt: now } }, { $set: { passwordHash: await hashPassword(parsed.data.newPassword), passwordChangedAt: now, updatedAt: now }, $unset: { passwordResetTokenHash: "", passwordResetExpiresAt: "" } });
-    if (changed.modifiedCount !== 1) return reply.code(400).send({ error: "PASSWORD_RESET_TOKEN_INVALID_OR_EXPIRED" });
-    await db.collection("sessions").updateMany({ userId: String(user._id), revokedAt: { $exists: false } }, { $set: { revokedAt: now, revokeReason: "password_recovery" }, $unset: { stepUpUntil: "" } });
-    await writeAudit(db, request, String(user._id), "auth.password.recovery.completed", "user", "success");
+    const recovery = await db.collection("passwordRecoveries").findOne({
+      tokenHash: hashToken(parsed.data.token), usedAt: { $exists: false },
+      revokedAt: { $exists: false }, expiresAt: { $gt: now },
+    });
+    if (!recovery || typeof recovery.userId !== "string" || !ObjectId.isValid(recovery.userId)) {
+      return reply.code(400).send({ error: "RESET_TOKEN_INVALID_OR_EXPIRED" });
+    }
+    const consumed = await db.collection("passwordRecoveries").updateOne(
+      { _id: recovery._id, usedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+      { $set: { usedAt: now } },
+    );
+    if (consumed.modifiedCount !== 1) return reply.code(400).send({ error: "RESET_TOKEN_INVALID_OR_EXPIRED" });
+    const userId = recovery.userId;
+    const updated = await db.collection("users").updateOne(
+      { _id: new ObjectId(userId), status: "active" },
+      { $set: { passwordHash: await hashPassword(parsed.data.newPassword), passwordChangedAt: now, updatedAt: now } },
+    );
+    if (updated.matchedCount !== 1) return reply.code(400).send({ error: "RESET_TOKEN_INVALID_OR_EXPIRED" });
+    await db.collection("passwordRecoveries").updateMany(
+      { userId, _id: { $ne: recovery._id }, usedAt: { $exists: false }, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, revokeReason: "password_reset_completed" } },
+    );
+    await db.collection("sessions").updateMany(
+      { userId, revokedAt: { $exists: false } },
+      { $set: { revokedAt: now, revokeReason: "password_recovered" }, $unset: { stepUpUntil: "" } },
+    );
+    await writeAudit(db, request, userId, "auth.password.recovered", "user", "success");
     clearSessionCookies(reply);
     return reply.send({ status: "password_reset", sessionsRevoked: true });
   });
