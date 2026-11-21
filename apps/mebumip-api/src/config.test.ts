@@ -23,6 +23,12 @@ test("validates explicit Graph version and dedicated provider-token key ring whe
   assert.equal(parseConfig({ ...validMetaEnvironment, META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: "missing" }).success, false);
 });
 
+test("accepts only absolute HTTP(S) CORS origins without paths or credentials", () => {
+  assert.equal(parseConfig({ NODE_ENV: "test", CORS_ORIGINS: "https://app.example.test,http://localhost:5174" }).success, true);
+  assert.equal(parseConfig({ NODE_ENV: "test", CORS_ORIGINS: "https://app.example.test/path" }).success, false);
+  assert.equal(parseConfig({ NODE_ENV: "test", CORS_ORIGINS: "https://user:pass@app.example.test" }).success, false);
+});
+
 test("requires an OAuth-compatible session cookie policy when Meta is configured", () => {
   assert.equal(parseConfig({ ...validMetaEnvironment, SESSION_COOKIE_SAME_SITE: "Strict" }).success, false);
   assert.equal(parseConfig({ ...validMetaEnvironment, SESSION_COOKIE_SAME_SITE: "Lax" }).success, true);
