@@ -22,7 +22,7 @@ test("Meta OAuth state is hashed, tenant/session-bound, single-use and audited",
     let now = new Date("2026-11-21T00:00:00.000Z");
     const redirectUri = "https://app.example.test/v1/meta/oauth/callback";
     const service = new MetaOAuthStateService(db, { redirectUri, ttlMs: 60_000, now: () => now });
-    const context = { tenantId: "tenant-001", userId: "user-001", sessionId: "session-001", redirectUri };
+    const context = { tenantId: "tenant-001", userId: "user-001", sessionId: "session-001", redirectUri, requestedScopes: ["pages_show_list", "instagram_basic"] };
     const created = await service.create(context, "oauth-create-1");
     assert.equal(created.state.length, 43);
     const hash = createHash("sha256").update(created.state).digest("hex");
@@ -35,6 +35,7 @@ test("Meta OAuth state is hashed, tenant/session-bound, single-use and audited",
     assert.equal(await service.consume(created.state, { tenantId: context.tenantId, userId: context.userId, sessionId: "session-other" }, "oauth-wrong-session"), null);
     const consumed = await service.consume(created.state, context, "oauth-consume-1");
     assert.equal(consumed?.redirectUri, redirectUri);
+    assert.deepEqual(consumed?.requestedScopes, context.requestedScopes);
     assert.equal(await service.consume(created.state, context, "oauth-replay"), null);
 
     const concurrent = await service.create(context, "oauth-create-2");
@@ -53,7 +54,7 @@ test("Meta OAuth state is hashed, tenant/session-bound, single-use and audited",
     assert.throws(() => new MetaOAuthStateService(db, { redirectUri: "ftp://localhost:4100/meta/callback", allowInsecureLocalhost: true }), /META_OAUTH_REDIRECT_URI_INVALID/);
     assert.doesNotThrow(() => new MetaOAuthStateService(db, { redirectUri: "http://localhost:4100/meta/callback", allowInsecureLocalhost: true }));
     const pending = await service.create(context, "oauth-pending-context");
-    assert.deepEqual(await service.getPendingContext(pending.state), { tenantId: context.tenantId, userId: context.userId, sessionId: context.sessionId, redirectUri });
+    assert.deepEqual(await service.getPendingContext(pending.state), { tenantId: context.tenantId, userId: context.userId, sessionId: context.sessionId, redirectUri, requestedScopes: context.requestedScopes });
     assert.equal(await service.getPendingContext("invalid-state"), null);
     assert.equal((await verifyAuditChain(db)).valid, true);
   } finally {
