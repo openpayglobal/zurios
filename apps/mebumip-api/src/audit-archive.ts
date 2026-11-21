@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Db } from "mongodb";
-import { signAuditExport, verifyAuditChainEvents } from "./security.js";
+import { signAuditExport, verifyAuditChainEvents, verifyAuditEvent } from "./security.js";
 
 export type AuditArchiveRetention = {
   retainUntil: Date;
@@ -60,6 +60,12 @@ export function buildAuditArchivePackage(
   const eventCount = toSequence - fromSequence + 1;
   if (eventCount > 1000 || inputEvents.length !== eventCount) throw new Error("AUDIT_ARCHIVE_BATCH_SIZE_OR_GAP_INVALID");
   const events = [...inputEvents].sort((a, b) => Number(a.sequence) - Number(b.sequence));
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index]!;
+    if (Number(event.sequence) !== fromSequence + index) throw new Error("AUDIT_ARCHIVE_SEQUENCE_GAP");
+    const occurredAt = event.occurredAt instanceof Date ? event.occurredAt : new Date(String(event.occurredAt ?? ""));
+    if (!verifyAuditEvent({ ...event, occurredAt })) throw new Error("AUDIT_ARCHIVE_EVENT_SIGNATURE_INVALID");
+  }
   if (!verifyAuditChainEvents(events, fromSequence)) throw new Error("AUDIT_ARCHIVE_CHAIN_INVALID");
   const manifest = signAuditExport(events, generatedAt.toISOString());
   if (manifest.integrity.algorithm === "unsigned") throw new Error("AUDIT_ARCHIVE_MANIFEST_UNSIGNED");
