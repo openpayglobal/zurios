@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { config } from "./config.js";
+import { config, corsOrigins } from "./config.js";
 import { hashPassword, verifyPassword } from "./passwords.js";
 import { appendAuditEvent, hashToken, newOpaqueToken, PLATFORM_ROLES, TENANT_ROLES, type Principal, type PlatformRole, type TenantRole } from "./security.js";
 import { decryptMfaSecret, encryptMfaSecret, generateMfaRecoveryCodes, generateTotpSecret, normalizeMfaRecoveryCode, verifyTotp } from "./mfa.js";
@@ -70,7 +70,15 @@ export async function resolvePrincipal(db: Db, request: FastifyRequest): Promise
     const csrfHeader = request.headers["x-csrf-token"];
     const csrfCookie = cookies.mebumip_csrf;
     const expectedCsrf = csrfForSession(cookieToken);
-    if (typeof csrfHeader !== "string" || !csrfCookie || !safeSecretEqual(csrfHeader, csrfCookie) || !safeSecretEqual(csrfHeader, expectedCsrf)) return null;
+    const origin = request.headers.origin;
+    if (
+      typeof csrfHeader !== "string" ||
+      !csrfCookie ||
+      !safeSecretEqual(csrfHeader, csrfCookie) ||
+      !safeSecretEqual(csrfHeader, expectedCsrf) ||
+      typeof origin !== "string" ||
+      !corsOrigins.includes(origin)
+    ) return null;
   }
   const session = await db.collection("sessions").findOne({
     tokenHash: hashToken(token),
