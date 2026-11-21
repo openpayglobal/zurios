@@ -2,12 +2,15 @@ import { config } from "./config.js";
 import { MetaGraphClient, type MetaGraphClientOptions } from "./meta-graph-client.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
 import { MetaOAuthStateService, type MetaOAuthStateServiceOptions } from "./meta-oauth-state.js";
+import { MetaOAuthService } from "./meta-oauth.js";
 import type { Db } from "mongodb";
 
 export type MetaProviderConfig = Pick<typeof config,
+  | "NODE_ENV"
   | "META_APP_ID"
   | "META_APP_SECRET"
   | "META_REDIRECT_URI"
+  | "META_LOGIN_CONFIG_ID"
   | "META_GRAPH_API_VERSION"
   | "META_MARKETING_API_VERSION"
   | "META_TOKEN_ENCRYPTION_KEYRING"
@@ -41,6 +44,26 @@ export function createMetaTokenVault(providerConfig: MetaProviderConfig): MetaTo
   });
 }
 
+export function createMetaOAuthService(providerConfig: MetaProviderConfig): MetaOAuthService {
+  const appId = providerConfig.META_APP_ID;
+  const appSecret = providerConfig.META_APP_SECRET;
+  const version = providerConfig.META_GRAPH_API_VERSION;
+  const redirectUri = providerConfig.META_REDIRECT_URI;
+  if (!appId || !appSecret || !version || !redirectUri) throw new Error("META_OAUTH_NOT_CONFIGURED");
+  return new MetaOAuthService({
+    appId,
+    appSecret,
+    version,
+    redirectUri,
+    allowInsecureLocalhost: providerConfig.NODE_ENV !== "production",
+    ...(providerConfig.META_LOGIN_CONFIG_ID ? { loginConfigId: providerConfig.META_LOGIN_CONFIG_ID } : {}),
+  });
+}
+
+export function createConfiguredMetaOAuthService(): MetaOAuthService {
+  return createMetaOAuthService(config);
+}
+
 export function createMetaOAuthStateService(
   db: Db,
   providerConfig: MetaProviderConfig,
@@ -71,6 +94,7 @@ export function getMetaIntegrationReadiness(providerConfig: MetaProviderConfig =
     marketingApiVersionConfigured: Boolean(providerConfig.META_MARKETING_API_VERSION),
     marketingApiVersion: providerConfig.META_MARKETING_API_VERSION ?? null,
     appSecretProofConfigured: Boolean(providerConfig.META_APP_ID && providerConfig.META_APP_SECRET),
+    businessLoginConfigured: Boolean(providerConfig.META_LOGIN_CONFIG_ID),
     tokenVaultConfigured: Boolean(providerConfig.META_TOKEN_ENCRYPTION_KEYRING && providerConfig.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID),
     webhookVerificationConfigured: Boolean(providerConfig.META_WEBHOOK_VERIFY_TOKEN),
   };
