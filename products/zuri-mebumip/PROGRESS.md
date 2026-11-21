@@ -309,7 +309,7 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 - Audit events use transaction-scoped sequence allocation, predecessor hashes, canonical event hashes and versioned keyring signatures. Verification is streaming and checks sequence/counter consistency. Credential-like metadata is redacted before hashing/signing.
 - Legacy audit backfill is dry-run-first, bounded to 5,000 genuinely unsequenced records, and refuses malformed/partial or mixed histories. Sequenced pre-chain events require a separate approved signature-preserving reconciliation; they must not be automatically renumbered.
 - Signed local archive export and offline verification exist. Independent immutable/WORM storage, object-lock proof, restore drills and key recovery remain unconfigured and are release gates.
-- MongoDB migrations now include core indexes, identity/workspace selection and audit archive receipts. MeBuMIP CI uses a replica set for transaction tests.
+- MongoDB migrations now include core indexes, identity/workspace selection and audit archive receipts. Both CI workflows use an initialized replica set; `MONGODB_TEST_URI` is passed through Turborepo. The root `pnpm-lock.yaml` is committed and both workflows use frozen installs.
 - The documentation index has been re-audited: 35 documentation files, 42 relative links, zero unindexed files. The Phase 1 security operations runbook is included.
 
 ### Five-objective status (unchanged scope)
@@ -327,14 +327,13 @@ The product owner has deferred live Meta Business Portfolio/developer-app setup.
 ### Current verification/deployment status
 
 - PR #13 remains open/draft; PR #14 remains open/non-draft; neither has been merged. The latest path inventory shows 53 overlapping changed paths and one PR #13-only audit-service path whose behavior is integrated into PR #14 security.ts.
-- Full monorepo CI and MeBuMIP verification have exposed and received fixes for the migration test expectation, the no-lockfile frozen install, and the idempotency transaction-retry test contract. The latest exact-head runs must still pass before this checkpoint is accepted; queued/in-progress runs are not passes.
-- The latest inspected frontend preview is READY on older commit 08d21ddfdd945553b747be6ac2282290b5654b47. The latest inspected API preview is an ERROR on older commit 180c3954e8df54f9be8dfdc93703bc6d60e28300. No current-head API preview is verified. Vercel currently reports deployment-rate-limit failures for both projects.
+- Exact source/test checkpoint `f542bddb1af2358491fcdf2de2b52c087bdfa09a` passed [Full monorepo CI #44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) and [MeBuMIP Phase 1 #44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363). Both ran 31 tests: 31 passed, 0 failed, 0 skipped. OpenAPI checks, route drift, docs mirror validation, typecheck, API/web builds and full monorepo build passed.
+- The latest inspected frontend preview is READY on older commit `08d21ddfdd945553b747be6ac2282290b5654b47`. The latest inspected API preview is an ERROR on older commit `180c3954e8df54f9be8dfdc93703bc6d60e28300`. No current-head preview is verified. Current Vercel deployment inspection returns HTTP 403; the local environment has no Vercel CLI or token and no active CLI session.
 - The ODEI repository remains unavailable to the connected GitHub integration; its requirements remain an external dependency and are not assumed satisfied.
 
 ### Remaining Phase 1 exit work
 
-1. Pass full monorepo CI and MeBuMIP verification on the same latest PR #14 head.
-2. Verify a current-head API preview deployment, startup/readiness and authenticated browser end-to-end flows.
+1. Verify a current-head frontend and API preview deployment, startup/readiness and authenticated browser end-to-end flows once Vercel inspection/deployment access is restored.
 3. Complete sender-domain verification, production email delivery monitoring and durable retry/outbox acceptance.
 4. Configure least-privilege production MongoDB identities and managed audit/MFA keyrings with rotation/recovery evidence.
 5. Resolve the sequenced pre-chain audit migration question from actual database preflight evidence; do not apply a migration without an approved plan.
@@ -342,3 +341,6 @@ The product owner has deferred live Meta Business Portfolio/developer-app setup.
 7. Complete legal/privacy/data-deletion review and an independent security assessment.
 
 **Release decision:** Phase 1 is not complete. Objectives A–E remain in scope and are not yet implemented. No production migration, audit backfill apply, live Meta connection, production deployment or promotion has been performed.
+
+
+**Exact-head verification detail (2026-11-21):** PR #14 source/test head `f542bddb1af2358491fcdf2de2b52c087bdfa09a` passed [Full CI #44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) and [MeBuMIP verification #44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363). Each test suite reported 31 passed, 0 failed, 0 skipped. The full run passed both OpenAPI contracts, route-drift checks, docs mirror check, typecheck, tests and build. MeBuMIP passed API typecheck/tests/build and web typecheck/build. This does not establish deployment or production readiness.
