@@ -275,6 +275,29 @@ components:
       properties:
         authorizationUrl: {type: string, format: uri}
         expiresAt: {type: string, format: date-time}
+    MetaPageAssetSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, assetType, providerAssetId, name, tasks, status, discoveredAt, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        assetType: {type: string, const: facebook_page}
+        providerAssetId: {type: string}
+        name: {type: string}
+        tasks: {type: array, items: {type: string}}
+        instagramBusinessAccount:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id: {type: string}
+            username: {type: string}
+        status: {type: string, enum: [active, unavailable]}
+        discoveredAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
     MetaConnectionSummary:
       type: object
       additionalProperties: false
