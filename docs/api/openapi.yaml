@@ -946,7 +946,7 @@ paths:
                 reason: {type: string, minLength: 8, maxLength: 500}
       responses:
         "200": {description: New runtime configuration revision committed with audit evidence}
-        "400": {description: Invalid or unverified origin, or privacy notice missing}
+        "400": {description: "Invalid or unverified origin, or privacy notice missing"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/public/runtime-config:
