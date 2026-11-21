@@ -499,7 +499,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      {id:"55210f93-c052-45a5-aeb8-e083ed0d5dce",name:"Zuri OS Audit Event Signing",purpose:"Audit event signing",keyId:"da6060ee-9fda-4389-a652-281c256be6d2",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
      {id:"501ff21c-7c24-4e9e-b23e-789256cd6edd",name:"Zuri MeBuMIP Runtime Workload Identity",purpose:"MeBuMIP Vercel workload identity",keyId:"5d401897-e851-438f-a56c-b28453aff756",algorithm:"RS256",environment:"production",projectId:"prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ",status:"provisioned_pending_runtime_integration"},
     ];
-    const origins=(process.env.CORS_ORIGINS??"").split(",").map(value=>value.trim()).filter(Boolean);
+    const runtimeConfig=await readPlatformRuntimeConfig(db);
     return reply.header("cache-control","no-store").send({data:{
      generatedAt:new Date().toISOString(),
      environment:process.env.NODE_ENV??"unknown",
@@ -509,7 +509,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
       mfaEncryption:{configured:Boolean(process.env.MFA_ENCRYPTION_KEY),source:"deployment_bootstrap",status:"encryption_KMS_HSM_required_for_MAC_managed_rotation"},
       auditSigning:{configured:Boolean(process.env.AUDIT_SIGNING_KEY||process.env.AUDIT_SIGNING_KEYRING),managedSigning:managedSigning.filter(key=>key.purpose==="Audit event signing"),status:"KMS_key_provisioned_pending_audit_pipeline_migration"}
      },
-     apiOrigins:{items:origins,source:"deployment_bootstrap",status:"MAC_verified_origin_registry_pending"},
+     apiOrigins:{items:runtimeConfig.allowedOrigins,apiOrigins:runtimeConfig.apiOrigins,revision:runtimeConfig.revision,source:"MAC_runtime_registry",status:"active"},
      providers:{
       meta:{configured:false,status:"provider_authorization_required"},
       whatsapp:{configured:false,status:"provider_authorization_required"},
