@@ -49,7 +49,12 @@ test("Meta OAuth state is hashed, tenant/session-bound, single-use and audited",
     assert.equal(await service.consume(expiring.state, context, "oauth-expired"), null);
     await assert.rejects(() => service.create({ ...context, redirectUri: "https://attacker.test/callback" }, "oauth-bad-redirect"), /META_OAUTH_REDIRECT_URI_MISMATCH/);
     assert.throws(() => new MetaOAuthStateService(db, { redirectUri: "http://example.test/callback" }), /META_OAUTH_REDIRECT_URI_INVALID/);
-    assert.doesNotThrow(() => new MetaOAuthStateService(db, { redirectUri: "http://localhost:4100/meta/callback" }));
+    assert.throws(() => new MetaOAuthStateService(db, { redirectUri: "http://localhost:4100/meta/callback" }), /META_OAUTH_REDIRECT_URI_INVALID/);
+    assert.throws(() => new MetaOAuthStateService(db, { redirectUri: "ftp://localhost:4100/meta/callback", allowInsecureLocalhost: true }), /META_OAUTH_REDIRECT_URI_INVALID/);
+    assert.doesNotThrow(() => new MetaOAuthStateService(db, { redirectUri: "http://localhost:4100/meta/callback", allowInsecureLocalhost: true }));
+    const pending = await service.create(context, "oauth-pending-context");
+    assert.deepEqual(await service.getPendingContext(pending.state), { tenantId: context.tenantId, userId: context.userId, sessionId: context.sessionId, redirectUri });
+    assert.equal(await service.getPendingContext("invalid-state"), null);
     assert.equal((await verifyAuditChain(db)).valid, true);
   } finally {
     await db.dropDatabase().catch(() => undefined);
