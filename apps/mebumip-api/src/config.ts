@@ -19,7 +19,7 @@ const envSchema = z.object({
   AUDIT_SIGNING_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
   MAIL_FROM: z.string().email().optional(),
-  META_APP_ID: z.string().regex(/^\d+$/).optional(),
+  META_APP_ID: z.string().regex(/^\d{6,32}$/).optional(),
   META_APP_SECRET: z.string().min(32).optional(),
   META_REDIRECT_URI: z.string().url().optional(),
   META_WEBHOOK_VERIFY_TOKEN: z.string().min(32).optional(),
