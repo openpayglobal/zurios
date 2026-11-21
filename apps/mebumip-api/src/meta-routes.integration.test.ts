@@ -106,6 +106,8 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
       payload: {},
     });
     assert.equal(start.statusCode, 200, start.body);
+    assert.equal(start.headers["cache-control"], "no-store, max-age=0");
+    assert.equal(start.headers["referrer-policy"], "no-referrer");
     const authorizationUrl = new URL(start.json().authorizationUrl);
     assert.equal(authorizationUrl.origin, "https://www.facebook.com");
     assert.equal(authorizationUrl.pathname, "/v27.0/dialog/oauth");
@@ -129,6 +131,8 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
       headers: ownerHeaders,
     });
     assert.equal(callback.statusCode, 201, callback.body);
+    assert.equal(callback.headers["cache-control"], "no-store, max-age=0");
+    assert.equal(callback.headers["referrer-policy"], "no-referrer");
     assert.equal(callback.json().status, "connected");
     assert.equal(callback.body.includes("EAAG_"), false);
     assert.equal(providerCalls, 4);
