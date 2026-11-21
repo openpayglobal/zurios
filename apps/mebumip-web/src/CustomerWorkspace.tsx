@@ -27,7 +27,7 @@ export function CustomerWorkspace() {
     const body = await response.json();
     if (!response.ok) throw new Error(body.error ?? "Unable to load workspace onboarding.");
     setData(body);
-    if (body.businessProfile) setProfile((current) => ({ ...current, ...body.businessProfile }));
+    setProfile({ legalName: "", displayName: "", industry: "", countryCode: "UG", timezone: "Africa/Kampala", website: "", contactEmail: "", ...(body.businessProfile ?? {}) });
   }
   useEffect(() => {
     let active = true;
@@ -44,7 +44,7 @@ export function CustomerWorkspace() {
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Sign in required."); });
     return () => { active = false; };
   }, []);
-  useEffect(() => { if (tenantId) void load(tenantId).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load onboarding.")); }, [tenantId]);
+  useEffect(() => { if (tenantId) { setData(null); void load(tenantId).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load onboarding.")); } }, [tenantId]);
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError(""); setNotice("");
@@ -89,7 +89,7 @@ export function CustomerWorkspace() {
       <div className="panel">
         <div className="panel-head"><div><h3>Business profile</h3><p>Required workspace information. Changes are validated and audited.</p></div></div>
         <form className="api-auth" onSubmit={saveProfile}>
-          {(["legalName","displayName","industry","countryCode","timezone","website","contactEmail"] as const).map((key) => <label key={key}>{key.replace(/([A-Z])/g, " $1")}<input value={profile[key]} required={key !== "website"} onChange={(event) => setProfile((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
+          {(["legalName","displayName","industry","countryCode","timezone","website","contactEmail"] as const).map((key) => <label key={key}>{key.replace(/([A-Z])/g, " $1")}<input value={profile[key]} required={key !== "website"} onChange={(event) => setProfile((current) => ({ ...current, [key]: key === "countryCode" ? event.target.value.toUpperCase() : event.target.value }))} /></label>)}
           <button type="submit" disabled={busy || !tenantId}>{busy ? "Saving…" : "Save business profile"}</button>
         </form>
       </div>
