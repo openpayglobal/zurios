@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 
-test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !process.env.MONGODB_URI }, async (t) => {
+const mongoUri = process.env.MONGODB_TEST_URI ?? process.env.MONGODB_URI;
+test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !mongoUri }, async (t) => {
   process.env.NODE_ENV = "test";
   process.env.PLATFORM_BOOTSTRAP_TOKEN = "mebumip-integration-bootstrap-token-2026";
   process.env.MFA_ENCRYPTION_KEY = "b".repeat(64);
@@ -12,7 +13,7 @@ test("MongoDB-backed auth, invitation lifecycle and tenant isolation", { skip: !
     import("fastify"), import("mongodb"), import("./database.js"), import("./auth.js"),
     import("./tenant-members.js"), import("./admin.js"), import("./rate-limit.js"), import("./mfa.js"), import("./security.js"), import("./mail.js"),
   ]);
-  const client = new MongoClient(process.env.MONGODB_URI!);
+  const client = new MongoClient(mongoUri!);
   await client.connect();
   const db = client.db("mebumip_integration_" + randomUUID().replaceAll("-", ""));
   await ensureMeBuMIPIndexes(db);
