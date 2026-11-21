@@ -100,7 +100,7 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     const storedState = await db.collection("metaOAuthStates").findOne({ stateHash });
     assert.ok(storedState);
     assert.equal(JSON.stringify(storedState).includes(state), false);
-    assert.deepEqual(storedState?.requestedScopes, scopes);
+    assert.deepEqual(storedState?.requestedScopes, [...scopes].sort());
 
     const wrongSession = await app.inject({
       method: "GET",
