@@ -894,6 +894,75 @@ paths:
                       secretStore: {type: object}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/runtime-config:
+    get:
+      tags: [Administration]
+      operationId: getPlatformRuntimeConfiguration
+      summary: Read MAC-managed versioned runtime configuration
+      responses:
+        "200": {description: Versioned runtime configuration and approved origins}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+    put:
+      tags: [Administration]
+      operationId: updatePlatformRuntimeConfiguration
+      summary: Update approved origins and public runtime settings without redeployment
+      parameters:
+        - {name: idempotency-key, in: header, required: true, schema: {type: string, minLength: 16}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allowedOrigins, apiOrigins, publicSettings, reason]
+              properties:
+                allowedOrigins:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  items: {type: string, format: uri}
+                apiOrigins:
+                  type: object
+                  required: [zuriOs, mebumip]
+                  properties:
+                    zuriOs: {type: string, format: uri}
+                    mebumip: {type: string, format: uri}
+                publicSettings:
+                  type: object
+                  properties:
+                    accessRequestsEnabled: {type: boolean}
+                    privacyNoticeUrl: {type: string, format: uri}
+                    supportEmail: {type: string, format: email}
+                    supportUrl: {type: string, format: uri}
+                    defaultLocale: {type: string}
+                    defaultCurrency: {type: string, pattern: "^[A-Z]{3}$"}
+                    timezone: {type: string}
+                reason: {type: string, minLength: 8, maxLength: 500}
+      responses:
+        "200": {description: New runtime configuration revision committed with audit evidence}
+        "400": {description: Invalid or unverified origin, or privacy notice missing}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/public/runtime-config:
+    get:
+      tags: [Runtime Configuration]
+      operationId: getPublicRuntimeConfiguration
+      summary: Read the non-secret public runtime configuration with ETag support
+      responses:
+        "200": {description: Public settings and API origins}
+        "304": {description: Configuration has not changed}
+  /platform/internal/runtime-config:
+    get:
+      tags: [Runtime Configuration]
+      operationId: getWorkloadRuntimeConfiguration
+      summary: Read service-scoped runtime configuration using Vercel team OIDC workload identity
+      security:
+        - VercelWorkloadIdentity: []
+      responses:
+        "200": {description: Service-scoped non-secret configuration and revision}
+        "401": {description: Missing or invalid Vercel workload identity}
+        "403": {description: Workload project or environment is not authorized}
 components:
   parameters:
     IdempotencyKey:
@@ -903,6 +972,10 @@ components:
       description: Client-generated unique key for safe retries. The same key and request replay the original response for 24 hours; reusing it with a different request returns 409.
       schema: {type: string, minLength: 8, maxLength: 128}
   securitySchemes:
+    VercelWorkloadIdentity:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
     bearerAuth:
       type: http
       scheme: bearer
