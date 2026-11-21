@@ -248,7 +248,7 @@ export function verifyAuditExportManifest(manifest:Record<string,unknown>,events
  const integrity=manifest.integrity as {algorithm?:unknown;signature?:unknown;keyId?:unknown}|undefined;
  if(!integrity||typeof integrity.signature!=="string"||!/^[a-f0-9]{64}$/.test(integrity.signature))return false;
  const fields={format:manifest.format,generatedAt:manifest.generatedAt,count:manifest.count,firstSequence:manifest.firstSequence,lastSequence:manifest.lastSequence};
- const eventSignatures=events.map(event=>{const eventIntegrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,signature:typeof eventIntegrity?.signature==="string"?eventIntegrity.signature:null};});
+ const eventSignatures=events.map(event=>{const eventIntegrity=event.integrity as {signature?:unknown}|undefined;return {id:String(event._id??""),sequence:event.sequence??null,previousHash:event.previousHash??null,eventHash:event.eventHash??null,signature:typeof eventIntegrity?.signature==="string"?eventIntegrity.signature:null};});
  let key:Buffer|undefined,payload:string;
  if(integrity.algorithm==="HMAC-SHA256-v2"&&typeof integrity.keyId==="string"){
   const ring=loadAuditKeyRing();
