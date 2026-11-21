@@ -5,6 +5,7 @@ import { applyAuditChainBackfill, planAuditChainBackfill, verifyAuditChain } fro
 const apply = process.env.AUDIT_CHAIN_BACKFILL_APPLY === "true";
 const migrationUri = process.env.AUDIT_MIGRATION_MONGODB_URI;
 if (apply && !migrationUri) throw new Error("AUDIT_MIGRATION_MONGODB_URI is required for apply mode; use a separately approved maintenance credential");
+if (apply && migrationUri === config.MONGODB_URI) throw new Error("AUDIT_MIGRATION_MONGODB_URI must not reuse the runtime application URI");
 const uri = migrationUri ?? config.MONGODB_URI;
 if (!uri) throw new Error("MONGODB_URI is required for audit-chain backfill dry-run");
 const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000 });
