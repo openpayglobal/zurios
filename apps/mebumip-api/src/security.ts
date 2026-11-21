@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import type { ClientSession, Db, Document } from "mongodb";
+import { ObjectId, type ClientSession, type Db, type Document } from "mongodb";
 
 export const PLATFORM_ROLES = ["platform_owner", "platform_admin", "platform_operator", "platform_auditor"] as const;
 export const TENANT_ROLES = ["tenant_owner", "tenant_admin", "publisher", "advertiser", "support_agent", "viewer"] as const;
@@ -380,16 +380,18 @@ export async function applyAuditChainBackfill(db: Db): Promise<{ migrated: numbe
           outcome: old.outcome as AuditEventInput["outcome"],
           correlationId: old.correlationId,
           occurredAt,
-          ...(old.metadata && typeof old.metadata === "object" ? { metadata: old.metadata as AuditEventInput["metadata"] } : {}),
+          ...(old.metadata && typeof old.metadata === "object" ? { metadata: old.metadata as NonNullable<AuditEventInput["metadata"]> } : {}),
         };
         const chained = createChainedAuditEvent(input, sequence, previousHash);
+        const eventHash = chained.eventHash;
+        if (typeof eventHash !== "string") throw new Error("AUDIT_EVENT_HASH_MISSING");
         const result = await collection.updateOne(
-          { _id: old._id, sequence: { $exists: false }, previousHash: { $exists: false }, eventHash: { $exists: false } },
-          { $set: { sequence, previousHash, eventHash: chained.eventHash, integrity: chained.integrity, occurredAt } },
+          { _id: new ObjectId(String(old._id)), sequence: { $exists: false }, previousHash: { $exists: false }, eventHash: { $exists: false } },
+          { $set: { sequence, previousHash, eventHash, integrity: chained.integrity, occurredAt } },
           { session },
         );
         if (result.modifiedCount !== 1) throw new Error("LEGACY_AUDIT_EVENT_CHANGED_DURING_BACKFILL");
-        previousHash = chained.eventHash;
+        previousHash = eventHash;
       }
       await db.collection("auditCounters").updateOne(
         { _id: "global" },
