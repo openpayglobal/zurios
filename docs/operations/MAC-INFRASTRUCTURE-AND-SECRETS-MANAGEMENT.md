@@ -112,3 +112,12 @@ Zuri OS MAC now stores non-secret runtime configuration in the `platformRuntimeC
 - Only the verified Vercel project domains are accepted; custom domains must pass ownership verification before registration.
 
 **Secret boundary:** The internal endpoint currently returns no secret values. Vercel KMS signing issuers are provisioned, but Vercel KMS signing is not general-purpose encryption/decryption. Do not store or return MongoDB URIs, MFA encryption keys, Resend/Meta credentials or provider secrets until a dedicated encryption KMS/HSM and bootstrap design is operational.
+
+
+## 10. Runtime consumers
+
+The Zuri OS and MeBuMIP frontends now resolve their API origins from the public MAC runtime-config endpoint, using stable bootstrap URLs and bounded 30-second caches. The MeBuMIP API uses `@vercel/oidc` to obtain a short-lived workload token and calls the internal MAC runtime-config endpoint. Its CORS allowlist refreshes from MAC every five seconds, retaining last-known-good values if the control plane is temporarily unavailable.
+
+The central MAC verifies Vercel's team JWKS at `https://oidc.vercel.com/openpayglobal-5300s-projects/.well-known/jwks`, the issuer `https://oidc.vercel.com/openpayglobal-5300s-projects`, the default team audience, exact `owner_id`, `project_id`, `sub` and Production environment. The exact claim contract still needs a live token test from a deployed Vercel function.
+
+The existing `zurios-api` default domain is protected by Vercel SSO, so server-to-server runtime fetch is not yet reachable from the new MeBuMIP API project. Owner approval is required to make the production deployment URL public while keeping previews protected, or a verified custom domain must be attached.
