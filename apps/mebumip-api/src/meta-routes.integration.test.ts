@@ -213,6 +213,28 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
     assert.equal(locallyErased?.status, "revoked");
     assert.equal(locallyErased?.accessTokenCiphertext, null);
     assert.equal(locallyErased?.revocationStatus, "failed");
+
+    const browserStart = await app.inject({
+      method: "POST",
+      url: "/v1/tenants/" + tenantId + "/meta/oauth/start",
+      headers: ownerHeaders,
+      payload: {},
+    });
+    assert.equal(browserStart.statusCode, 200);
+    const browserState = new URL(browserStart.json().authorizationUrl).searchParams.get("state")!;
+    const browserCallback = await app.inject({
+      method: "GET",
+      url: "/v1/meta/oauth/callback?state=" + encodeURIComponent(browserState) + "&code=AQAB_valid_browser_meta_route_code_123456",
+      headers: { ...ownerHeaders, accept: "text/html" },
+    });
+    assert.equal(browserCallback.statusCode, 303);
+    const returnLocation = new URL(browserCallback.headers.location!);
+    assert.equal(returnLocation.searchParams.get("section"), "connections");
+    assert.equal(returnLocation.searchParams.get("meta_connection"), "connected");
+    assert.equal(returnLocation.searchParams.get("tenantId"), String(tenantId));
+    assert.ok(returnLocation.searchParams.get("connectionId"));
+    assert.equal(browserCallback.headers["cache-control"], "no-store, max-age=0");
+    assert.equal(returnLocation.toString().includes("EAAG_"), false);
     assert.equal((await verifyAuditChain(db)).valid, true);
   } finally {
     await app.close();
