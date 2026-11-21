@@ -173,7 +173,7 @@ export async function discoverMetaPages(
                 discoveredAt: now,
                 updatedAt: now,
               },
-              $setOnInsert: { ...document, createdAt: now },
+              $setOnInsert: { tenantId, connectionId, provider: "meta", assetType: "facebook_page", providerAssetId: document.providerAssetId, createdAt: now },
             },
             upsert: true,
           },
