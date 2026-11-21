@@ -9,7 +9,7 @@ process.env.AUDIT_SIGNING_KEY = "test-audit-signing-key-with-adequate-entropy";
 function event(sequence:number, previousHash = sequence === 1 ? "GENESIS" : "a".repeat(64)) {
   return createChainedAuditEvent({actorUserId:"archive-test",action:"archive.test",targetType:"test",outcome:"success",correlationId:"archive-"+sequence},sequence,previousHash);
 }
-function contiguousEvents() {
+function contiguousEvents(): [ReturnType<typeof event>, ReturnType<typeof event>] {
   const first=event(1);
   const second=event(2,first.eventHash);
   return [first,second];
