@@ -1,0 +1,323 @@
+openapi: 3.1.0
+info:
+  title: Zuri MeBuMIP API
+  version: 1.0.0
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+  description: |
+    API contract for Zuri Meta Business Management and Integration Platform.
+    This specification covers implemented MAC/MAD audit endpoints and the tenant-authorized Meta OAuth connection foundation.
+servers:
+  - url: /
+    description: API root; deployment base URL is configured per environment.
+security:
+  - bearerAuth: []
+tags:
+  - name: MAC Audit
+    description: Privileged audit verification, export and archive preparation.
+  - name: MAD
+    description: Read-only operational visibility.
+  - name: Meta Integrations
+    description: Tenant-authorized Meta OAuth connection lifecycle; provider tokens are never returned.
+paths:
+  /v1/mac/audit-events:
+    get:
+      tags: [MAC Audit]
+      operationId: listMeBuMIPAuditEvents
+      summary: List recent audit events
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
+        - {name: before, in: query, required: false, schema: {type: string, description: MongoDB ObjectId cursor}}
+      responses:
+        "200": {description: Audit event page; includes a stable cursor and retention notice}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+  /v1/mac/audit-events/verify:
+    get:
+      tags: [MAC Audit]
+      operationId: verifyRecentMeBuMIPAuditEvents
+      summary: Verify signatures and sequence continuity for the latest 500 audit events
+      responses:
+        "200": {description: "Counts of verified, unsigned and invalid events plus detected sequence gaps"}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+  /v1/mac/audit-events/export:
+    get:
+      tags: [MAC Audit]
+      operationId: exportMeBuMIPAuditEvents
+      summary: Download a signed audit export page and manifest
+      parameters:
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 500, default: 200}}
+        - {name: before, in: query, required: false, schema: {type: string, description: MongoDB ObjectId cursor}}
+      responses:
+        "200": {description: Signed export manifest and event records; export is not an independent immutable archive}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+  /v1/mac/audit-events/archive:
+    get:
+      tags: [MAC Audit]
+      operationId: prepareImmutableMeBuMIPAuditArchive
+      summary: Prepare a signed, contiguous, content-addressed archive package for external immutable storage
+      parameters:
+        - {name: fromSequence, in: query, required: true, schema: {type: integer, minimum: 1}}
+        - {name: toSequence, in: query, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        "200": {description: Signed archive package download with SHA-256 and content-addressed object-key headers; prepared but not stored}
+        "400": {description: Invalid sequence range}
+        "401": {description: Authentication required}
+        "403": {description: Platform audit-read permission required}
+        "409": {description: "Sequence gap, unsigned manifest or invalid event signature"}
+        "503": {description: Audit signing key is not configured}
+  /v1/tenants/{tenantId}/meta/oauth/start:
+    post:
+      tags: [Meta Integrations]
+      operationId: startTenantMetaOAuth
+      summary: Start a tenant-scoped Meta authorization flow
+      description: Requires active tenant permission meta:connections:write and recent MFA step-up. The server persists only a hash of a one-time state bound to the tenant, user, session, callback URI and requested scopes.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}$'}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [public_profile, pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_metadata, instagram_basic, instagram_content_publish, instagram_manage_comments]
+      responses:
+        "200":
+          description: Meta authorization URL and one-time state expiry; no provider token is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaOAuthStartResponse"
+        "400": {description: Invalid or unsupported scope request}
+        "401": {description: Authentication required}
+        "403": {description: Tenant permission or recent MFA step-up required}
+        "429": {description: OAuth initiation rate limit exceeded}
+        "503": {description: Meta provider and token-vault configuration is incomplete}
+  /v1/meta/oauth/callback:
+    get:
+      tags: [Meta Integrations]
+      operationId: completeTenantMetaOAuth
+      summary: Complete a Meta authorization callback
+      description: Requires the same authenticated user and session that initiated the flow, current tenant connection permission and recent MFA step-up. The one-time state is consumed before exchanging and validating the code. Provider tokens are encrypted before persistence and are never returned.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: state, in: query, required: true, schema: {type: string, minLength: 32, maxLength: 128}}
+        - {name: code, in: query, required: false, schema: {type: string, minLength: 8, maxLength: 4096}}
+        - {name: error, in: query, required: false, schema: {type: string, maxLength: 128}}
+        - {name: error_description, in: query, required: false, schema: {type: string, maxLength: 2048}}
+      responses:
+        "303": {description: Browser OAuth navigation is returned to the configured Zuri frontend with non-secret connection status metadata}
+        "201":
+          description: Provider identity validated and encrypted connection created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, connection]
+                properties:
+                  status: {type: string, const: connected}
+                  connection: {$ref: "#/components/schemas/MetaConnectionSummary"}
+        "400": {description: "Invalid, expired, replayed state or provider authorization denied"}
+        "401": {description: Original authenticated session required}
+        "403": {description: "Original user/session, tenant permission or MFA step-up mismatch"}
+        "409": {description: This Meta provider identity is already connected to the tenant}
+        "429": {description: OAuth callback rate limit exceeded}
+        "502": {description: Provider exchange or token validation failed}
+        "503": {description: Meta provider and token-vault configuration is incomplete}
+  /v1/tenants/{tenantId}/meta/connections:
+    get:
+      tags: [Meta Integrations]
+      operationId: listTenantMetaConnections
+      summary: List Meta connections for a tenant
+      description: Returns provider identity and granted permission metadata only. Encrypted access tokens are excluded.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}$'}}
+      responses:
+        "200":
+          description: Tenant Meta connections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaConnectionSummary"}
+        "401": {description: Authentication required}
+        "403": {description: Tenant connection-read permission required}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}:
+    delete:
+      tags: [Meta Integrations]
+      operationId: disconnectTenantMetaConnection
+      summary: Disconnect a tenant Meta connection and erase its local token
+      description: Requires tenant meta:connections:write permission and recent MFA step-up. The API attempts remote Meta permission revocation, then always clears the local encrypted token and audits the remote outcome.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}$'}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Local token erased; remote permission revocation outcome is explicit
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, remoteRevocation]
+                properties:
+                  status: {type: string, const: disconnected}
+                  remoteRevocation: {type: string, enum: [succeeded, failed, not_attempted]}
+        "401": {description: Authentication required}
+        "403": {description: Tenant connection-write permission or recent MFA step-up required}
+        "404": {description: Connection not found in this tenant}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}/assets:
+    get:
+      tags: [Meta Integrations]
+      operationId: listTenantMetaPageAssets
+      summary: List discovered Facebook Pages and linked Instagram Business account metadata
+      description: Returns tenant-scoped asset metadata only. Page access tokens are encrypted at rest and never returned.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Discovered Page assets, including unavailable assets retained for reconciliation history
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaPageAssetSummary"}
+        "401": {description: Authentication required}
+        "403": {description: Tenant social:assets:read permission required}
+        "404": {description: Meta connection not found in this tenant}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}/assets/discover:
+    post:
+      tags: [Meta Integrations]
+      operationId: discoverTenantMetaPages
+      summary: Discover Facebook Pages and linked Instagram Business account metadata
+      description: Requires tenant social:assets:write permission and recent MFA step-up. Follows same-origin Meta pagination with bounded limits, encrypts Page tokens, and marks Pages no longer returned as unavailable.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "200":
+          description: Reconciled Page assets and discovery counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, discovered, instagramLinked, unavailable]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaPageAssetSummary"}
+                  discovered: {type: integer, minimum: 0}
+                  instagramLinked: {type: integer, minimum: 0}
+                  unavailable: {type: integer, minimum: 0}
+        "401": {description: Authentication required}
+        "403": {description: Tenant social:assets:write permission or recent MFA step-up required}
+        "404": {description: Meta connection not found in this tenant}
+        "409": {description: Meta connection token or data-access grant has expired}
+        "429": {description: Page discovery rate limit exceeded}
+        "502": {description: Meta Page discovery failed}
+        "503": {description: Meta provider and token-vault configuration is incomplete}
+  /v1/mad/overview:
+    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mebumip_session
+  schemas:
+    MetaOAuthStartResponse:
+      type: object
+      additionalProperties: false
+      required: [authorizationUrl, expiresAt]
+      properties:
+        authorizationUrl: {type: string, format: uri}
+        expiresAt: {type: string, format: date-time}
+    MetaPageAssetSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, assetType, providerAssetId, name, tasks, status, discoveredAt, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        assetType: {type: string, const: facebook_page}
+        providerAssetId: {type: string}
+        name: {type: string}
+        tasks: {type: array, items: {type: string}}
+        instagramBusinessAccount:
+          type: object
+          additionalProperties: false
+          required: [id]
+          properties:
+            id: {type: string}
+            username: {type: string}
+        status: {type: string, enum: [active, unavailable]}
+        discoveredAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    MetaConnectionSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, providerUserId, grantedScopes, status, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        providerUserId: {type: string}
+        providerUserName: {type: string}
+        grantedScopes: {type: array, items: {type: string}}
+        expiresAt: {type: string, format: date-time}
+        dataAccessExpiresAt: {type: string, format: date-time}
+        status: {type: string, enum: [connected, revoked]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        revokedAt: {type: string, format: date-time}
+        revocationStatus: {type: string, enum: [succeeded, failed, not_attempted]}

@@ -6,11 +6,13 @@ import { MongoClient } from "mongodb";
 import { config, corsOrigins } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerAdminRoutes } from "./admin.js";
+import { registerMetaRoutes } from "./meta-routes.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
+import { verifyAuditChain } from "./security.js";
 
-const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) => {
+const app = Fastify({ logger: true, disableRequestLogging: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
   const supplied = request.headers["x-correlation-id"];
   return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
     ? supplied
@@ -19,12 +21,24 @@ const app = Fastify({ logger: true, bodyLimit: 1_048_576, genReqId: (request) =>
 let mongo: MongoClient | undefined;
 let databaseReady = false;
 
+app.addHook("onResponse", async (request, reply) => {
+  // Log only the registered route template, never the raw URL/query string.
+  // OAuth callback query strings contain one-time state and authorization codes.
+  request.log.info({
+    method: request.method,
+    route: request.routeOptions.url ?? "unmatched",
+    statusCode: reply.statusCode,
+    correlationId: request.id,
+  }, "request completed");
+});
+
 await app.register(helmet);
 await app.register(cors, {
   origin: corsOrigins,
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["content-type", "authorization", "x-correlation-id"],
+  allowedHeaders: ["content-type", "authorization", "x-correlation-id", "x-csrf-token"],
+  exposedHeaders: ["X-Audit-Archive-SHA256", "X-Audit-Archive-Object-Key", "X-Audit-Archive-Status"],
 });
 
 app.get("/health/live", async () => ({
@@ -45,8 +59,8 @@ app.get("/health/ready", async (_request, reply) => {
 
 // All application routes are registered only after MongoDB indexes are ready.
 // Authenticated tenant-membership routes enforce active membership, role permissions
-// and recent MFA step-up on sensitive mutations. Meta product routes remain disabled
-// until provider-specific token, webhook, consent and audit controls are implemented.
+// and recent MFA step-up on sensitive mutations. Meta routes self-disable unless the
+// provider credentials, pinned API version and dedicated token-encryption keyring exist.
 app.setNotFoundHandler((_request, reply) => {
   return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
@@ -62,11 +76,16 @@ if (config.MONGODB_URI) {
     await mongo.connect();
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
+    const topology = await db.admin().command({ hello: 1 });
+    if (typeof topology.setName !== "string" && topology.msg !== "isdbgrid") throw new Error("MONGODB_REPLICA_SET_REQUIRED_FOR_TRANSACTIONAL_AUDIT");
     await ensureMeBuMIPIndexes(db);
+    const auditIntegrity = await verifyAuditChain(db);
+    if (!auditIntegrity.valid) throw new Error(`AUDIT_CHAIN_NOT_READY:${JSON.stringify({ checked: auditIntegrity.checked, legacyUnchainedEvents: auditIntegrity.legacyUnchainedEvents, firstInvalidSequence: auditIntegrity.firstInvalidSequence, counterSequence: auditIntegrity.counterSequence, latestSequence: auditIntegrity.latestSequence })}`);
     registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
     registerTenantMemberRoutes(app, db);
     registerAdminRoutes(app, db);
+    registerMetaRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
   } catch (error) {

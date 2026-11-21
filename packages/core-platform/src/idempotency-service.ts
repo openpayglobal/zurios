@@ -24,10 +24,17 @@ function keyFilter(d:{tenantId:string;actorId:string;operation:string;key:string
 export class IdempotencyConflictError extends Error{
  constructor(code:"IDEMPOTENCY_KEY_REUSED"|"IDEMPOTENCY_IN_PROGRESS"){super(code);this.name="IdempotencyConflictError";}
 }
+/**
+ * Execute a tenant-scoped mutation with a durable idempotency record.
+ * MongoDB may retry a withTransaction callback after transient errors: work
+ * must therefore contain only session-bound database operations. Never send
+ * email, call remote APIs, publish messages, or mutate process-local state in
+ * work; write an outbox record in the transaction and deliver it afterwards.
+ */
 export async function runIdempotentMutation(
  db:Db,input:unknown,work:(session:ClientSession)=>Promise<StoredResult>
 ):Promise<StoredResult&{replayed:boolean}>{
- const parsed=inputSchema.parse(input),requestHash=hash(parsed.request),filter=keyFilter(parsed),collection=db.collection<IdempotencyDocument>("idempotency_records");
+ const parsed=inputSchema.parse(input) as {tenantId:string;actorId:string;operation:string;key:string;request:unknown},requestHash=hash(parsed.request),filter=keyFilter(parsed),collection=db.collection<IdempotencyDocument>("idempotency_records");
  const session=db.client.startSession();
  try{
   let output:(StoredResult&{replayed:boolean})|undefined;

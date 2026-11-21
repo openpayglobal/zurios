@@ -39,7 +39,9 @@ for(const bodyContract of allBodyContracts){
  if(!reference)failures.push(`Missing OpenAPI requestBody reference for ${bodyContract.method.toUpperCase()} ${bodyContract.path}`);
  else if(reference[1]!==bodyContract.schemaName)failures.push(`Request schema mismatch for ${bodyContract.path}: expected ${bodyContract.schemaName}, found ${reference[1]}`);
  const schemaBlock=componentSchemaBlock(bodyContract.schemaName);
- const propertiesSection=schemaBlock.split("      properties:\n")[1]??"";
+ const propertiesMarker="\n      properties:\n";
+ const propertiesStart=schemaBlock.indexOf(propertiesMarker);
+ const propertiesSection=propertiesStart<0?"":schemaBlock.slice(propertiesStart+propertiesMarker.length);
  const properties=[...propertiesSection.matchAll(/^        ([A-Za-z0-9_]+):/gm)].map(([,name])=>name);
  const requiredMatch=schemaBlock.match(/^      required:\s*\[([^\]]*)\]/m);
  const required=(requiredMatch?.[1]??"").split(",").map(value=>value.trim()).filter(Boolean);

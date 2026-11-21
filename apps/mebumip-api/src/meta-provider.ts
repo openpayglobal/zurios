@@ -1,0 +1,103 @@
+import { config } from "./config.js";
+import { MetaGraphClient, type MetaGraphClientOptions } from "./meta-graph-client.js";
+import { MetaTokenVault } from "./meta-token-vault.js";
+import { MetaOAuthService, type MetaOAuthServiceOptions } from "./meta-oauth.js";
+import { MetaOAuthStateService, type MetaOAuthStateServiceOptions } from "./meta-oauth-state.js";
+import type { Db } from "mongodb";
+
+export type MetaProviderConfig = Pick<typeof config,
+  | "META_APP_ID"
+  | "META_APP_SECRET"
+  | "META_REDIRECT_URI"
+  | "META_LOGIN_CONFIG_ID"
+  | "META_GRAPH_API_VERSION"
+  | "META_MARKETING_API_VERSION"
+  | "META_TOKEN_ENCRYPTION_KEYRING"
+  | "META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID"
+  | "META_WEBHOOK_VERIFY_TOKEN"
+> & { NODE_ENV?: typeof config.NODE_ENV };
+export function createMetaGraphClient(
+  providerConfig: MetaProviderConfig,
+  runtimeOptions: Pick<MetaGraphClientOptions, "fetchImpl" | "timeoutMs" | "maxRetries" | "sleep"> = {},
+): MetaGraphClient {
+  if (!providerConfig.META_GRAPH_API_VERSION) throw new Error("META_GRAPH_API_VERSION_REQUIRED");
+  if (providerConfig.META_APP_ID && !providerConfig.META_APP_SECRET) throw new Error("META_APP_SECRET_REQUIRED");
+  if (!providerConfig.META_APP_ID && providerConfig.META_APP_SECRET) throw new Error("META_APP_CONFIGURATION_INCOMPLETE");
+  return new MetaGraphClient({
+    ...runtimeOptions,
+    version: providerConfig.META_GRAPH_API_VERSION,
+    ...(providerConfig.META_APP_SECRET ? { appSecret: providerConfig.META_APP_SECRET } : {}),
+    requireAppSecretProof: Boolean(providerConfig.META_APP_ID),
+  });
+}
+
+export function createMetaOAuthService(
+  providerConfig: MetaProviderConfig,
+  runtimeOptions: Pick<MetaOAuthServiceOptions, "fetchImpl" | "timeoutMs"> = {},
+): MetaOAuthService {
+  if (!providerConfig.META_APP_ID || !providerConfig.META_APP_SECRET || !providerConfig.META_REDIRECT_URI || !providerConfig.META_GRAPH_API_VERSION) {
+    throw new Error("META_OAUTH_NOT_CONFIGURED");
+  }
+  return new MetaOAuthService({
+    ...runtimeOptions,
+    appId: providerConfig.META_APP_ID,
+    appSecret: providerConfig.META_APP_SECRET,
+    redirectUri: providerConfig.META_REDIRECT_URI,
+    version: providerConfig.META_GRAPH_API_VERSION,
+    ...(providerConfig.META_LOGIN_CONFIG_ID ? { loginConfigId: providerConfig.META_LOGIN_CONFIG_ID } : {}),
+    allowInsecureLocalhost: providerConfig.NODE_ENV === "development" || providerConfig.NODE_ENV === "test",
+  });
+}
+
+export function createMetaTokenVault(providerConfig: MetaProviderConfig): MetaTokenVault {
+  if (!providerConfig.META_TOKEN_ENCRYPTION_KEYRING || !providerConfig.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID) {
+    throw new Error("META_TOKEN_VAULT_NOT_CONFIGURED");
+  }
+  const keyring: unknown = JSON.parse(providerConfig.META_TOKEN_ENCRYPTION_KEYRING);
+  if (!keyring || typeof keyring !== "object" || Array.isArray(keyring)) throw new Error("META_TOKEN_KEYRING_INVALID");
+  return new MetaTokenVault({
+    keyring: keyring as Record<string, string>,
+    activeKeyId: providerConfig.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID,
+  });
+}
+
+export function createMetaOAuthStateService(
+  db: Db,
+  providerConfig: MetaProviderConfig,
+  options: Omit<MetaOAuthStateServiceOptions, "redirectUri"> = {},
+): MetaOAuthStateService {
+  if (!providerConfig.META_REDIRECT_URI) throw new Error("META_OAUTH_REDIRECT_URI_REQUIRED");
+  return new MetaOAuthStateService(db, { ...options, redirectUri: providerConfig.META_REDIRECT_URI });
+}
+
+export function createConfiguredMetaOAuthStateService(db: Db): MetaOAuthStateService {
+  return createMetaOAuthStateService(db, config);
+}
+
+export function createConfiguredMetaGraphClient(): MetaGraphClient {
+  return createMetaGraphClient(config);
+}
+
+export function createConfiguredMetaOAuthService(): MetaOAuthService {
+  return createMetaOAuthService(config);
+}
+
+export function createConfiguredMetaTokenVault(): MetaTokenVault {
+  return createMetaTokenVault(config);
+}
+
+/** Safe operational diagnostics only; never returns app secrets or key material. */
+export function getMetaIntegrationReadiness(providerConfig: MetaProviderConfig = config) {
+  return {
+    appConfigured: Boolean(providerConfig.META_APP_ID && providerConfig.META_APP_SECRET && providerConfig.META_REDIRECT_URI),
+    graphApiVersionConfigured: Boolean(providerConfig.META_GRAPH_API_VERSION),
+    graphApiVersion: providerConfig.META_GRAPH_API_VERSION ?? null,
+    marketingApiVersionConfigured: Boolean(providerConfig.META_MARKETING_API_VERSION),
+    marketingApiVersion: providerConfig.META_MARKETING_API_VERSION ?? null,
+    appSecretProofConfigured: Boolean(providerConfig.META_APP_ID && providerConfig.META_APP_SECRET),
+    oauthConfigured: Boolean(providerConfig.META_APP_ID && providerConfig.META_APP_SECRET && providerConfig.META_REDIRECT_URI && providerConfig.META_GRAPH_API_VERSION),
+    businessLoginConfigured: Boolean(providerConfig.META_LOGIN_CONFIG_ID),
+    tokenVaultConfigured: Boolean(providerConfig.META_TOKEN_ENCRYPTION_KEYRING && providerConfig.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID),
+    webhookVerificationConfigured: Boolean(providerConfig.META_WEBHOOK_VERIFY_TOKEN),
+  };
+}

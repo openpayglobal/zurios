@@ -18,12 +18,18 @@ test("MongoDB replica-set integration: tenant isolation, service lifecycles, mig
  const client=new MongoClient(uri!);await client.connect();
  const db=client.db(`zuri_core_it_${randomUUID().replaceAll("-","")}`);
  try{
-  assert.deepEqual(await runCoreMigrations(db),["0001_core_indexes"]);
+  assert.deepEqual(await runCoreMigrations(db),["0001_core_indexes","0002_identity_workspace_selection","0003_audit_archive_receipts"]);
   assert.deepEqual(await runCoreMigrations(db),[],"migration runner must be idempotent");
   const now=new Date(),tenantA="tenant-a",tenantB="tenant-b",userId="user-global";
   await db.collection("tenants").insertMany([{tenantId:tenantA,slug:"tenant-a",status:"active"},{tenantId:tenantB,slug:"tenant-b",status:"active"}]);
   const provisioned=await provisionTenant(db,"integration-test",{slug:"tenant-c",legalName:"Tenant C Limited",displayName:"Tenant C",defaultCurrency:"ugx"});
-  assert.equal(provisioned.status,"provisioning");assert.equal(provisioned.defaultCurrency,"UGX");
+  assert.equal(provisioned.status,"provisioning");
+  assert.equal(provisioned.slug,"tenant-c");
+  assert.equal(provisioned.legalName,"Tenant C Limited");
+  assert.equal(provisioned.displayName,"Tenant C");
+  assert.equal(provisioned.defaultLocale,"en");
+  assert.equal(provisioned.defaultCurrency,"UGX");
+  assert.equal(provisioned.timezone,"Africa/Kampala");
   await setTenantStatus(db,provisioned.tenantId,"active","integration-test");
   await db.collection("organizations").insertMany([{tenantId:tenantA,organizationId:"org-a",code:"HQ",status:"active",path:[],marker:"scope-check"},{tenantId:tenantB,organizationId:"org-b",code:"HQ",status:"active",path:[],marker:"scope-check"}]);
   await db.collection("locations").insertMany([{tenantId:tenantA,locationId:"loc-a",organizationId:"org-a",code:"STORE-1",status:"active",marker:"scope-check"},{tenantId:tenantB,locationId:"loc-b",organizationId:"org-b",code:"STORE-1",status:"active",marker:"scope-check"}]);

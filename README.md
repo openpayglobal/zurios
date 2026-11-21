@@ -2,50 +2,52 @@
 
 **A modular, multi-tenant Business Operating System by OIPTECH / ODEL Developers.**
 
-## Foundation status
+Zuri OS is developed as a governed ecosystem of modular products and shared platform capabilities. Product boundaries, APIs, security controls and delivery status are documented explicitly; the presence of a workspace or roadmap does not imply production readiness.
 
-The initial monorepo foundation is being implemented on `develop`. It includes the React/Vite application shell, Fastify API bootstrap, MongoDB connection/index initialization, password/JWT primitives, tenant-scoped authorization primitives, audit event writer and GitHub Actions CI. These are foundation components, not a production-ready identity provider or complete business application.
+## Documentation
 
-## Stack
+**Start with the [ZURI ecosystem documentation index](./docs/README.md).**
+
+- [ZURI Ecosystem Overview](./docs/ZURI-ECOSYSTEM-OVERVIEW.md) — ecosystem principles, architecture, governance and programme map.
+- [Zuri MeBuMIP product documentation](./products/zuri-mebumip/README.md) — product scope and implementation entry point.
+- [MeBuMIP implementation roadmap](./products/zuri-mebumip/IMPLEMENTATION-ROADMAP.md) — approved objectives A–E and phases 0–7.
+- [MeBuMIP architecture](./products/zuri-mebumip/ARCHITECTURE.md) — product boundaries, MAC/MAD, tenant model and integration design.
+- [MeBuMIP progress register](./products/zuri-mebumip/PROGRESS.md) — implementation evidence, CI status and open gates.
+- [Phase 1 production security runbook](./products/zuri-mebumip/PHASE1-PRODUCTION-SECURITY-RUNBOOK.md) — operational release prerequisites.
+
+## Technology baseline
 
 - pnpm workspaces + Turborepo
 - TypeScript
-- React + Vite + Tailwind CSS
-- Fastify API on Node.js
-- MongoDB as the sole application database
-- GitHub Actions CI
-- Vercel as the initial web deployment direction
+- React + Vite
+- Fastify / Node.js
+- MongoDB
+- GitHub Actions
+- Vercel as an initial web deployment direction
+
+The stack is a repository-level baseline; each product's deployable architecture and operational requirements must be documented independently.
 
 ## Repository layout
 
-- `apps/web` — React/Vite application shell
-- `apps/api` — API bootstrap and platform services
-- `packages/*` — shared contracts and libraries (next implementation increment)
-- `.github/workflows` — CI workflows
+- apps/ — application workspaces
+- packages/ — shared contracts and libraries
+- products/ — independently bounded product workspaces
+- docs/ — ecosystem-wide documentation and navigation
+- .github/workflows/ — CI and engineering automation
 
-## Local development
+## Security invariants
 
-1. Install Node.js 20.11+ and pnpm 9.15.4.
-2. Start a MongoDB replica set for local development if transaction-backed workflows are being tested.
-3. Copy `.env.example` to `.env`; set a unique random `JWT_SECRET` of at least 32 characters.
-4. Run `pnpm install`.
-5. Run `pnpm dev`.
-
-The API uses port 4000 and the web application uses port 5173.
-
-## Platform security invariants
-
-- Tenant identity is required for tenant-owned operations.
-- Organization and location scopes narrow access within a tenant.
-- Authorization is default-deny; role-derived permissions and ABAC predicates must both be satisfied.
-- Never accept tenant identifiers as proof of access. Resolve tenant membership from a verified identity/session.
-- Audit events are append-only through the application service. Production database permissions, tamper evidence, retention and export controls remain required.
-- Secrets, credentials, private keys and production data must never be committed.
-
-## Delivery status and limitations
-
-This is an initial development scaffold. Login/registration endpoints, refresh-token rotation and revocation, invitation and recovery flows, persistent role/policy administration, migrations, comprehensive tests, rate limiting, CSRF strategy, production key management, deployment configuration and operational hardening remain future increments. No compliance certification or production readiness is claimed.
+- Tenant identity is required for tenant-owned operations and is derived from verified identity/session context.
+- Authorization is default-deny; server-side role and resource policy checks are mandatory.
+- Never accept a client-supplied tenant identifier as proof of access.
+- Privileged actions must be authorized and audited.
+- Secrets, credentials, private keys, customer data and live provider tokens must never be committed.
+- A successful build is not proof of production readiness or compliance.
 
 ## Engineering governance
 
-Keep `main` releasable. Work on `develop` and feature branches, review through pull requests, and record material architecture changes as ADRs. Preserve the approved MongoDB-native architecture and test tenant isolation, authorization boundaries, ledger correctness and audit integrity before enabling business modules.
+Keep the default branch releasable. Use feature branches and reviewed changes for delivery. Record material architecture decisions, preserve approved product scope, and test tenant isolation, authorization boundaries, audit integrity and integration contracts before enabling business capabilities.
+
+## Delivery status
+
+Product-specific status is maintained in each product's progress register. MeBuMIP Phase 1 remains in progress; Meta setup is deferred by the owner, and production readiness is not claimed. See the [ecosystem overview](./docs/ZURI-ECOSYSTEM-OVERVIEW.md) and [MeBuMIP progress register](./products/zuri-mebumip/PROGRESS.md) for current programme context.

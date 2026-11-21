@@ -2,9 +2,10 @@ openapi: 3.1.0
 info:
   title: Zuri OS Platform API
   version: 1.0.0
-  summary: Shared multi-tenant platform control-plane API
   license:
-    name: No license specified
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+  summary: Shared multi-tenant platform control-plane API
   description: |
     Version 1 platform contract for the shared Zuri OS API. Unversioned /platform aliases remain temporarily available and emit Deprecation and Sunset headers.
     Tenant context is derived from the authenticated principal; callers cannot
@@ -385,6 +386,140 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/public-config:
+    servers:
+      - url: /
+    get:
+      tags: [Identity]
+      operationId: getPublicAuthenticationConfiguration
+      summary: Read public sign-in and access-request availability
+      security: []
+      responses:
+        "200": {description: Public access-request availability and privacy notice URL}
+        "429": {description: Public API rate limit exceeded}
+  /auth/login:
+    servers:
+      - url: /
+        description: Authentication endpoints are mounted outside the versioned platform prefix
+    post:
+      tags: [Identity]
+      operationId: loginAndResolveWorkspaceChoices
+      summary: Authenticate a global identity and return MFA challenge or authorized workspace choices
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+                password: {type: string, minLength: 1, maxLength: 128}
+                tenantSlug: {type: string, minLength: 2, maxLength: 64, description: Temporary compatibility selector for trusted legacy clients}
+      responses:
+        "200": {description: "MFA challenge, workspace selection capability, no-workspace response or tenant-bound session"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "429": {description: Authentication rate limit exceeded}
+  /auth/mfa/verify:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: verifyMfaAndContinueWorkspaceSelection
+      summary: Verify a single-use MFA challenge before disclosing workspace choices
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeToken, code]
+              properties:
+                challengeToken: {type: string, minLength: 20}
+                code: {type: string, minLength: 6, maxLength: 64}
+      responses:
+        "200": {description: Workspace selection response or tenant-bound session}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/workspace/select:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: selectWorkspace
+      summary: Consume a short-lived one-time selection token and issue a tenant-bound session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [selectionToken, tenantId]
+              properties:
+                selectionToken: {type: string, minLength: 40, maxLength: 200}
+                tenantId: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: Tenant-bound access and refresh session}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+  /auth/workspaces:
+    servers:
+      - url: /
+    get:
+      tags: [Identity]
+      operationId: listMyWorkspaces
+      summary: List only the authenticated user's active workspace memberships
+      responses:
+        "200": {description: Authorized workspace choices}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/workspace/switch:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: switchActiveWorkspace
+      summary: Create a new tenant-bound session and revoke the previous workspace session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId]
+              properties:
+                tenantId: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200": {description: New tenant-bound session}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /auth/access-requests:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: requestZuriWorkspaceAccess
+      summary: Submit a non-provisioning request for Zuri OS access
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, displayName, organizationName]
+              properties:
+                email: {type: string, format: email, maxLength: 254}
+                displayName: {type: string, minLength: 2, maxLength: 120}
+                organizationName: {type: string, minLength: 2, maxLength: 160}
+                requestNote: {type: string, maxLength: 500}
+      responses:
+        "202": {description: "Non-enumerating acknowledgement; no user, tenant or membership is created"}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "503": {description: Access requests are disabled until an approved public privacy notice is configured}
   /auth/memberships/{membershipId}/accept:
     servers:
       - url: /
@@ -629,6 +764,36 @@ paths:
       responses:
         "200": {description: Configuration updated}
         "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/access-requests:
+    get:
+      tags: [Administration]
+      operationId: listPlatformAccessRequests
+      summary: List global Zuri OS access requests for authorized platform operators
+      parameters:
+        - {name: status, in: query, required: false, schema: {type: string, enum: [pending, reviewed, approved, declined]}}
+        - {name: limit, in: query, required: false, schema: {type: integer, minimum: 1, maximum: 200, default: 100}}
+      responses:
+        "200": {description: Global access request queue}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/access-requests/{requestId}:
+    patch:
+      tags: [Administration]
+      operationId: reviewPlatformAccessRequest
+      summary: Record a reviewed, approved or declined access request without provisioning a workspace or membership
+      parameters:
+        - {name: requestId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReviewAccessRequest"}
+      responses:
+        "200": {description: Access request decision recorded; provisioning remains a separate operation}
+        "400": {$ref: "#/components/responses/InvalidRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
   /platform/admin/tenants:
     get:
       tags: [Administration]
@@ -1014,3 +1179,9 @@ components:
       properties:
         token: {type: string, minLength: 20}
         password: {type: string, minLength: 12, maxLength: 128}
+    ReviewAccessRequest:
+      type: object
+      required: [status, reason]
+      properties:
+        status: {type: string, enum: [reviewed, approved, declined]}
+        reason: {type: string, minLength: 20, maxLength: 500}

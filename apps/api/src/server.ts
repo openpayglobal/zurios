@@ -16,7 +16,7 @@ await app.register(cors,{origin:corsOrigins,credentials:true});
 app.get("/health/live",async()=>({status:"ok",service:"zuri-api"}));
 app.get("/health/ready",async(_req,reply)=>{try{await connectMongo();return {status:"ready",database:"connected"};}catch{return reply.code(503).send({status:"not_ready"});}});
 app.setErrorHandler((error,_request,reply)=>{app.log.error(error);return reply.code(500).send({error:"INTERNAL_SERVER_ERROR",message:"An unexpected error occurred"});});
-const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.JWT_SECRET,accessTokenTtlSeconds:config.ACCESS_TOKEN_TTL_SECONDS,sessionTtlSeconds:config.SESSION_TTL_SECONDS,mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??""};
+const authConfig:AuthConfig={issuer:config.JWT_ISSUER,audience:config.JWT_AUDIENCE,jwtSecret:config.JWT_SECRET,accessTokenTtlSeconds:config.ACCESS_TOKEN_TTL_SECONDS,sessionTtlSeconds:config.SESSION_TTL_SECONDS,mfaEncryptionKey:config.MFA_ENCRYPTION_KEY??"",accessRequestsEnabled:config.ACCESS_REQUESTS_ENABLED==="true",accessRequestsPrivacyNoticeUrl:config.ACCESS_REQUESTS_PRIVACY_NOTICE_URL};
 try{
  const db=await connectMongo();
  await app.register(authRoutes(db,authConfig));

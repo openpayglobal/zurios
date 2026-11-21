@@ -1,0 +1,137 @@
+# Zuri MeBuMIP — Phase 1 Production Security Runbook
+
+**Owner:** Blockchain Innovations LTD  
+**Status:** Operational checklist; Phase 1 remains open  
+**Purpose:** Define the evidence required before any production deployment. This document does not assert that production infrastructure, secrets, email delivery, or immutable audit storage have been configured.
+
+## 1. Release-blocking principles
+
+- Do not deploy a public production instance until every applicable gate in this runbook has an owner, evidence, and sign-off.
+- Never place credentials, encryption keys, API keys, customer data, or real tokens in Git, issue comments, CI logs, screenshots, or this document.
+- Keep MAC privileged mutations server-authorized, MFA step-up protected, and auditable. MAD remains read-only.
+- Keep Meta integrations disabled until the owner completes the external Meta prerequisites and provider-specific controls are implemented.
+- A signed export is not an immutable archive. HMAC signatures do not prevent a database administrator from deleting or replacing records.
+
+## 2. Runtime configuration and secret inventory
+
+Configure values through the deployment secret manager. Do not commit real values to `.env` files.
+
+| Setting | Required use | Validation evidence |
+|---|---|---|
+| `MONGODB_URI` | Production MongoDB connection | TLS enabled; private network access; least-privilege application user; backup/restore test |
+| `MONGODB_DATABASE` | Dedicated MeBuMIP database | Confirmed database boundary and ownership |
+| `AUDIT_MIGRATION_MONGODB_URI` | Required for audit backfill; read-only for dry-run and write-enabled only for approved apply | Must not be the runtime application credential; use a read-only identity for dry-run and a separately approved, time-bounded write identity for apply; remove after the operation |
+| `AUDIT_SIGNING_KEY` | Legacy HMAC-SHA256 verification for historical events | Retain until historical events and backups no longer depend on it; never replace in place |
+| `AUDIT_SIGNING_KEYRING` | JSON map of audit key IDs to 32-byte hex keys (legacy entry may encode original key bytes) | New and historical keys backed up, inventoried and access-controlled |
+| `AUDIT_SIGNING_ACTIVE_KEY_ID` | Selects the 32-byte key for new HMAC-SHA256-v2 events and manifests | Must identify a non-legacy key in `AUDIT_SIGNING_KEYRING`; historical keys remain available for verification |
+| `ACCESS_REQUESTS_ENABLED` | Enables public access-request intake only when set to `true` | Defaults to `false`; production startup requires a public privacy notice URL when enabled |
+| `ACCESS_REQUESTS_PRIVACY_NOTICE_URL` | Public-facing privacy notice URL | Required before enabling production access requests; owner/privacy approval required |
+| `MFA_ENCRYPTION_KEY` | Legacy single-key fallback for existing MFA ciphertext | Retain only while legacy ciphertext remains; never replace without migration evidence |
+| `MFA_ENCRYPTION_KEYRING` | JSON map of versioned MFA key IDs to 32-byte hex keys | Active and previous keys are backed up, inventoried and access-controlled |
+| `MFA_ENCRYPTION_ACTIVE_KEY_ID` | Selects the key used for new MFA ciphertext | Must identify an entry in `MFA_ENCRYPTION_KEYRING`; old keys remain available for reads |
+| `RESEND_API_KEY` | Transactional email delivery | Key restricted to required sending capabilities and stored only in secret manager |
+| `MAIL_FROM` | Verified sender identity | Sender domain verified with the provider; test invitation and password recovery delivery |
+| `CORS_ORIGINS` | Browser origin allowlist | Exact HTTPS origins only; no wildcard and no localhost |
+| `TRUSTED_PROXY_CIDRS` | Trust forwarded client IP headers only from known proxies | Exact deployment proxy CIDRs confirmed by infrastructure owner |
+| `SESSION_COOKIE_SAME_SITE` | Browser session cookie policy | Select Strict/Lax for same-site topology; use None only when cross-site cookies are necessary and HTTPS is enforced |
+| `SESSION_TTL_HOURS` | Session lifetime | Approved risk-based value within application bounds |
+
+Generate random key material in a controlled operator environment, for example with `openssl rand -hex 32`. Do not paste generated values into chat or commit them. Obtain the Resend API key from the provider's secured dashboard; it is not a locally generated key.
+
+### Key continuity warning
+
+The audit signer and MFA encryption implementation now support versioned key identifiers and key rings. For audit signing, set `AUDIT_SIGNING_KEYRING` to a JSON object mapping key IDs to 64-character hex-encoded 32-byte keys and `AUDIT_SIGNING_ACTIVE_KEY_ID` to the key used for new event signatures and export manifests. Keep `AUDIT_SIGNING_KEY` (or a `legacy` ring entry containing the hex-encoded original key bytes) available to verify historical `HMAC-SHA256` events. New ring-based writes use `HMAC-SHA256-v2` and embed the key ID in the signed payload. The dry-run-first migration command is documented in [Key Management and Audit Archiving](../../docs/security/KEY-MANAGEMENT-AND-AUDIT-ARCHIVING.md). Apply mode now requires a separately supplied `AUDIT_MIGRATION_MONGODB_URI`; the normal `MONGODB_URI` is used only for dry-run. Do not grant the runtime API identity audit-event update/delete rights. Use a dedicated maintenance identity for the bounded backfill and remove its credentials after the approved operation. For MFA, set `MFA_ENCRYPTION_KEYRING` to a JSON object mapping key IDs to 32-byte hex keys and `MFA_ENCRYPTION_ACTIVE_KEY_ID` to the key ID used for new ciphertext. Retain the prior key in the ring for decryption until all stored MFA ciphertext has been safely migrated and a recovery window has elapsed. Existing unversioned MFA ciphertext still requires its original key as `MFA_ENCRYPTION_KEY` or as the `legacy` entry in the key ring. Do not remove the old key merely because new writes use the active key. Versioned audit signatures and historical verification are implemented. Production rotation is still blocked until backup, full-history verification, rollback and recovery tests are completed. **Do not rotate either key by simply replacing an environment variable.**
+
+## 3. Browser, proxy, and API deployment checks
+
+- [ ] Serve the web application and API only over HTTPS.
+- [ ] Confirm the production cookie has `HttpOnly`, `Secure`, an explicit `SameSite` policy, and the narrowest viable path/domain.
+- [ ] Confirm the session cookie is not readable by browser JavaScript.
+- [ ] Confirm every cookie-authenticated state-changing request sends the session-bound CSRF header and is rejected when it is missing or invalid.
+- [ ] Confirm credentialed CORS allows only the exact production web origins.
+- [ ] Confirm no wildcard CORS origin is combined with credentials.
+- [ ] Configure `TRUSTED_PROXY_CIDRS` only with the actual reverse-proxy ranges. Leave proxy trust disabled if the API is not behind a trusted proxy.
+- [ ] Verify the application sees the correct client IP through the configured proxy chain; do not trust arbitrary `X-Forwarded-For` values.
+- [ ] Confirm liveness and readiness are monitored separately and readiness fails when MongoDB/index initialization fails.
+- [ ] Confirm API logs exclude passwords, cookies, authorization headers, invitation/reset tokens, MFA secrets, Meta credentials, and message content.
+- [ ] Confirm rate-limit counters and session expiry TTL indexes are present and operational.
+
+## 4. Email delivery acceptance
+
+- [ ] Verify the sender domain in the Resend account.
+- [ ] Configure `RESEND_API_KEY` and `MAIL_FROM` in the production secret manager.
+- [ ] Send and receive a tenant invitation using a controlled test mailbox.
+- [ ] Confirm the API response never returns the raw invitation token.
+- [ ] Confirm invitation delivery failure revokes the pending invitation and returns a non-success response.
+- [ ] Request password recovery for an existing and a nonexistent address; confirm responses do not reveal account existence.
+- [ ] Confirm reset tokens are single-use, expire, are stored only as hashes, and revoke existing sessions.
+- [ ] Confirm provider delivery failures are monitored without logging message tokens or secrets.
+
+## 5. MFA and recovery operations
+
+- [ ] Confirm the production MFA encryption key is present and backed up under dual control.
+- [ ] Complete TOTP enrollment and step-up with a controlled administrator account.
+- [ ] Confirm recovery codes are shown once, stored only as hashes, and cannot be replayed.
+- [ ] Confirm MFA factor reset requires the account password and an unused recovery code and revokes all sessions.
+- [ ] Store the recovery procedure and key-custody contacts in the organization's restricted operations system, not in this repository.
+- [ ] Conduct a documented recovery exercise before production approval.
+
+## 6. Audit retention, integrity, and independent archive
+
+The application provides sequenced HMAC-signed events, versioned key-ID signatures, signed paginated exports, export-manifest verification, and a MAC workflow that prepares bounded, contiguous, signed, content-addressed archive packages. The provider-neutral sink contract and receipt model are implemented. This is still not independent immutable retention until a concrete storage adapter writes the packages to a verified WORM/object-lock destination.
+
+Required before closure:
+
+- [ ] Create a dedicated application database role that can insert audit events but cannot update or delete them. Separate migration/operator roles from runtime credentials.
+- [ ] Select an independent archive destination with immutable/WORM retention or object-lock controls.
+- [ ] Define retention duration, legal hold, access controls, encryption, and deletion governance with the organization.
+- [ ] Implement a scheduled export/archival worker with durable retry state and alerting.
+- [ ] Store each signed export manifest and the exact exported records in the independent archive.
+- [ ] Verify archive object retention/lock state after write.
+- [ ] Verify signatures, sequence continuity, record counts, and export boundaries during archive ingestion and periodic restore exercises.
+- [ ] Alert on missing sequence numbers, invalid signatures, unsigned legacy records, archive lag, failed writes, or retention-policy drift.
+- [ ] Perform a full-history reconciliation; do not treat the latest-500 verification endpoint as a full-history audit.
+
+No WORM provider, retention duration, archive destination, legal-hold policy, or archive credentials have been selected/configured in the repository at this stage. The MAC package download reports `prepared_not_archived` until a storage adapter confirms immutable retention.
+
+## 7. MongoDB, backup, and operational resilience
+
+- [ ] Use a dedicated production database and non-root application identity.
+- [ ] Restrict network access to approved application and operator networks.
+- [ ] Require TLS for database connections and validate certificates.
+- [ ] Verify indexes and unique constraints using the deployment's migration process.
+- [ ] Define encrypted backups, retention, restore objectives, and access controls.
+- [ ] Perform a restore into an isolated environment and verify users, memberships, sessions, MFA ciphertext, and audit records.
+- [ ] Ensure backup and restore procedures do not silently reset audit counters or remove historical records.
+- [ ] Monitor connection saturation, slow queries, storage, TTL cleanup, and rate-limit collection growth.
+
+## 8. Release evidence register
+
+| Gate | Current status | Evidence still required |
+|---|---|---|
+| API/web build and test | Latest confirmed repository CI run 44748329176 and MeBuMIP Phase 1 run 44748328927 passed | Retain the run URLs and re-run after subsequent code changes |
+| Email delivery | Adapter implemented; live configuration pending | Verified sender, secret-manager values, successful delivery tests |
+| MFA recovery | Implemented; recovery tests exist | Production key custody and recovery exercise |
+| Audit integrity | Sequenced HMAC events, versioned key rings, signed export-manifest verification and archive-package preparation implemented | Restricted DB roles, production key rotation/recovery evidence, independent WORM archive and full-history verification |
+| Database resilience | MongoDB-backed CI integration test exists | Production backup/restore exercise and least-privilege role review |
+| Session/proxy security | Cookie, CSRF, SameSite and proxy allowlist foundations implemented | HTTPS, exact CORS, proxy CIDR and cross-site topology verification |
+| MAC/MAD policy | Core control and read-only monitoring surfaces implemented | Final access review and production operational sign-off |
+
+## 9. Formal release approval
+
+Phase 1 remains **In progress** until the release owner records evidence for every applicable gate, unresolved critical/high findings are closed or explicitly risk-accepted, and the production deployment architecture is reviewed. Completion of this checklist does not itself complete Meta business verification, App Review, Advanced Access, or WhatsApp Tech Provider prerequisites.
+
+
+## 4A. Meta provider credential and token-key lifecycle
+
+Meta app credentials are optional until Objective A is explicitly enabled. When configured:
+
+- Keep META_APP_SECRET and META_WEBHOOK_VERIFY_TOKEN in the approved secret manager. META_APP_ID is an identifier, not a secret. Register the exact META_REDIRECT_URI with Meta and use HTTPS outside local development.
+- Set META_GRAPH_API_VERSION explicitly. Do not silently inherit a new Graph API version; Marketing API version selection is separate and must be reviewed against the target endpoint.
+- Set META_TOKEN_ENCRYPTION_KEYRING to a JSON object mapping key IDs to 32-byte hexadecimal keys and META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID to the active key. This keyring must be distinct from AUDIT_SIGNING_KEYRING and MFA_ENCRYPTION_KEYRING.
+- Meta connection access tokens are stored only as AES-256-GCM envelopes. Authenticated associated data binds ciphertext to tenant ID and connection ID. Application responses and connection summaries must never return ciphertext or plaintext tokens.
+- Customer disconnect/revocation marks the connection revoked and clears its ciphertext in the same audited transaction. Encryption-key rotation re-encrypts an existing connection under the active key and records an audit event. The current service rotates individual connections; a bulk rotation CLI and operational batch evidence are still required before production key rollover.
+- The OAuth state store stores only a SHA-256 hash of the random state, binds it to tenant, user, session and the exact configured redirect URI, expires after five minutes, and atomically permits one successful consume. State creation, consumption and rejection are audited. The callback/code-exchange route is not yet implemented.
+- When Meta's Require App Secret setting is enabled, the server-side Graph client derives appsecret_proof from the access token and app secret. Never send the raw app secret to the browser or include it in logs.
+
+**Evidence:** secret-manager references and key IDs only; Meta redirect URI registration evidence; token-keyring separation review; connection encryption/rotation/revocation tests; OAuth-state replay and tenant/session binding tests. No live Meta app or connected customer is asserted by this runbook.
