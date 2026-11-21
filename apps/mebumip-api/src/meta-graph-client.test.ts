@@ -91,6 +91,41 @@ test("retries transient GET rate limits and respects Retry-After", async () => {
   assert.deepEqual(sleeps, [2000]);
 });
 
+test("retries Meta provider throttling codes on GET without retrying mutations", async () => {
+  let calls = 0;
+  const sleeps: number[] = [];
+  const client = new MetaGraphClient({
+    version: "v27.0",
+    maxRetries: 1,
+    sleep: async (milliseconds) => { sleeps.push(milliseconds); },
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) return new Response(JSON.stringify({ error: { message: "application throttled", code: 4 } }), { status: 400 });
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    },
+  });
+  assert.deepEqual(await client.request("me/accounts", { accessToken: token }), { data: [] });
+  assert.equal(calls, 2);
+  assert.deepEqual(sleeps, [250]);
+});
+
+test("retries invalid JSON 5xx responses only for safe GET requests", async () => {
+  let calls = 0;
+  const client = new MetaGraphClient({
+    version: "v27.0",
+    maxRetries: 1,
+    sleep: async () => undefined,
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response("upstream unavailable", { status: 503 })
+        : new Response(JSON.stringify({ data: [] }), { status: 200 });
+    },
+  });
+  assert.deepEqual(await client.request("me/accounts", { accessToken: token }), { data: [] });
+  assert.equal(calls, 2);
+});
+
 test("does not automatically retry side-effecting POST requests", async () => {
   let calls = 0;
   const client = new MetaGraphClient({
