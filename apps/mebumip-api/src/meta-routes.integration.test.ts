@@ -35,6 +35,11 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
   const fetchImpl: typeof fetch = async (input, init) => {
     providerCalls += 1;
     const url = new URL(String(input));
+    if (init?.method === "DELETE") {
+      assert.equal(url.pathname, "/v27.0/meta-route-user-1/permissions");
+      assert.equal(new Headers(init.headers).get("authorization"), "Bearer EAAG_long_lived_meta_route_token");
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "facebook-api-version": "v27.0" } });
+    }
     if (url.pathname.endsWith("/oauth/access_token")) {
       if (url.searchParams.get("grant_type") === "fb_exchange_token") {
         return new Response(JSON.stringify({ access_token: "EAAG_long_lived_meta_route_token", token_type: "bearer", expires_in: 5_184_000 }), {
@@ -133,10 +138,13 @@ test("Meta OAuth routes enforce tenant/session/step-up, persist encrypted long-l
       url: `/v1/tenants/${tenantId}/meta/connections/${connectionId}`,
       headers: ownerHeaders,
     });
-    assert.equal(revoked.statusCode, 204);
+    assert.equal(revoked.statusCode, 200, revoked.body);
+    assert.deepEqual(revoked.json(), { status: "disconnected", remoteRevocation: "succeeded" });
+    assert.equal(providerCalls, 5);
     const storedRevoked = await db.collection("metaConnections").findOne({ tenantId: String(tenantId), connectionId });
     assert.equal(storedRevoked?.status, "revoked");
     assert.equal(storedRevoked?.accessTokenCiphertext, null);
+    assert.equal(storedRevoked?.revocationStatus, "succeeded");
     assert.equal((await verifyAuditChain(db)).valid, true);
   } finally {
     await app.close();
