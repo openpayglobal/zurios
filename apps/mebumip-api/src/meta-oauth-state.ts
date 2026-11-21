@@ -107,6 +107,25 @@ export class MetaOAuthStateService {
     return { state, expiresAt };
   }
 
+  /** Returns the pending state binding without consuming it; callers must authenticate the same user/session before consume(). */
+  async getPendingContext(state: string): Promise<Pick<ConsumedMetaOAuthState, "tenantId" | "userId" | "sessionId" | "redirectUri"> | null> {
+    if (typeof state !== "string" || state.length < 32 || state.length > 128 || !/^[A-Za-z0-9_-]+$/.test(state)) return null;
+    const now = this.now();
+    const record = await this.db.collection<MetaOAuthStateDocument>("metaOAuthStates").findOne({
+      stateHash: stateHash(state),
+      redirectUri: this.redirectUri,
+      usedAt: { $exists: false },
+      expiresAt: { $gt: now },
+    }, { projection: { tenantId: 1, userId: 1, sessionId: 1, redirectUri: 1 } });
+    if (!record) return null;
+    return {
+      tenantId: record.tenantId,
+      userId: record.userId,
+      sessionId: record.sessionId,
+      redirectUri: record.redirectUri,
+    };
+  }
+
   /** Atomically consumes a one-time state bound to the same tenant, user and authenticated session. */
   async consume(
     state: string,
