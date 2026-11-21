@@ -28,7 +28,7 @@ The authoritative machine-readable contract is [MeBuMIP OpenAPI](../api/mebumip-
 
 ## Configuration and key separation
 
-The Meta routes are not registered unless all required provider and token-vault configuration is valid:
+Tenant connection/asset read and local-disconnect routes remain registered without provider credentials. OAuth start/callback and Page discovery return `503 META_NOT_CONFIGURED` until the complete provider and token-vault configuration is valid:
 
 - `META_APP_ID`
 - `META_APP_SECRET`
