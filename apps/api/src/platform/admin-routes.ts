@@ -474,8 +474,8 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const current=await readPlatformRuntimeConfig(db);
      const now=new Date();
      const revision=current.revision+1;
-     const next={_id:"global" as const,revision,allowedOrigins,apiOrigins,publicSettings:body.publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
-     await db.collection("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{createdAt:now}},{upsert:true,session});
+     const next={revision,allowedOrigins,apiOrigins,publicSettings:body.publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
+     await db.collection("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{_id:"global",createdAt:now}},{upsert:true,session});
      await db.collection("platformRuntimeConfigHistory").insertOne({...next,changeId:randomUUID(),actorUserId:p.userId},{session});
      await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.runtime_config.updated","runtime_configuration","global","success",{revision,reason:body.reason,allowedOriginCount:allowedOrigins.length,apiOriginKeys:Object.keys(apiOrigins).join(",")},session);
      return {statusCode:200,body:{status:"updated",revision,updatedAt:now.toISOString(),allowedOrigins,apiOrigins,publicSettings:body.publicSettings}};
