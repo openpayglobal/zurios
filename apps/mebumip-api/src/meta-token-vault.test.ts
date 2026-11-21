@@ -15,6 +15,9 @@ test("encrypts Meta tokens with AES-256-GCM and binds ciphertext to tenant and c
   assert.equal(vault.decrypt(envelope, context), token);
   assert.throws(() => vault.decrypt(envelope, { ...context, tenantId: "tenant-002" }), /META_TOKEN_DECRYPTION_FAILED/);
   assert.throws(() => vault.decrypt(envelope, { ...context, connectionId: "connection-002" }), /META_TOKEN_DECRYPTION_FAILED/);
+  const delimiterContext = { tenantId: "tenant:one", connectionId: "connection:two" };
+  const delimiterEnvelope = vault.encrypt(token, delimiterContext);
+  assert.throws(() => vault.decrypt(delimiterEnvelope, { tenantId: "tenant", connectionId: "one:connection:two" }), /META_TOKEN_DECRYPTION_FAILED/);
 });
 
 test("rotates old token envelopes to the active key without losing decryptability", () => {
