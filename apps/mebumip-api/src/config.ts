@@ -19,6 +19,14 @@ const envSchema = z.object({
   AUDIT_SIGNING_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   RESEND_API_KEY: z.string().min(10).optional(),
   MAIL_FROM: z.string().email().optional(),
+  META_APP_ID: z.string().regex(/^\\d+$/).optional(),
+  META_APP_SECRET: z.string().min(32).optional(),
+  META_REDIRECT_URI: z.string().url().optional(),
+  META_WEBHOOK_VERIFY_TOKEN: z.string().min(32).optional(),
+  META_GRAPH_API_VERSION: z.string().regex(/^v\\d+\\.\\d+$/).optional(),
+  META_MARKETING_API_VERSION: z.string().regex(/^v\\d+\\.\\d+$/).optional(),
+  META_TOKEN_ENCRYPTION_KEYRING: z.string().max(16384).optional(),
+  META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
 });
 
 const parsed = envSchema.superRefine((value, context) => {
@@ -76,6 +84,51 @@ const parsed = envSchema.superRefine((value, context) => {
   }
   if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY && !value.AUDIT_SIGNING_KEYRING) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });
+  }
+  let metaTokenKeyring: Record<string, unknown> | undefined;
+  if (value.META_TOKEN_ENCRYPTION_KEYRING) {
+    try {
+      const parsedRing: unknown = JSON.parse(value.META_TOKEN_ENCRYPTION_KEYRING);
+      if (!parsedRing || typeof parsedRing !== "object" || Array.isArray(parsedRing)) throw new Error("Meta token key ring must be a JSON object");
+      metaTokenKeyring = parsedRing as Record<string, unknown>;
+      if (Object.keys(metaTokenKeyring).length < 1 || Object.keys(metaTokenKeyring).length > 20) throw new Error("Meta token key ring must contain between 1 and 20 keys");
+      for (const [keyId, key] of Object.entries(metaTokenKeyring)) {
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Each Meta token key-ring entry must have a valid identifier and 32-byte hex key");
+      }
+      if (!value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID || value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID === "legacy" || !Object.hasOwn(metaTokenKeyring, value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID)) {
+        throw new Error("META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID must identify a non-legacy key in META_TOKEN_ENCRYPTION_KEYRING");
+      }
+      const mfaValues = new Set<string>();
+      if (value.MFA_ENCRYPTION_KEY) mfaValues.add(value.MFA_ENCRYPTION_KEY.toLowerCase());
+      if (value.MFA_ENCRYPTION_KEYRING) {
+        const ring = JSON.parse(value.MFA_ENCRYPTION_KEYRING) as Record<string, unknown>;
+        for (const key of Object.values(ring)) if (typeof key === "string") mfaValues.add(key.toLowerCase());
+      }
+      const auditValues = new Set<string>();
+      if (value.AUDIT_SIGNING_KEY) auditValues.add(Buffer.from(value.AUDIT_SIGNING_KEY).toString("hex"));
+      if (value.AUDIT_SIGNING_KEYRING) {
+        const ring = JSON.parse(value.AUDIT_SIGNING_KEYRING) as Record<string, unknown>;
+        for (const key of Object.values(ring)) if (typeof key === "string") auditValues.add(key.toLowerCase());
+      }
+      for (const key of Object.values(metaTokenKeyring)) {
+        if (typeof key === "string" && (mfaValues.has(key.toLowerCase()) || auditValues.has(key.toLowerCase()))) {
+          throw new Error("Meta token keys must be distinct from MFA encryption and audit signing keys");
+        }
+      }
+    } catch (error) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_TOKEN_ENCRYPTION_KEYRING"], message: error instanceof Error ? error.message : "Invalid Meta token key ring" });
+    }
+  } else if (value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID"], message: "An active Meta token key ID requires META_TOKEN_ENCRYPTION_KEYRING" });
+  }
+  if (value.META_APP_ID && (!value.META_APP_SECRET || !value.META_REDIRECT_URI || !value.META_GRAPH_API_VERSION || !value.META_TOKEN_ENCRYPTION_KEYRING || !value.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "A Meta app requires its app secret, HTTPS redirect URI, explicit Graph API version and dedicated token-encryption key ring" });
+  }
+  if (!value.META_APP_ID && (value.META_APP_SECRET || value.META_REDIRECT_URI || value.META_WEBHOOK_VERIFY_TOKEN)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_APP_ID"], message: "Meta app secret, redirect URI and webhook verify token require META_APP_ID" });
+  }
+  if (value.NODE_ENV === "production" && value.META_REDIRECT_URI && !value.META_REDIRECT_URI.startsWith("https://")) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["META_REDIRECT_URI"], message: "Production Meta OAuth redirect URI must use HTTPS" });
   }
 }).safeParse(process.env);
 if (!parsed.success) {
