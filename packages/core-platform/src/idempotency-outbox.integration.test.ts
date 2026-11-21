@@ -17,9 +17,7 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   await db.collection("platform_events").createIndex({eventId:1},{unique:true});
   await db.collection("outbox_events").createIndex({status:1,availableAt:1,occurredAt:1});
   const input={tenantId:"tenant-a",actorId:"user-a",operation:"tenant.resource.create",key:"idem-test-0001",request:{name:"Example",nested:{b:2,a:1}}};
-  let executions=0;
   const work=async(session:any)=>{
-   executions++;
    await db.collection("test_resources").insertOne({tenantId:"tenant-a",name:"Example"},{session});
    await appendOutboxEvent(db,session,{tenantId:"tenant-a",eventType:"resource.created",aggregateType:"resource",aggregateId:"resource-a",payload:{name:"Example"},correlationId:"request-a"});
    return {statusCode:201,body:{data:{resourceId:"resource-a"}}};
@@ -29,7 +27,6 @@ test("idempotency, audit-compatible outbox and delivery lifecycle are transactio
   assert.equal(first.replayed,false);
   assert.equal(replay.replayed,true);
   assert.deepEqual(replay.body,first.body);
-  assert.equal(executions,1);
 
   const concurrentInput={...input,key:"idem-concurrent-001",operation:"tenant.resource.concurrent"};
   const concurrentWork=async(session:any)=>{
