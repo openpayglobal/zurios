@@ -384,3 +384,29 @@ Cookie-authenticated unsafe requests require CSRF cookie/header validation and a
 - Added deterministic unit/config tests and replica-set OAuth-state integration tests; no live Meta calls or credentials are used.
 
 **Boundary:** this is Phase 2 foundation only. OAuth callback/code exchange, connection persistence/revocation, Facebook Login for Business, Page/Instagram asset discovery, publishing, insights, webhook subscriptions, app review and customer-facing screens remain open.
+
+
+## Implementation continuation — 2026-11-21 (latest checkpoint)
+
+### MeBuMIP security and audit
+
+- Critical business mutations and their audit events are now committed in the same MongoDB transaction using the keyring-aware predecessor-linked audit chain. Email delivery remains outside transactions and is separately audited.
+- Audit appends reject an invalid/tampered immediate predecessor. Full-history streaming verification remains the authoritative integrity check and runs during startup/readiness.
+- Backfill is dry-run by default, capped at 5,000 validated events, uses one ordered transactional bulk write, and refuses partial/mixed or oversized histories. Apply mode now requires a separate ephemeral `AUDIT_MIGRATION_MONGODB_URI`; the runtime API credential is not to be used for migration. No production apply has been performed.
+- Privileged audit exports require a signed manifest, are no-store and generate their own chain event. A signed package is still only prepared until an independent WORM/object-lock sink is selected and verified.
+- Password change and MFA reset have dedicated strict rate limits. Cookie-authenticated unsafe requests require CSRF and exact Origin allowlisting.
+
+### Meta Objective A technical foundation
+
+- Added a Graph API v27.0 transport client with same-origin pagination, no credential query forwarding, App Secret Proof (HMAC-SHA256), GET-only retry, redirect/cookie/cache/referrer restrictions, provider-error credential redaction and response-version pinning.
+- Added a dedicated tenant/connection-bound AES-256-GCM token-vault primitive with key rotation and a configuration-backed factory. Meta key material is validated as separate from MFA and audit keys. Safe readiness diagnostics reveal configuration presence only.
+- Added Meta API environment examples. This is groundwork only: OAuth authorization/callback, token persistence, Page discovery, Instagram linking, webhooks, app review and live Meta operations remain outstanding. No Meta account is connected.
+
+### Verification and release gates
+
+- [MeBuMIP Phase 1 verification #44869148588](https://github.com/openpayglobal/zurios/actions/runs/44869148588) passed on code/test checkpoint `4c882549ace78a5eec7da206aee7fa8c0cf824a1`.
+- [Full monorepo CI #44869148599](https://github.com/openpayglobal/zurios/actions/runs/44869148599) is still in progress at the time of this register update. The later docs/environment-example commits have their own runs queued/in progress.
+- Vercel current-head deployments remain blocked by build-rate-limit. Production frontend/API are old checkpoints; API production is in error. No production secrets, Meta credentials, WORM destination or deployment promotion have been configured.
+- ODEI requirements remain unavailable (connected repository returned 404). PR #13 and PR #14 remain divergent and unmerged; reconcile the complete diff before merge.
+
+**Status:** Phase 1 implementation and verification are materially advanced; production acceptance remains open. MeBuMIP objectives A–E remain future functional phases (2–6); Objective A now has transport/token-encryption groundwork only.
