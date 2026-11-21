@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -79,68 +80,69 @@ try {
     }
   });
 
-  const runtimeReadRoutes = async (instance: typeof app) => {
-    instance.get("/platform/public/runtime-config", async (request, reply) => {
-      const runtime = await readPlatformRuntimeConfig(db);
-      const etag = `W/"mac-runtime-${runtime.revision}"`;
-      if (request.headers["if-none-match"] === etag) return reply.code(304).header("etag", etag).send();
-      return reply
-        .header("etag", etag)
-        .header("cache-control", "public, max-age=30, stale-while-revalidate=60")
-        .send({
-          revision: runtime.revision,
-          apiOrigins: runtime.apiOrigins,
-          publicSettings: {
-            ...runtime.publicSettings,
-            accessRequestsEnabled: runtime.publicSettings.accessRequestsEnabled ?? authConfig.accessRequestsEnabled,
-            privacyNoticeUrl: runtime.publicSettings.privacyNoticeUrl ?? authConfig.accessRequestsPrivacyNoticeUrl ?? null,
-          },
-        });
-    });
-
-    instance.get("/platform/internal/runtime-config", async (request, reply) => {
-      const authorization = request.headers.authorization;
-      const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
-      if (!token) return reply.code(401).send({ error: "WORKLOAD_IDENTITY_REQUIRED" });
-      try {
-        const { payload } = await jwtVerify(token, vercelJwks, {
-          issuer: teamIssuer,
-          audience: teamAudience,
-          algorithms: ["RS256"],
-        });
-        const projectId = typeof payload.project_id === "string" ? payload.project_id : "";
-        const expectedProjects: Record<string, string> = {
-          "prj_vkIcPCsN1TW3WOturczl3FcWEJkq": "zurios-api",
-          "prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ": "zuri-mebumip-api",
-        };
-        const expectedProject = expectedProjects[projectId];
-        const expectedSubject = expectedProject
-          ? `owner:${teamSlug}:project:${expectedProject}:environment:production`
-          : "";
-        if (
-          payload.owner_id !== teamId ||
-          payload.environment !== "production" ||
-          !expectedProject ||
-          payload.sub !== expectedSubject
-        ) return reply.code(403).send({ error: "WORKLOAD_IDENTITY_NOT_AUTHORIZED" });
-
-        const runtime = await readPlatformRuntimeConfig(db);
-        return reply.header("cache-control", "no-store").send({
-          revision: runtime.revision,
-          service: expectedProject,
-          apiOrigin: expectedProject === "zuri-mebumip-api" ? runtime.apiOrigins.mebumip : runtime.apiOrigins.zuriOs,
-          allowedOrigins: runtime.allowedOrigins,
-          privateSettings: {},
-          secretAccess: "blocked_until_encryption_kms_is_configured",
-        });
-      } catch {
-        return reply.code(401).send({ error: "WORKLOAD_IDENTITY_INVALID" });
-      }
-    });
+  const publicRuntimeConfigHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const runtime = await readPlatformRuntimeConfig(db);
+    const etag = `W/"mac-runtime-${runtime.revision}"`;
+    if (request.headers["if-none-match"] === etag) return reply.code(304).header("etag", etag).send();
+    return reply
+      .header("etag", etag)
+      .header("cache-control", "public, max-age=30, stale-while-revalidate=60")
+      .send({
+        revision: runtime.revision,
+        apiOrigins: runtime.apiOrigins,
+        publicSettings: {
+          ...runtime.publicSettings,
+          accessRequestsEnabled: runtime.publicSettings.accessRequestsEnabled ?? authConfig.accessRequestsEnabled,
+          privacyNoticeUrl: runtime.publicSettings.privacyNoticeUrl ?? authConfig.accessRequestsPrivacyNoticeUrl ?? null,
+        },
+      });
   };
 
-  await app.register(runtimeReadRoutes);
-  await app.register(runtimeReadRoutes, { prefix: "/v1" });
+  const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const authorization = request.headers.authorization;
+    const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+    if (!token) return reply.code(401).send({ error: "WORKLOAD_IDENTITY_REQUIRED" });
+    try {
+      const { payload } = await jwtVerify(token, vercelJwks, {
+        issuer: teamIssuer,
+        audience: teamAudience,
+        algorithms: ["RS256"],
+      });
+      const projectId = typeof payload.project_id === "string" ? payload.project_id : "";
+      const expectedProjects: Record<string, string> = {
+        "prj_vkIcPCsN1TW3WOturczl3FcWEJkq": "zurios-api",
+        "prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ": "zuri-mebumip-api",
+      };
+      const expectedProject = expectedProjects[projectId];
+      const expectedSubject = expectedProject
+        ? `owner:${teamSlug}:project:${expectedProject}:environment:production`
+        : "";
+      if (
+        payload.owner_id !== teamId ||
+        payload.environment !== "production" ||
+        !expectedProject ||
+        payload.sub !== expectedSubject
+      ) return reply.code(403).send({ error: "WORKLOAD_IDENTITY_NOT_AUTHORIZED" });
+
+      const runtime = await readPlatformRuntimeConfig(db);
+      return reply.header("cache-control", "no-store").send({
+        revision: runtime.revision,
+        service: expectedProject,
+        apiOrigin: expectedProject === "zuri-mebumip-api" ? runtime.apiOrigins.mebumip : runtime.apiOrigins.zuriOs,
+        allowedOrigins: runtime.allowedOrigins,
+        privateSettings: {},
+        secretAccess: "blocked_until_encryption_kms_is_configured",
+      });
+    } catch {
+      return reply.code(401).send({ error: "WORKLOAD_IDENTITY_INVALID" });
+    }
+  };
+
+  app.get("/platform/public/runtime-config", publicRuntimeConfigHandler);
+  app.get("/v1/platform/public/runtime-config", publicRuntimeConfigHandler);
+  app.get("/platform/internal/runtime-config", internalRuntimeConfigHandler);
+  app.get("/v1/platform/internal/runtime-config", internalRuntimeConfigHandler);
+
   await app.register(authRoutes(db, authConfig));
   await app.register(platformRoutes(db, authConfig), { prefix: "/v1" });
   await app.register(adminRoutes(db, authConfig), { prefix: "/v1" });
