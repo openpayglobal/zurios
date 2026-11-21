@@ -83,3 +83,17 @@ Three separate RS256 KMS issuers now exist, each with server-generated active si
 - Audit event signing: `55210f93-c052-45a5-aeb8-e083ed0d5dce`, key `da6060ee-9fda-4389-a652-281c256be6d2`.
 
 The API exposes a platform-permission-protected `GET /v1/mac/infrastructure` inventory route and the MeBuMIP MAC now has an Infrastructure & Secrets panel. It returns only non-secret metadata, probes the connected database's replica-set/transaction topology, and reports current environment-based key/origin/provider readiness. KMS keyrings are marked provisioned but pending runtime signer/verifier integration; no claim is made that they already sign application sessions or audit events.
+
+
+## 8. MeBuMIP Vercel projects
+
+Two projects were created in the connected Vercel team and linked to the monorepo:
+
+| Project | ID | Root | Domain |
+|---|---|---|---|
+| `zuri-mebumip` | `prj_ywOZfmePHpz6Gdjm7BBSAdjLDEU2` | `apps/mebumip-web` | `zuri-mebumip-openpayglobal-5300s-projects.vercel.app` |
+| `zuri-mebumip-api` | `prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ` | `apps/mebumip-api` | `zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app` |
+
+Both use Node 22, monorepo source files outside their app root and preview-only SSO protection. The API project has team OIDC token generation enabled. The MeBuMIP API workload identity issuer is `501ff21c-7c24-4e9e-b23e-789256cd6edd` with active key `5d401897-e851-438f-a56c-b28453aff756`, scoped to this API project's Production environment.
+
+Projects are provisioned but not deployed. Production cannot start until required MongoDB, MFA encryption, audit and email provider configuration is available. No production environment values have been fabricated or copied.
