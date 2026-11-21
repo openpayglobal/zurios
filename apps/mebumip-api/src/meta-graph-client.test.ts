@@ -39,6 +39,13 @@ test("fails closed when Meta reports a different Graph API version", async () =>
   await assert.rejects(() => client.request("me", { accessToken: token }), /unexpected version/);
 });
 
+test("restricts raw input_token parameters to the debug_token GET endpoint", async () => {
+  const client = new MetaGraphClient({ version: "v27.0", fetchImpl: async () => new Response(JSON.stringify({ data: {} }), { status: 200 }) });
+  await assert.rejects(() => client.request("me", { accessToken: token, query: { input_token: "sensitive-token" } }), /restricted to the Meta debug_token GET endpoint/);
+  await assert.rejects(() => client.request("debug_token", { accessToken: token, method: "POST", body: { input_token: "sensitive-token" } }), /restricted to the Meta debug_token GET endpoint/);
+  assert.deepEqual(await client.request("debug_token", { accessToken: token, query: { input_token: "sensitive-token" } }), { data: {} });
+});
+
 test("rejects unversioned, traversal and absolute request paths", async () => {
   const client = new MetaGraphClient({ version: "v27.0", fetchImpl: async () => new Response("{}", { status: 200 }) });
   await assert.rejects(() => client.request("../me", { accessToken: token }), MetaGraphError);
