@@ -181,3 +181,15 @@ The repository now includes:
 - Safe readiness diagnostics that expose only configured flags and selected API versions, never app secrets, webhook tokens or key material.
 
 These components are mocked/contract-tested and do not require live Meta credentials. The OAuth callback/code exchange, token persistence, asset selection, Page/Instagram operations, webhook subscriptions and Meta App Review remain outstanding. Objective A is therefore in Phase 2 foundation work, not feature-complete; Objectives B–E remain unstarted.
+
+## 13. Phase 2 credential persistence and OAuth-state progress (2026-11-21)
+
+The provider foundation now includes:
+
+- A version-explicit Graph API transport client with server-side bearer credentials, optional/required App Secret Proof, strict host/version pagination, bounded safe-GET retries for transient and Meta throttle codes, and no automatic retries for mutations.
+- A dedicated AES-256-GCM token vault with tenant/connection authenticated associated data and key IDs.
+- A tenant-scoped Meta connection persistence service that returns metadata-only summaries, enforces per-tenant provider identity uniqueness, denies token access across tenants and expiry boundaries, supports audited per-connection encryption-key rotation, and clears ciphertext on audited revocation.
+- A five-minute OAuth state service that stores only a SHA-256 state hash, binds state to tenant/user/session and the exact configured redirect URI, consumes atomically once, and audits creation, success and rejection.
+- Configuration validation for numeric app IDs, explicit Graph/Marketing API versions, HTTPS redirect URIs (localhost HTTP only in non-production), app-secret proof, and a dedicated token keyring separate from audit/MFA keys.
+
+The implementation has no live Meta credentials and does not yet exchange authorization codes, create callback routes, discover/select Page or Instagram assets, refresh/re-authorize tokens with Meta, subscribe/verify webhooks, publish content, run Marketing API operations or complete Meta App Review. Objective A is still foundation work, not feature complete; Objectives B–E remain not started.
