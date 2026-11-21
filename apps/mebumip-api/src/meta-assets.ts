@@ -234,6 +234,7 @@ export async function rotateMetaPageAssetTokenEnvelopes(
   const assets = await collection.find({
     tenantId, connectionId, status: "active", pageAccessTokenCiphertext: { $type: "string" },
   }).limit(2_000).toArray();
+  const now = new Date();
   const updates = assets.flatMap((asset) => {
     if (!asset.pageAccessTokenCiphertext) return [];
     const context = { tenantId, connectionId: connectionId + ":page:" + asset.providerAssetId };
@@ -241,15 +242,16 @@ export async function rotateMetaPageAssetTokenEnvelopes(
     return envelope === asset.pageAccessTokenCiphertext ? [] : [{
       updateOne: {
         filter: { _id: asset._id, tenantId, connectionId, status: "active", pageAccessTokenCiphertext: asset.pageAccessTokenCiphertext },
-        update: { $set: { pageAccessTokenCiphertext: envelope, updatedAt: new Date() } },
+        update: { $set: { pageAccessTokenCiphertext: envelope, updatedAt: now } },
       },
     }];
   });
   await withAuditTransaction(
     db,
     async (session) => {
-      if (updates.length) await collection.bulkWrite(updates, { session, ordered: true });
-      return { rotated: updates.length };
+      const result = updates.length ? await collection.bulkWrite(updates, { session, ordered: true }) : null;
+      if (result && result.matchedCount !== updates.length) throw new Error("META_ASSET_ROTATION_CONFLICT");
+      return { rotated: result?.modifiedCount ?? 0 };
     },
     (result) => ({
       actorUserId,
