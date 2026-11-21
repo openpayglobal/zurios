@@ -202,9 +202,13 @@ const auditDigest = (payload: string) => createHash("sha256").update(payload).di
 export function createChainedAuditEvent(input: AuditEventInput, sequence: number, previousHash: string) {
   if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_INVALID");
   if (sequence === 1 ? previousHash !== AUDIT_GENESIS_HASH : !/^[a-f0-9]{64}$/i.test(previousHash)) throw new Error("AUDIT_PREDECESSOR_HASH_INVALID");
-  const occurredAt = input.occurredAt ?? new Date();
-  const eventHash = auditDigest(canonicalAuditChainPayload({ ...input, sequence, previousHash, occurredAt }));
-  return createAuditEvent({ ...input, occurredAt, sequence, previousHash, eventHash });
+  const safeInput: AuditEventInput = {
+    ...input,
+    ...(input.metadata ? { metadata: redactAuditMetadata(input.metadata) } : {}),
+  };
+  const occurredAt = safeInput.occurredAt ?? new Date();
+  const eventHash = auditDigest(canonicalAuditChainPayload({ ...safeInput, sequence, previousHash, occurredAt }));
+  return createAuditEvent({ ...safeInput, occurredAt, sequence, previousHash, eventHash });
 }
 
 export function verifyAuditChainEvents(events: Array<Record<string, unknown>>, expectedFirstSequence?: number): boolean {
