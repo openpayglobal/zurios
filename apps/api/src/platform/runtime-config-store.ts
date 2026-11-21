@@ -1,13 +1,13 @@
 import type { ClientSession, Db } from "mongodb";
 
 export type RuntimePublicSettings = {
-  accessRequestsEnabled?: boolean;
-  privacyNoticeUrl?: string | null;
-  supportEmail?: string;
-  supportUrl?: string;
-  defaultLocale?: string;
-  defaultCurrency?: string;
-  timezone?: string;
+  accessRequestsEnabled: boolean | null;
+  privacyNoticeUrl: string | null;
+  supportEmail: string | null;
+  supportUrl: string | null;
+  defaultLocale: string | null;
+  defaultCurrency: string | null;
+  timezone: string | null;
 };
 
 export type PlatformRuntimeConfig = {
@@ -75,7 +75,7 @@ export const defaultPlatformRuntimeConfig: PlatformRuntimeConfig = {
     zuriOs: "https://zurios-api-openpayglobal-5300s-projects.vercel.app",
     mebumip: "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app",
   },
-  publicSettings: {},
+  publicSettings: { accessRequestsEnabled: null, privacyNoticeUrl: null, supportEmail: null, supportUrl: null, defaultLocale: null, defaultCurrency: null, timezone: null },
   privateSettings: {},
 };
 
