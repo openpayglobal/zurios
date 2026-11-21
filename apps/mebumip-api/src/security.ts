@@ -80,6 +80,19 @@ export interface AuditEventInput {
 }
 
 type AuditEventPayload = Omit<AuditEventInput, "occurredAt"> & { occurredAt: Date };
+const sensitiveAuditKey = /(password|secret|token|authorization|cookie|otp|recovery|credential|private.?key)/i;
+function redactAuditMetadata(value: unknown, depth = 0): unknown {
+  if (depth > 8) return "[MAX_DEPTH]";
+  if (Array.isArray(value)) return value.slice(0, 100).map(item => redactAuditMetadata(item, depth + 1));
+  if (value && typeof value === "object") {
+    const safe: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value as Record<string, unknown>).slice(0, 100)) {
+      safe[key] = sensitiveAuditKey.test(key) ? "[REDACTED]" : redactAuditMetadata(child, depth + 1);
+    }
+    return safe;
+  }
+  return typeof value === "string" ? value.slice(0, 4000) : value;
+}
 
 type AuditKeyRing={keys:Record<string,Buffer>;activeKeyId:string;legacyKey?:Buffer};
 function loadAuditKeyRing():AuditKeyRing|null{
@@ -124,7 +137,11 @@ function auditPayload(event: AuditEventPayload,keyId?:string): string {
 }
 
 export function createAuditEvent(input: AuditEventInput) {
-  const event: AuditEventPayload = { ...input, occurredAt: input.occurredAt ?? new Date() };
+  const event: AuditEventPayload = {
+    ...input,
+    ...(input.metadata ? { metadata: redactAuditMetadata(input.metadata) as NonNullable<AuditEventInput["metadata"]> } : {}),
+    occurredAt: input.occurredAt ?? new Date(),
+  };
   const ring=loadAuditKeyRing();
   if(ring){
    const keyId=ring.activeKeyId,key=ring.keys[keyId]!;
