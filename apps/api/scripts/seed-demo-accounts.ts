@@ -1,4 +1,5 @@
 import {MongoClient} from "mongodb";
+import {randomBytes} from "node:crypto";
 import {createMembership,createUser,provisionTenant,runCoreMigrations,seedPlatform,setTenantStatus} from "@zuri/core-platform";
 import {acceptInvitation,issueInvitation} from "../src/platform/auth-service.js";
 import {hashPassword} from "../src/platform/auth-crypto.js";
@@ -8,9 +9,10 @@ const isProduction=process.env.VERCEL_ENV==="production"||(process.env.NODE_ENV=
 if(!enabled)throw new Error("Refusing to seed demo identities: set DEMO_SEED_ENABLED=true explicitly.");
 if(isProduction)throw new Error("Demo account seeding is forbidden in production.");
 const uri=process.env.MONGODB_URI;
-const password=process.env.DEMO_SEED_PASSWORD;
+const suppliedPassword=process.env.DEMO_SEED_PASSWORD;
+const password=suppliedPassword??randomBytes(32).toString("base64url");
 if(!uri)throw new Error("MONGODB_URI is required for the isolated demo database.");
-if(!password||password.length<16)throw new Error("DEMO_SEED_PASSWORD must contain at least 16 characters.");
+if(password.length<16)throw new Error("DEMO_SEED_PASSWORD must contain at least 16 characters.");
 if(process.env.DEMO_DATABASE_NAME?.toLowerCase().includes("prod"))throw new Error("Demo database name must not contain 'prod'.");
 
 const databaseName=process.env.DEMO_DATABASE_NAME??"zuri_demo";
@@ -65,5 +67,5 @@ try{
   {scenario:"standard-member",email:standard.emailNormalized},
   {scenario:"multi-workspace-member",email:multi.emailNormalized},
   {scenario:"no-workspace-membership",email:unassigned.emailNormalized}
- ],password:"Use the DEMO_SEED_PASSWORD value supplied to this command; it is intentionally not printed or persisted in plaintext.",rerun:pending?"existing seed baseline reconciled":"initial seed created"},null,2)+"\n");
+ ],password:suppliedPassword?"Provided through DEMO_SEED_PASSWORD; not printed.":"GENERATED ONE-TIME PASSWORD — store securely and set VITE_DEMO_PASSWORD in the protected Preview environment: "+password,rerun:pending?"existing seed baseline reconciled":"initial seed created"},null,2)+"\n");
 }finally{await client.close();}
