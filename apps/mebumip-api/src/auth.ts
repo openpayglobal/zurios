@@ -526,7 +526,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     app.post("/v1/auth/mfa/setup", async (request, reply) => {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return unauthorized(reply);
-    if (!config.MFA_ENCRYPTION_KEY) return reply.code(503).send({ error: "MFA_NOT_CONFIGURED" });
+    if (!config.MFA_ENCRYPTION_KEY && !config.MFA_ENCRYPTION_KEYRING) return reply.code(503).send({ error: "MFA_NOT_CONFIGURED" });
     const parsed = z.object({ currentPassword: z.string().min(1).max(256) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: "INVALID_REQUEST" });
     const user = await db.collection("users").findOne({ _id: new ObjectId(resolved.principal.userId), status: "active" });
@@ -535,7 +535,22 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     }
     if (user.mfaEnabled === true) return reply.code(409).send({ error: "MFA_ALREADY_ENABLED" });
     const secret = generateTotpSecret();
-    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaPendingSecret: encryptMfaSecret(secret), mfaSetupAt: new Date(), mfaSetupExpiresAt: new Date(Date.now() + 15 * 60_000) } });
+    const encryptedSecret = encryptMfaSecret(secret);
+    const setupAt = new Date();
+    const setupExpiresAt = new Date(setupAt.getTime() + 15 * 60_000);
+    await withAuditTransaction(
+      db,
+      async (session) => {
+        const updated = await db.collection("users").updateOne(
+          { _id: user._id, status: "active", mfaEnabled: { $ne: true } },
+          { $set: { mfaPendingSecret: encryptedSecret, mfaSetupAt: setupAt, mfaSetupExpiresAt: setupExpiresAt } },
+          { session },
+        );
+        if (updated.modifiedCount !== 1) throw new Error("MFA_SETUP_STATE_CHANGED");
+        return { userId: resolved.principal.userId };
+      },
+      () => ({ actorUserId: resolved.principal.userId, action: "auth.mfa.setup.started", targetType: "user", outcome: "success", correlationId: request.id }),
+    );
     const issuer = "Zuri%20MeBuMIP";
     const label = encodeURIComponent(String(user.normalizedEmail));
     return reply.send({ secret, otpauthUrl: `otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`, note: "Add this secret to an authenticator app, then confirm with /v1/auth/mfa/enable. The secret is shown only once." });
@@ -550,8 +565,25 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     if (!user || typeof user.mfaPendingSecret !== "string" || !(user.mfaSetupExpiresAt instanceof Date) || user.mfaSetupExpiresAt.getTime() <= Date.now()) return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED_OR_EXPIRED" });
     if (!verifyTotp(decryptMfaSecret(user.mfaPendingSecret), parsed.data.code)) { await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enable.denied", "user", "denied"); return reply.code(400).send({ error: "MFA_CODE_INVALID" }); }
     const recoveryCodes = generateMfaRecoveryCodes();
-    await db.collection("users").updateOne({ _id: user._id }, { $set: { mfaEnabled: true, mfaEnabledAt: new Date(), mfaSecretEncrypted: user.mfaPendingSecret, mfaRecoveryCodeHashes: recoveryCodes.map((code) => hashToken(normalizeMfaRecoveryCode(code))) }, $unset: { mfaPendingSecret: "", mfaSetupExpiresAt: "" } });
-    await writeAudit(db, request, resolved.principal.userId, "auth.mfa.enabled", "user", "success");
+    const enabledAt = new Date();
+    try {
+      await withAuditTransaction(
+        db,
+        async (session) => {
+          const updated = await db.collection("users").updateOne(
+            { _id: user._id, mfaEnabled: { $ne: true }, mfaPendingSecret: user.mfaPendingSecret, mfaSetupExpiresAt: { $gt: enabledAt } },
+            { $set: { mfaEnabled: true, mfaEnabledAt: enabledAt, mfaSecretEncrypted: user.mfaPendingSecret, mfaRecoveryCodeHashes: recoveryCodes.map((code) => hashToken(normalizeMfaRecoveryCode(code))) }, $unset: { mfaPendingSecret: "", mfaSetupExpiresAt: "" } },
+            { session },
+          );
+          if (updated.modifiedCount !== 1) throw new Error("MFA_SETUP_NOT_STARTED_OR_EXPIRED");
+          return { userId: resolved.principal.userId };
+        },
+        () => ({ actorUserId: resolved.principal.userId, action: "auth.mfa.enabled", targetType: "user", outcome: "success", correlationId: request.id }),
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "MFA_SETUP_NOT_STARTED_OR_EXPIRED") return reply.code(409).send({ error: "MFA_SETUP_NOT_STARTED_OR_EXPIRED" });
+      throw error;
+    }
     return reply.send({ status: "mfa_enabled", recoveryCodes, recoveryCodesWarning: "Shown once. Store these codes securely; each code can be used once." });
   });
 
