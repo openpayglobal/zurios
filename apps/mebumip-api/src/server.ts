@@ -40,13 +40,6 @@ try {
     credentials: true,
   });
 
-  registerAuthHooks(app, db);
-  registerAuthRoutes(app, db);
-  registerAdminRoutes(app, db);
-  registerTenantMemberRoutes(app, db);
-  registerCustomerWorkflowRoutes(app, db);
-  registerInfrastructureRoutes(app, db);
-
   app.get("/health/live", async () => ({ status: "ok", service: "mebumip-api" }));
   app.get("/health/ready", async (_request, reply) => {
     try {
@@ -60,6 +53,13 @@ try {
       return reply.code(503).send({ status: "not_ready", database: "unavailable" });
     }
   });
+
+  registerAuthHooks(app, db);
+  registerAuthRoutes(app, db);
+  registerAdminRoutes(app, db);
+  registerTenantMemberRoutes(app, db);
+  registerCustomerWorkflowRoutes(app, db);
+  registerInfrastructureRoutes(app, db);
 
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
 } catch (error) {
