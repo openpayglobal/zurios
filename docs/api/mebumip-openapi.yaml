@@ -7,7 +7,7 @@ info:
     identifier: LicenseRef-Proprietary
   description: |
     API contract for Zuri Meta Business Management and Integration Platform.
-    This specification describes the currently implemented MAC/MAD audit endpoints.
+    This specification covers implemented MAC/MAD audit endpoints and the tenant-authorized Meta OAuth connection foundation.
 servers:
   - url: /
     description: API root; deployment base URL is configured per environment.
@@ -18,6 +18,8 @@ tags:
     description: Privileged audit verification, export and archive preparation.
   - name: MAD
     description: Read-only operational visibility.
+  - name: Meta Integrations
+    description: Tenant-authorized Meta OAuth connection lifecycle; provider tokens are never returned.
 paths:
   /v1/mac/audit-events:
     get:
@@ -67,6 +69,188 @@ paths:
         "403": {description: Platform audit-read permission required}
         "409": {description: "Sequence gap, unsigned manifest or invalid event signature"}
         "503": {description: Audit signing key is not configured}
+  /v1/tenants/{tenantId}/meta/oauth/start:
+    post:
+      tags: [Meta Integrations]
+      operationId: startTenantMetaOAuth
+      summary: Start a tenant-scoped Meta authorization flow
+      description: Requires an active tenant membership with meta:connections:write and recent MFA step-up. The server persists only a hash of a one-time state bound to the tenant, user and session.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mebumip_session
+  schemas:
+    MetaOAuthStartResponse:
+      type: object
+      additionalProperties: false
+      required: [authorizationUrl, expiresAt]
+      properties:
+        authorizationUrl: {type: string, format: uri}
+        expiresAt: {type: string, format: date-time}
+    MetaConnectionSummary:
+      type: object
+      additionalProperties: false
+      required: [tenantId, connectionId, provider, providerUserId, grantedScopes, status, createdAt, updatedAt]
+      properties:
+        tenantId: {type: string}
+        connectionId: {type: string, format: uuid}
+        provider: {type: string, const: meta}
+        providerUserId: {type: string}
+        providerUserName: {type: string}
+        grantedScopes: {type: array, items: {type: string}}
+        expiresAt: {type: string, format: date-time}
+        dataAccessExpiresAt: {type: string, format: date-time}
+        status: {type: string, enum: [connected, revoked]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        revokedAt: {type: string, format: date-time}
+}}
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                scopes:
+                  type: array
+                  minItems: 1
+                  maxItems: 20
+                  uniqueItems: true
+                  items:
+                    type: string
+                    enum: [public_profile, pages_show_list, pages_read_engagement, pages_manage_posts, pages_manage_metadata, instagram_basic, instagram_content_publish, instagram_manage_comments]
+      responses:
+        "200":
+          description: Meta authorization URL and one-time state expiry; no provider token is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaOAuthStartResponse"
+        "400": {description: Invalid or unsupported scope request}
+        "401": {description: Authentication required}
+        "403": {description: Tenant permission or recent MFA step-up required}
+        "429": {description: OAuth initiation rate limit exceeded}
+  /v1/meta/oauth/callback:
+    get:
+      tags: [Meta Integrations]
+      operationId: completeTenantMetaOAuth
+      summary: Complete a Meta authorization callback
+      description: Requires the same authenticated user and session that initiated the flow, current tenant connection permission and recent MFA step-up. The one-time state is consumed before exchanging and validating the code. Provider tokens are encrypted before persistence and are never returned.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: state, in: query, required: true, schema: {type: string, minLength: 32, maxLength: 128}}
+        - {name: code, in: query, required: false, schema: {type: string, minLength: 8, maxLength: 4096}}
+        - {name: error, in: query, required: false, schema: {type: string, maxLength: 128}}
+        - {name: error_description, in: query, required: false, schema: {type: string, maxLength: 2048}}
+      responses:
+        "201":
+          description: Provider identity validated and encrypted connection created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, connection]
+                properties:
+                  status: {type: string, const: connected}
+                  connection: {$ref: "#/components/schemas/MetaConnectionSummary"}
+        "400": {description: Invalid, expired, replayed state or provider authorization denied}
+        "401": {description: Original authenticated session required}
+        "403": {description: Original user/session, tenant permission or MFA step-up mismatch}
+        "409": {description: This Meta provider identity is already connected to the tenant}
+        "429": {description: OAuth callback rate limit exceeded}
+        "502": {description: Provider exchange or token validation failed}
+  /v1/tenants/{tenantId}/meta/connections:
+    get:
+      tags: [Meta Integrations]
+      operationId: listTenantMetaConnections
+      summary: List Meta connections for a tenant
+      description: Returns provider identity and granted permission metadata only. Encrypted access tokens are excluded.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+}}
+      responses:
+        "200":
+          description: Tenant Meta connections
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: "#/components/schemas/MetaConnectionSummary"}
+        "401": {description: Authentication required}
+        "403": {description: Tenant connection-read permission required}
+  /v1/tenants/{tenantId}/meta/connections/{connectionId}:
+    delete:
+      tags: [Meta Integrations]
+      operationId: revokeTenantMetaConnection
+      summary: Revoke and erase a tenant Meta connection token
+      description: Requires tenant meta:connections:write permission and recent MFA step-up. The encrypted token is cleared and the action is audited transactionally.
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - {name: tenantId, in: path, required: true, schema: {type: string, pattern: '^[a-fA-F0-9]{24}    get:
+      tags: [MAD]
+      operationId: getMeBuMIPOperationalOverview
+      summary: Read operational aggregates for the MAD dashboard
+      responses:
+        "200": {description: Read-only operational aggregates}
+        "401": {description: Authentication required}
+        "403": {description: Platform metrics-read permission required}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+}}
+        - {name: connectionId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        "204": {description: Connection revoked and encrypted token cleared}
+        "401": {description: Authentication required}
+        "403": {description: Tenant connection-write permission or recent MFA step-up required}
+        "404": {description: Connection not found in this tenant}
   /v1/mad/overview:
     get:
       tags: [MAD]
