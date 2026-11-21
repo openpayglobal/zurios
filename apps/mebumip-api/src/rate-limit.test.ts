@@ -33,3 +33,9 @@ test("Meta OAuth initiation and callback use dedicated anti-abuse windows", () =
   assert.equal(callback?.limit, 20);
   assert.equal(callback?.windowMs, 15 * 60_000);
 });
+
+test("Meta Page asset discovery has a bounded per-connection anti-abuse window", () => {
+  const discovery = rateLimitPolicyForPath("/v1/tenants/:tenantId/meta/connections/:connectionId/assets/discover");
+  assert.equal(discovery?.limit, 20);
+  assert.equal(discovery?.windowMs, 60 * 60_000);
+});
