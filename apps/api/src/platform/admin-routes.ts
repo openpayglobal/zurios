@@ -16,7 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
-import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin} from "./runtime-config-store.js";
+import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin,type PlatformRuntimeConfig} from "./runtime-config-store.js";
 import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -475,7 +475,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const now=new Date();
      const revision=current.revision+1;
      const next={revision,allowedOrigins,apiOrigins,publicSettings:body.publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
-     await db.collection("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{_id:"global",createdAt:now}},{upsert:true,session});
+     await db.collection<PlatformRuntimeConfig>("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{_id:"global",createdAt:now}},{upsert:true,session});
      await db.collection("platformRuntimeConfigHistory").insertOne({...next,changeId:randomUUID(),actorUserId:p.userId},{session});
      await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.runtime_config.updated","runtime_configuration","global","success",{revision,reason:body.reason,allowedOriginCount:allowedOrigins.length,apiOriginKeys:Object.keys(apiOrigins).join(",")},session);
      return {statusCode:200,body:{status:"updated",revision,updatedAt:now.toISOString(),allowedOrigins,apiOrigins,publicSettings:body.publicSettings}};
