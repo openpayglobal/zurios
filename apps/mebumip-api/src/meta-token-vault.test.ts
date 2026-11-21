@@ -38,6 +38,7 @@ test("rejects malformed envelopes, unknown keys, invalid key rings and tampered 
   const parts = envelope.split(".");
   parts[4] = (parts[4] ?? "") + "A";
   assert.throws(() => vault.decrypt(parts.join("."), context), /META_TOKEN_DECRYPTION_FAILED|META_TOKEN_ENVELOPE_INVALID/);
+  assert.throws(() => vault.rotate(parts.join("."), context), /META_TOKEN_DECRYPTION_FAILED|META_TOKEN_ENVELOPE_INVALID/);
   const unknownKey = envelope.replace("meta-old", "meta-missing");
   assert.throws(() => vault.decrypt(unknownKey, context), /META_TOKEN_DECRYPTION_KEY_UNAVAILABLE/);
 });
