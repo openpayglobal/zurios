@@ -16,7 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
-import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedHttpsOrigin} from "./runtime-config-store.js";
+import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin} from "./runtime-config-store.js";
 import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -468,7 +468,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    try{
     const body=schema.parse(request.body);
     const allowedOrigins=normalizeOriginList(body.allowedOrigins);
-    const apiOrigins={zuriOs:normalizeVerifiedHttpsOrigin(body.apiOrigins.zuriOs),mebumip:normalizeVerifiedHttpsOrigin(body.apiOrigins.mebumip)};
+    const apiOrigins={zuriOs:normalizeVerifiedApiOrigin(body.apiOrigins.zuriOs),mebumip:normalizeVerifiedApiOrigin(body.apiOrigins.mebumip)};
     if(body.publicSettings.accessRequestsEnabled===true&&!body.publicSettings.privacyNoticeUrl)throw new Error("PRIVACY_NOTICE_REQUIRED");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.runtime_config.update",async(session)=>{
      const current=await readPlatformRuntimeConfig(db);
