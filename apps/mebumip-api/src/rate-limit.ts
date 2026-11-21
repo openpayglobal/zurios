@@ -12,6 +12,10 @@ const POLICIES = [
   { match: (path: string) => path.startsWith("/v1/"), limit: 180, windowMs: 60_000 },
 ] as const;
 
+export function rateLimitPolicyForPath(path: string) {
+  return POLICIES.find((candidate) => candidate.match(path));
+}
+
 export function createRateLimitKey(ip: string, path: string, windowStart: number): string {
   const digest = createHash("sha256").update(ip || "unknown").digest("hex").slice(0, 32);
   return createHash("sha256").update(path + ":" + digest + ":" + windowStart).digest("hex");
@@ -25,7 +29,7 @@ export function registerDatabaseRateLimit(app: FastifyInstance, db: Db): void {
   app.addHook("preHandler", async (request, reply) => {
     const path = request.routeOptions.url ?? request.url.split("?")[0] ?? "/";
     if (path.startsWith("/health/")) return;
-    const policy = POLICIES.find((candidate) => candidate.match(path));
+    const policy = rateLimitPolicyForPath(path);
     if (!policy) return;
     const now = Date.now();
     const windowStart = Math.floor(now / policy.windowMs) * policy.windowMs;
