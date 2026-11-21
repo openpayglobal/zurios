@@ -69,7 +69,7 @@ export function registerTenantMemberRoutes(app: FastifyInstance, db: Db): void {
     });
     const delivery = await sendTenantInvitationEmail({ to: email, tenantName: String(tenant.name), role: parsed.data.role, token, expiresAt });
     if (!delivery.delivered) {
-      await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
+      await db.collection("tenantInvitations").updateOne({ _id: inserted.insertedId, acceptedAt: { $exists: false }, revokedAt: { $exists: false } }, { $set: { revokedAt: new Date(), revokeReason: "email_delivery_failed" } });
       await appendAuditEvent(db, {
         actorUserId: resolved.principal.userId, action: "tenant.invitation.delivery_failed",
         targetType: "tenant_invitation", targetId: String(inserted.insertedId), tenantId,
