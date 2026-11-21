@@ -156,12 +156,12 @@ test("redacts bearer tokens, app secrets and app-secret proofs from provider err
   const client = new MetaGraphClient({
     version: "v27.0",
     appSecret,
-    fetchImpl: async () => new Response(JSON.stringify({ error: { message: `Invalid token ${token}; secret ${appSecret}; appsecret_proof=secret-proof-value`, type: "OAuthException", code: 190 } }), { status: 400 }),
+    fetchImpl: async () => new Response(JSON.stringify({ error: { message: `Invalid token ${token}; secret ${appSecret}; appsecret_proof=secret-proof-value; input_token=input-secret; client_secret=app-secret; fb_exchange_token=exchange-secret; code=auth-code`, type: "OAuthException", code: 190 } }), { status: 400 }),
   });
   await assert.rejects(
     () => client.request("me", { accessToken: token }),
     (error: unknown) => error instanceof MetaGraphError && error.providerCode === 190 &&
-      !error.message.includes(token) && !error.message.includes(appSecret) && !error.message.includes("secret-proof-value") && error.message.includes("[REDACTED]"),
+      !error.message.includes(token) && !error.message.includes(appSecret) && !error.message.includes("secret-proof-value") && !error.message.includes("input-secret") && !error.message.includes("app-secret") && !error.message.includes("exchange-secret") && !error.message.includes("auth-code") && error.message.includes("[REDACTED]"),
   );
 });
 
