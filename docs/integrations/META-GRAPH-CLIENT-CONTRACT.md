@@ -81,3 +81,5 @@ Official Meta references checked 2026-11-21:
 `createConfiguredMetaGraphClient()` binds the configured Graph API version and, whenever a Meta app ID is configured, requires the app secret and enables App Secret Proof. It fails closed for incomplete app configuration. `createConfiguredMetaTokenVault()` parses the dedicated Meta token keyring and active key ID; the vault uses AES-256-GCM with tenant and connection identifiers as authenticated associated data. `getMetaIntegrationReadiness()` reports only presence/version flags and never returns app secrets, webhook verification tokens or encryption key material.
 
 These are configuration and cryptographic primitives only. The OAuth authorization/callback lifecycle, encrypted token persistence, page discovery, Instagram account linking, connection revocation, webhook subscription and provider app-review approvals are still outstanding; no Meta account is connected and no live Page/Instagram mutation is enabled by this work.
+
+The client also checks Meta's `facebook-api-version` response header when present and rejects a version mismatch instead of silently accepting a provider-side version change.
