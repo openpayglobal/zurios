@@ -119,6 +119,7 @@ test("Meta Page discovery paginates safely, encrypts Page tokens and reconciles 
       correlationId: "meta-assets-discovery-2",
     });
     assert.equal(second.discovered, 1);
+    assert.equal(second.unavailable, 1);
     const reconciled = await listMetaPageAssets(db, "tenant-assets-1", connection.connectionId);
     assert.equal(reconciled.length, 2);
     const retained = reconciled.find((item) => item.providerAssetId === "111111");
