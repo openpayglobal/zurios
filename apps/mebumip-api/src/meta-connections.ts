@@ -239,9 +239,14 @@ export async function revokeMetaConnection(
         { session },
       );
       if (result.modifiedCount !== 1) throw new Error("META_CONNECTION_NOT_FOUND");
-      return true;
+      const clearedAssets = await db.collection("metaAssets").updateMany(
+        { tenantId, connectionId, status: "active" },
+        { $set: { status: "unavailable", pageAccessTokenCiphertext: null, updatedAt: now } },
+        { session },
+      );
+      return { clearedPageAssets: clearedAssets.modifiedCount };
     },
-    () => ({
+    (result) => ({
       actorUserId,
       action: "meta.connection.revoked",
       targetType: "meta_connection",
@@ -249,7 +254,7 @@ export async function revokeMetaConnection(
       tenantId,
       outcome: "success",
       correlationId,
-      metadata: { remoteRevocation: revocationStatus },
+      metadata: { remoteRevocation: revocationStatus, clearedPageAssets: result.clearedPageAssets },
     }),
   );
 }
