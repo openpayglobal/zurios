@@ -7,8 +7,9 @@
 
 MAC owns runtime configuration. The two canonical Vercel projects consume it at runtime, so ordinary configuration changes do not trigger builds or deployments.
 
-- Frontend: `zurios` — `https://zurios.vercel.app`
-- API: `zurios-api` — `https://zurios-api.vercel.app`
+- Frontend: `zurios` — `https://zurios.vercel.app` — project ID `prj_aE6LVAFP1VrF5QmeemFYvCQ7xwoR`
+- API: `zurios-api` — `https://zurios-api.vercel.app` — project ID `prj_vkIcPCsN1TW3WOturczl3FcWEJkq`
+- Vercel team: `openpayglobal-5300s-projects` — team ID `team_Gn7gvUwfzUbCZpxOIRrYK5gD`
 - Repository: `openpayglobal/zurios`
 
 ## Important platform boundary
@@ -22,10 +23,23 @@ Use MAC's versioned runtime configuration API for values that must change withou
 1. An authorized administrator changes a typed setting in MAC.
 2. MAC validates scope, type, allowed values, environment, classification and approval requirements.
 3. MAC persists the new immutable revision and its audit/outbox event in one transaction.
-4. The running Vercel API authenticates with its Vercel-issued OIDC workload identity and requests only the keys allowed to that project and environment.
-5. MAC verifies the JWT signature, issuer, audience, expiry and exact project/team/environment claims before returning configuration.
+4. The running Vercel API obtains its short-lived Vercel OIDC token using the supported `@vercel/oidc` helper (or the request-context OIDC token) and requests only keys allowed to that project and environment.
+5. MAC verifies the JWT signature against Vercel's JWKS and validates issuer, audience, expiry, subject, `owner_id`, `project_id` and `environment`. Never trust decoded claims without signature verification.
 6. API caches the response for a short bounded period and uses ETag/revision checks to observe changes. Revocation and emergency-disable settings must bypass ordinary stale-cache behavior.
 7. Browser clients receive only an explicit public allowlist from a public runtime-config endpoint. No secret is returned to the browser.
+
+## Vercel OIDC trust contract
+
+The observed Vercel team slug and project IDs above are the authoritative resource identifiers for this deployment inventory. Vercel documents team issuer mode as `https://oidc.vercel.com/{TEAM_SLUG}`, the default audience as `https://vercel.com/{TEAM_SLUG}`, and the subject pattern as `owner:{TEAM_SLUG}:project:{PROJECT_NAME}:environment:{ENVIRONMENT}`. Tokens also carry `owner_id`, `project_id` and `environment` claims.
+
+For this team, the candidate team issuer/audience are:
+
+- Issuer: `https://oidc.vercel.com/openpayglobal-5300s-projects`
+- Audience: `https://vercel.com/openpayglobal-5300s-projects`
+
+Before enabling trust, inspect Vercel project Security settings to confirm team issuer mode, then capture a real token from each intended project/environment and validate the exact claims. Use project IDs (not only mutable project names) and team ID in the policy. Production and Preview must be distinct trust policies. If custom audiences are configured, use a MAC-specific audience and verify it exactly.
+
+Implementation reference: `@vercel/oidc` provides `getVercelOidcToken()` for the workload and `verifyVercelOidcToken()` for server-side verification against Vercel's remote JWKS, with expected owner/project/environment options. Pin and review the package version before use.
 
 ## Environment classes
 
@@ -60,7 +74,7 @@ Use MAC's versioned runtime configuration API for values that must change withou
 1. Merge/reconcile the current security foundation only after exact-head CI and code review.
 2. Implement typed, versioned MAC runtime configuration records and immutable history.
 3. Implement encrypted secret storage, key rotation and access policies.
-4. Implement Vercel OIDC verification using a real token fixture; bind trust to team/project/environment.
+4. Implement Vercel OIDC verification using real token fixtures; bind trust to team/project/environment.
 5. Implement backend runtime fetch client with ETag, bounded cache, timeout, retry and revocation behavior.
 6. Implement a public-only configuration projection for the web application.
 7. Add MAC UI for configuration, approvals, history, rollback and audit evidence.
@@ -75,7 +89,14 @@ Roll back by creating a new MAC configuration revision from a previously approve
 ## Current blockers
 
 - No verified production configuration or usable production database credential.
-- OIDC claim contract not yet validated with a real Vercel runtime token.
+- Vercel OIDC issuer mode and real token claims have not yet been verified in either project.
 - MAC runtime configuration API and user interface are not yet implemented.
 - Vercel API production deployment and health checks are not accepted.
 - Production rollout requires owner approval for secret/key provisioning and security review.
+
+## Official implementation references
+
+- [Vercel OIDC federation](https://vercel.com/docs/oidc)
+- [Vercel OIDC token reference](https://vercel.com/docs/oidc/reference)
+- [Connect to your own API with OIDC](https://vercel.com/docs/oidc/api)
+- [`@vercel/oidc` token verification](https://github.com/vercel/vercel/blob/main/packages/oidc/docs/functions/verifyVercelOidcToken.md)
