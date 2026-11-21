@@ -18,7 +18,7 @@ test("MongoDB replica-set integration: tenant isolation, service lifecycles, mig
  const client=new MongoClient(uri!);await client.connect();
  const db=client.db(`zuri_core_it_${randomUUID().replaceAll("-","")}`);
  try{
-  assert.deepEqual(await runCoreMigrations(db),["0001_core_indexes"]);
+  assert.deepEqual(await runCoreMigrations(db),["0001_core_indexes","0002_identity_workspace_selection","0003_audit_archive_receipts"]);
   assert.deepEqual(await runCoreMigrations(db),[],"migration runner must be idempotent");
   const now=new Date(),tenantA="tenant-a",tenantB="tenant-b",userId="user-global";
   await db.collection("tenants").insertMany([{tenantId:tenantA,slug:"tenant-a",status:"active"},{tenantId:tenantB,slug:"tenant-b",status:"active"}]);
