@@ -252,32 +252,28 @@ export async function appendAuditEvent(db: Db, input: AuditEventInput) {
 }
 
 export async function verifyAuditChain(db: Db) {
-  const cursor = db.collection<ChainedAuditEvent>("auditEvents")
-    .find({})
-    .sort({ sequence: 1, occurredAt: 1, _id: 1 });
+  const collection = db.collection<ChainedAuditEvent>("auditEvents");
+  const completeChainFilter = {
+    sequence: { $exists: true },
+    previousHash: { $type: "string" },
+    eventHash: { $type: "string" },
+  } as const;
+  const totalCount = await collection.countDocuments({});
+  const checkedCount = await collection.countDocuments(completeChainFilter);
+  const legacyUnchainedEvents = totalCount - checkedCount;
+  const cursor = collection.find(completeChainFilter).sort({ sequence: 1 });
+
   let checked = 0;
-  let legacyUnchainedEvents = 0;
   let expectedSequence = 1;
   let previousHash = AUDIT_GENESIS_HASH;
   let latestSequence = 0;
   let firstInvalidSequence: number | null = null;
   let chainValid = true;
 
-  // Stream the complete history so verification memory remains bounded regardless
-  // of audit-log size. Archive export is intentionally separate and materializes
-  // records only when the caller explicitly requests a full archive.
+  // Stream only fully shaped chain records in sequence order. The sparse unique
+  // sequence index can serve this query; legacy/partial records are counted
+  // separately so they cannot disappear from the integrity result.
   for await (const event of cursor) {
-    if (!Number.isSafeInteger(event.sequence) ||
-        typeof event.previousHash !== "string" ||
-        typeof event.eventHash !== "string") {
-      legacyUnchainedEvents += 1;
-      chainValid = false;
-      if (firstInvalidSequence === null && Number.isSafeInteger(event.sequence)) {
-        firstInvalidSequence = Number(event.sequence);
-      }
-      continue;
-    }
-
     const sequence = Number(event.sequence);
     const eventValid = sequence === expectedSequence &&
       event.previousHash === previousHash &&
@@ -295,9 +291,10 @@ export async function verifyAuditChain(db: Db) {
   const counter = await db.collection<{ _id: string; sequence: number }>("auditCounters").findOne({ _id: "global" });
   const counterSequence = Number(counter?.sequence ?? 0);
   const counterMatches = Number.isSafeInteger(counterSequence) && counterSequence === latestSequence;
+  const completeChainValid = chainValid && legacyUnchainedEvents === 0;
   return {
-    valid: chainValid && legacyUnchainedEvents === 0 && counterMatches,
-    chainValid: chainValid && legacyUnchainedEvents === 0,
+    valid: completeChainValid && counterMatches,
+    chainValid: completeChainValid,
     checked,
     legacyUnchainedEvents,
     latestSequence,
