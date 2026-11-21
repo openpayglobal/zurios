@@ -88,6 +88,79 @@ test("exchanges a short-lived token for a long-lived token without retries", asy
   assert.equal(calls, 1);
 });
 
+test("validates exchanged user tokens against the configured app and required scopes", async () => {
+  let requestedUrl = "";
+  let authorization = "";
+  const service = new MetaOAuthService({
+    ...options,
+    fetchImpl: async (input, init) => {
+      requestedUrl = String(input);
+      authorization = new Headers(init?.headers).get("authorization") ?? "";
+      return new Response(JSON.stringify({ data: {
+        app_id: options.appId,
+        type: "USER",
+        is_valid: true,
+        user_id: "meta-user-1",
+        scopes: ["pages_show_list", "pages_manage_posts"],
+        granular_scopes: [{ scope: "pages_manage_posts", target_ids: ["page-1"] }],
+        expires_at: 1_800_000_000,
+        data_access_expires_at: 1_810_000_000,
+      } }), { status: 200 });
+    },
+  });
+  const result = await service.debugAccessToken("EAAG_short_lived_meta_token");
+  const url = new URL(requestedUrl);
+  assert.equal(url.pathname, "/v27.0/debug_token");
+  assert.equal(url.searchParams.get("input_token"), "EAAG_short_lived_meta_token");
+  assert.equal(url.searchParams.has("appsecret_proof"), true);
+  assert.equal(url.searchParams.get("appsecret_proof")?.length, 64);
+  assert.equal(url.searchParams.toString().includes(options.appSecret), false);
+  assert.equal(authorization, "Bearer " + options.appId + "|" + options.appSecret);
+  assert.equal(result.appId, options.appId);
+  assert.equal(result.userId, "meta-user-1");
+  assert.deepEqual(result.scopes, ["pages_manage_posts", "pages_show_list"]);
+  assert.deepEqual(result.granularScopes, [{ scope: "pages_manage_posts", targetIds: ["page-1"] }]);
+  assert.equal(result.expiresAt?.getTime(), 1_800_000_000_000);
+});
+
+test("rejects tokens that are invalid or belong to a different Meta app", async () => {
+  const service = new MetaOAuthService({
+    ...options,
+    fetchImpl: async () => new Response(JSON.stringify({ data: {
+      app_id: "999999999999999",
+      type: "USER",
+      is_valid: true,
+      user_id: "meta-user-1",
+      scopes: ["pages_show_list"],
+    } }), { status: 200 }),
+  });
+  await assert.rejects(() => service.debugAccessToken("EAAG_wrong_app_token"), /invalid or belongs to another app/);
+});
+
+test("exchanges and validates an authorization code before connection persistence", async () => {
+  let calls = 0;
+  const service = new MetaOAuthService({
+    ...options,
+    fetchImpl: async (input, init) => {
+      calls += 1;
+      const url = new URL(String(input));
+      if (url.pathname.endsWith("/oauth/access_token")) {
+        return new Response(JSON.stringify({ access_token: "EAAG_validated_meta_token", token_type: "bearer", expires_in: 3600 }), { status: 200 });
+      }
+      assert.equal(url.pathname, "/v27.0/debug_token");
+      assert.equal(new Headers(init?.headers).get("authorization"), "Bearer " + options.appId + "|" + options.appSecret);
+      return new Response(JSON.stringify({ data: {
+        app_id: options.appId, type: "USER", is_valid: true, user_id: "meta-user-2",
+        scopes: ["pages_show_list"], expires_at: 1_800_000_000,
+      } }), { status: 200 });
+    },
+  });
+  const result = await service.exchangeAuthorizationCodeAndValidate("AQAB_auth_code_value_123456789");
+  assert.equal(calls, 2);
+  assert.equal(result.accessToken, "EAAG_validated_meta_token");
+  assert.equal(result.identity.userId, "meta-user-2");
+});
+
 test("normalizes provider errors without returning token or secret details", async () => {
   const service = new MetaOAuthService({
     ...options,
