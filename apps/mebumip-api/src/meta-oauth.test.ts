@@ -37,6 +37,7 @@ test("rejects unapproved scopes and malformed OAuth state", () => {
   assert.throws(() => service.buildAuthorizationUrl({ state, scopes: ["pages_show_list", "email"] as never }), /META_OAUTH_SCOPE_NOT_ALLOWED/);
   assert.throws(() => service.buildAuthorizationUrl({ state: "short", scopes: ["pages_show_list"] }), /META_OAUTH_STATE_INVALID/);
   assert.throws(() => service.buildAuthorizationUrl({ state, scopes: [] }), /META_OAUTH_SCOPES_REQUIRED/);
+  assert.throws(() => service.buildAuthorizationUrl({ state, mode: "unexpected" as never, scopes: ["pages_show_list"] }), /META_OAUTH_MODE_INVALID/);
 });
 
 test("exchanges an authorization code using the pinned HTTPS token endpoint", async () => {
@@ -47,7 +48,7 @@ test("exchanges an authorization code using the pinned HTTPS token endpoint", as
     fetchImpl: async (input, init) => {
       requestedUrl = String(input);
       requestInit = init;
-      return new Response(JSON.stringify({ access_token: "EAAG_short_lived_meta_token", token_type: "bearer", expires_in: 3600 }), { status: 200 });
+      return new Response(JSON.stringify({ access_token: "EAAG_short_lived_meta_token", token_type: "bearer", expires_in: 3600 }), { status: 200, headers: { "facebook-api-version": "v27.0" } });
     },
   });
   const result = await service.exchangeAuthorizationCode("AQAB_auth_code_value_123456789");
@@ -101,6 +102,19 @@ test("normalizes provider errors without returning token or secret details", asy
       && error.fbtraceId === "trace-safe"
       && !error.message.includes(options.appSecret),
   );
+});
+
+test("rejects unexpected OAuth token endpoint API versions and gates local HTTP redirects", async () => {
+  const mismatch = new MetaOAuthService({
+    ...options,
+    fetchImpl: async () => new Response(JSON.stringify({ access_token: "EAAG_meta_token_value", token_type: "bearer" }), {
+      status: 200,
+      headers: { "facebook-api-version": "v26.0" },
+    }),
+  });
+  await assert.rejects(() => mismatch.exchangeAuthorizationCode("AQAB_auth_code_value_123456789"), /unexpected API version/);
+  assert.throws(() => new MetaOAuthService({ ...options, redirectUri: "http://localhost:4100/callback" }), /META_REDIRECT_URI_INVALID/);
+  assert.doesNotThrow(() => new MetaOAuthService({ ...options, redirectUri: "http://localhost:4100/callback", allowInsecureLocalhost: true }));
 });
 
 test("rejects invalid configuration and token response shapes", async () => {
