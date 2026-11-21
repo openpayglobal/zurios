@@ -2,9 +2,12 @@ import { MongoClient } from "mongodb";
 import { config } from "../src/config.js";
 import { applyAuditChainBackfill, planAuditChainBackfill, verifyAuditChain } from "../src/security.js";
 
-if (!config.MONGODB_URI) throw new Error("MONGODB_URI is required for audit-chain backfill");
 const apply = process.env.AUDIT_CHAIN_BACKFILL_APPLY === "true";
-const client = new MongoClient(config.MONGODB_URI, { serverSelectionTimeoutMS: 10_000 });
+const migrationUri = process.env.AUDIT_MIGRATION_MONGODB_URI;
+if (apply && !migrationUri) throw new Error("AUDIT_MIGRATION_MONGODB_URI is required for apply mode; use a separately approved maintenance credential");
+const uri = apply ? migrationUri : config.MONGODB_URI;
+if (!uri) throw new Error("MONGODB_URI is required for audit-chain backfill dry-run");
+const client = new MongoClient(uri, { serverSelectionTimeoutMS: 10_000 });
 
 try {
   await client.connect();
