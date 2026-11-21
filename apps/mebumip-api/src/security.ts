@@ -75,6 +75,7 @@ export interface AuditEventInput {
   correlationId: string;
   occurredAt?: Date;
   sequence?: number;
+  previousHash?: string;
   metadata?: Record<string, string | number | boolean | null>;
 }
 
@@ -117,6 +118,7 @@ function auditPayload(event: AuditEventPayload,keyId?:string): string {
     correlationId: event.correlationId,
     occurredAt: event.occurredAt.toISOString(),
     ...(typeof event.sequence === "number" ? { sequence: event.sequence } : {}),
+    ...(typeof event.previousHash === "string" ? { previousHash: event.previousHash } : {}),
     ...(event.metadata ? { metadata: event.metadata } : {}),
   });
 }
@@ -147,6 +149,7 @@ export function verifyAuditEvent(event: Record<string, unknown>, signingKey?: st
   ...(typeof event.tenantId==="string"?{tenantId:event.tenantId}:{}),
   outcome:event.outcome as AuditEventInput["outcome"],correlationId:event.correlationId,occurredAt:event.occurredAt,
   ...(typeof event.sequence==="number"?{sequence:event.sequence}:{}),
+  ...(typeof event.previousHash==="string"?{previousHash:event.previousHash}:{}),
   ...(event.metadata&&typeof event.metadata==="object"?{metadata:event.metadata as NonNullable<AuditEventInput["metadata"]>}:{}),
  };
  let key:Buffer|undefined,expected:Buffer;
@@ -164,17 +167,43 @@ export function verifyAuditEvent(event: Record<string, unknown>, signingKey?: st
  return actual.length===expected.length&&timingSafeEqual(actual,expected);
 }
 
+export function auditEventHash(event: AuditEventInput & { occurredAt: Date }): string {
+  return createHash("sha256").update(auditPayload(event)).digest("hex");
+}
+
+/** Allocate sequence, link the predecessor, sign, and insert atomically. */
 export async function appendAuditEvent(db: Db, input: AuditEventInput) {
-  const counters = db.collection<{ _id: string; sequence: number }>("auditCounters");
-  const counter = await counters.findOneAndUpdate(
-    { _id: "global" },
-    { $inc: { sequence: 1 }, $setOnInsert: { createdAt: new Date() } },
-    { upsert: true, returnDocument: "after" },
-  );
-  if (!counter || !Number.isSafeInteger(counter.sequence) || counter.sequence < 1) throw new Error("AUDIT_SEQUENCE_ALLOCATION_FAILED");
-  const event = createAuditEvent({ ...input, sequence: counter.sequence });
-  await db.collection("auditEvents").insertOne(event as Document);
-  return event;
+  const session = db.client.startSession();
+  let result: (ReturnType<typeof createAuditEvent> & { eventHash: string }) | undefined;
+  try {
+    await session.withTransaction(async () => {
+      const counters = db.collection<{ _id: string; sequence: number }>("auditCounters");
+      const events = db.collection("auditEvents");
+      let counter = await counters.findOne({ _id: "global" }, { session });
+      if (!counter) {
+        const existingEvent = await events.findOne({}, { session, sort: { sequence: -1 } });
+        if (existingEvent) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
+        await counters.insertOne({ _id: "global", sequence: 0 }, { session });
+      }
+      await counters.updateOne({ _id: "global" }, { $inc: { sequence: 1 }, $set: { updatedAt: new Date() } }, { session });
+      counter = await counters.findOne({ _id: "global" }, { session });
+      const sequence = Number(counter?.sequence);
+      if (!Number.isSafeInteger(sequence) || sequence < 1) throw new Error("AUDIT_SEQUENCE_ALLOCATION_FAILED");
+      const previous = sequence > 1 ? await events.findOne({ sequence: sequence - 1 }, { session }) : null;
+      if (sequence > 1 && (!previous || typeof previous.eventHash !== "string")) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
+      const previousHash = typeof previous?.eventHash === "string" ? previous.eventHash : "GENESIS";
+      const event = createAuditEvent({ ...input, sequence, previousHash });
+      if (event.integrity.algorithm === "unsigned") throw new Error("AUDIT_SIGNING_KEY_REQUIRED");
+      const eventHash = auditEventHash(event);
+      const chainedEvent = { ...event, eventHash };
+      await events.insertOne(chainedEvent as Document, { session });
+      result = chainedEvent;
+    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
+    if (!result) throw new Error("AUDIT_EVENT_RESULT_MISSING");
+    return result;
+  } finally {
+    await session.endSession();
+  }
 }
 
 export function signAuditExport(events: Array<Record<string, unknown>>, generatedAt: string, signingKey?: string) {
