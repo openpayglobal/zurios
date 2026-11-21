@@ -8,8 +8,38 @@ const mongoUri = process.env.MONGODB_TEST_URI;
 const { ensureMeBuMIPIndexes } = await import("./database.js");
 const {
   appendAuditEvent, applyAuditChainBackfill, exportAuditArchive,
-  planAuditChainBackfill, verifyAuditArchiveBundle, verifyAuditChain,
+  planAuditChainBackfill, verifyAuditArchiveBundle, verifyAuditChain, withAuditTransaction,
 } = await import("./security.js");
+
+test("domain mutation rolls back when its transactional audit append fails", {
+  skip: !mongoUri ? "MONGODB_TEST_URI is not configured" : false,
+}, async () => {
+  const client = new MongoClient(mongoUri!, { serverSelectionTimeoutMS: 5_000 });
+  const db = client.db(`mebumip_audit_atomicity_${process.pid}_${Date.now()}`);
+  const previousKeyRing = process.env.AUDIT_SIGNING_KEYRING;
+  try {
+    await client.connect();
+    await db.command({ ping: 1 });
+    await ensureMeBuMIPIndexes(db);
+    process.env.AUDIT_SIGNING_KEYRING = "{";
+    await assert.rejects(() => withAuditTransaction(
+      db,
+      (session) => db.collection("transactionalProbe").insertOne({ operationId: "must-rollback" }, { session }),
+      (created) => ({
+        actorUserId: "test-actor", action: "test.atomicity", targetType: "probe",
+        targetId: String(created.insertedId), outcome: "success", correlationId: "atomicity-test",
+      }),
+    ));
+    assert.equal(await db.collection("transactionalProbe").countDocuments({ operationId: "must-rollback" }), 0);
+    assert.equal(await db.collection("auditEvents").countDocuments({}), 0);
+    assert.equal(await db.collection("auditCounters").countDocuments({}), 0);
+  } finally {
+    if (previousKeyRing === undefined) delete process.env.AUDIT_SIGNING_KEYRING;
+    else process.env.AUDIT_SIGNING_KEYRING = previousKeyRing;
+    await db.dropDatabase().catch(() => undefined);
+    await client.close();
+  }
+});
 
 test("audit chain appends serialize, verify, and detect tampering", {
   skip: !mongoUri ? "MONGODB_TEST_URI is not configured" : false,
