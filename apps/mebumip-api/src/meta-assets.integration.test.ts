@@ -41,7 +41,6 @@ test("Meta Page discovery paginates safely, encrypts Page tokens and reconciles 
           name: "Northwind Page",
           access_token: "EAAG_page_token_111",
           tasks: ["ANALYZE", "CREATE_CONTENT"],
-          instagram_business_account: { id: "222222", username: "northwind.ig" },
         }] }), { status: 200, headers: { "facebook-api-version": "v27.0" } });
       }
       if (url.searchParams.get("after") === "page-2") {
@@ -122,6 +121,8 @@ test("Meta Page discovery paginates safely, encrypts Page tokens and reconciles 
     assert.equal(second.discovered, 1);
     const reconciled = await listMetaPageAssets(db, "tenant-assets-1", connection.connectionId);
     assert.equal(reconciled.length, 2);
+    const retained = reconciled.find((item) => item.providerAssetId === "111111");
+    assert.equal(retained?.instagramBusinessAccount, undefined, "a removed Instagram link must not remain stale");
     const removed = reconciled.find((item) => item.providerAssetId === "333333");
     assert.equal(removed?.status, "unavailable");
     const removedStored = await db.collection("metaAssets").findOne({ tenantId: "tenant-assets-1", connectionId: connection.connectionId, providerAssetId: "333333" });
