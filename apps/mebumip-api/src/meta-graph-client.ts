@@ -35,10 +35,10 @@ interface MetaProviderError {
 
 export class MetaGraphError extends Error {
   readonly status: number;
-  readonly providerCode?: number;
-  readonly providerSubcode?: number;
-  readonly providerType?: string;
-  readonly fbtraceId?: string;
+  readonly providerCode: number | undefined;
+  readonly providerSubcode: number | undefined;
+  readonly providerType: string | undefined;
+  readonly fbtraceId: string | undefined;
   readonly retryable: boolean;
 
   constructor(message: string, details: {
