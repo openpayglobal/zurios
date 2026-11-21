@@ -67,6 +67,21 @@ function configuredServices(dependencies: MetaRouteDependencies) {
   };
 }
 
+function frontendReturnUrl(status: string, tenantId: string, connectionId?: string): string | null {
+  const origin = config.CORS_ORIGINS[0];
+  if (!origin) return null;
+  const target = new URL("/", origin);
+  target.searchParams.set("section", "connections");
+  target.searchParams.set("meta_connection", status);
+  target.searchParams.set("tenantId", tenantId);
+  if (connectionId) target.searchParams.set("connectionId", connectionId);
+  return target.toString();
+}
+
+function isBrowserNavigation(request: { headers: { accept?: string } }): boolean {
+  return typeof request.headers.accept === "string" && request.headers.accept.includes("text/html");
+}
+
 function hasRecentStepUp(stepUpUntil: Date | undefined): boolean {
   return stepUpUntil instanceof Date && stepUpUntil.getTime() > Date.now();
 }
@@ -140,7 +155,11 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
       sessionId: pending.sessionId,
     }, request.id);
     if (!consumed) return reply.code(400).send({ error: "OAUTH_STATE_INVALID_OR_EXPIRED" });
-    if (parsed.data.error) return reply.code(400).send({ error: "META_AUTHORIZATION_DENIED" });
+    if (parsed.data.error) {
+      const returnUrl = isBrowserNavigation(request) ? frontendReturnUrl("denied", pending.tenantId) : null;
+      if (returnUrl) return reply.redirect(returnUrl, 303);
+      return reply.code(400).send({ error: "META_AUTHORIZATION_DENIED" });
+    }
 
     try {
       const requiredScopes = (pending.requestedScopes ?? META_PAGES_INSTAGRAM_SCOPES) as MetaOAuthScope[];
@@ -156,6 +175,8 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
         ...(longLived.identity.dataAccessExpiresAt ? { dataAccessExpiresAt: longLived.identity.dataAccessExpiresAt } : {}),
         correlationId: request.id,
       });
+      const returnUrl = isBrowserNavigation(request) ? frontendReturnUrl("connected", pending.tenantId, connection.connectionId) : null;
+      if (returnUrl) return reply.redirect(returnUrl, 303);
       return reply.code(201).send({ status: "connected", connection });
     } catch (error) {
       if (error instanceof Error && error.message === "META_CONNECTION_ALREADY_EXISTS") {
@@ -166,6 +187,8 @@ export function registerMetaRoutes(app: FastifyInstance, db: Db, dependencies: M
         providerStatus: error && typeof error === "object" && "status" in error ? (error as { status?: unknown }).status : undefined,
         correlationId: request.id,
       }, "Meta OAuth callback failed");
+      const returnUrl = isBrowserNavigation(request) ? frontendReturnUrl("failed", pending.tenantId) : null;
+      if (returnUrl) return reply.redirect(returnUrl, 303);
       return reply.code(502).send({ error: "META_CONNECTION_FAILED", correlationId: request.id });
     }
   });
