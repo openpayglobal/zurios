@@ -1,5 +1,5 @@
 import { config } from "./config.js";
-import { MetaGraphClient } from "./meta-graph-client.js";
+import { MetaGraphClient, type MetaGraphClientOptions } from "./meta-graph-client.js";
 import { MetaTokenVault } from "./meta-token-vault.js";
 
 export interface MetaProviderConfig {
@@ -13,11 +13,15 @@ export interface MetaProviderConfig {
   META_WEBHOOK_VERIFY_TOKEN?: string;
 }
 
-export function createMetaGraphClient(providerConfig: MetaProviderConfig): MetaGraphClient {
+export function createMetaGraphClient(
+  providerConfig: MetaProviderConfig,
+  runtimeOptions: Pick<MetaGraphClientOptions, "fetchImpl" | "timeoutMs" | "maxRetries" | "sleep"> = {},
+): MetaGraphClient {
   if (!providerConfig.META_GRAPH_API_VERSION) throw new Error("META_GRAPH_API_VERSION_REQUIRED");
   if (providerConfig.META_APP_ID && !providerConfig.META_APP_SECRET) throw new Error("META_APP_SECRET_REQUIRED");
   if (!providerConfig.META_APP_ID && providerConfig.META_APP_SECRET) throw new Error("META_APP_CONFIGURATION_INCOMPLETE");
   return new MetaGraphClient({
+    ...runtimeOptions,
     version: providerConfig.META_GRAPH_API_VERSION,
     ...(providerConfig.META_APP_SECRET ? { appSecret: providerConfig.META_APP_SECRET } : {}),
     requireAppSecretProof: Boolean(providerConfig.META_APP_ID),
