@@ -316,7 +316,7 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 | ID | Objective | Planned phase | Status |
 |---|---|---:|---|
-| A | Facebook Pages and Instagram Professional account management | 2 | Not started |
+| A | Facebook Pages and Instagram Professional account management | 2 | Phase 2 foundation in progress; user-facing asset features not started |
 | B | Facebook/Instagram advertising | 3 | Not started |
 | C | WhatsApp Business Platform/API | 4 | Not started |
 | D | Multi-business Meta management SaaS | 5 | Not started |
@@ -373,3 +373,14 @@ Cookie-authenticated unsafe requests require CSRF cookie/header validation and a
 - PR #13 and PR #14 remain separate and unmerged. Reconcile their divergent histories and review the final combined security diff before merge.
 
 **Status:** Phase 1 implementation is materially advanced and its latest verified checkpoint passes CI, but Phase 1 is not production-accepted. Objectives A–E are not started; release gates remain open.
+
+
+### Phase 2 Objective A groundwork (2026-11-21)
+
+- Added `meta-graph-client.ts`: explicit version pinning, bearer-token authorization, App Secret Proof, provider error normalization, credential redaction, strict pagination, bounded transient GET retries and no automatic mutation retries.
+- Added `meta-token-vault.ts`: AES-256-GCM envelopes with tenant/connection-bound AAD, dedicated keyring, key IDs and rotation/re-encryption support. Config validation rejects key reuse with MFA and audit key material.
+- Added `meta-oauth-state.ts`: random 256-bit state stored only as a SHA-256 hash, tenant/user/session/redirect binding, five-minute expiry and atomic one-time consumption; MongoDB unique/TTL/context indexes are configured.
+- Added config-backed provider factories and safe MAC readiness diagnostics. Meta app credentials remain optional; configuring an app ID without an explicit Graph API version, HTTPS redirect and dedicated token keyring fails validation.
+- Added deterministic unit/config tests and replica-set OAuth-state integration tests; no live Meta calls or credentials are used.
+
+**Boundary:** this is Phase 2 foundation only. OAuth callback/code exchange, connection persistence/revocation, Facebook Login for Business, Page/Instagram asset discovery, publishing, insights, webhook subscriptions, app review and customer-facing screens remain open.
