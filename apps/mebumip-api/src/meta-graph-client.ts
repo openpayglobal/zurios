@@ -136,6 +136,8 @@ export class MetaGraphClient {
     }
     if (method !== "POST" && options.body) throw new MetaGraphError("A request body is only supported for POST", { status: 0 });
     const safePath = normalizePath(path, this.version);
+    const hasInputToken = [options.query, options.body].some((params) => params && Object.keys(params).some((key) => key.toLowerCase() === "input_token"));
+    if (hasInputToken && (safePath !== "debug_token" || method !== "GET")) throw new MetaGraphError("input_token is restricted to the Meta debug_token GET endpoint", { status: 0 });
     const url = new URL(`/${this.version}/${safePath}`, GRAPH_API_ORIGIN);
     appendParams(url, options.query);
     if (this.appSecret) url.searchParams.set(APP_SECRET_PROOF_QUERY_KEY, createHmac("sha256", this.appSecret).update(accessToken).digest("hex"));
@@ -225,7 +227,7 @@ export class MetaGraphClient {
     const path = parsed.pathname.slice(prefix.length);
     const query: MetaGraphParams = {};
     for (const [key, value] of parsed.searchParams.entries()) {
-      if (key.toLowerCase() === TOKEN_QUERY_KEY || key.toLowerCase() === APP_SECRET_PROOF_QUERY_KEY) continue;
+      if (key.toLowerCase() === TOKEN_QUERY_KEY || key.toLowerCase() === APP_SECRET_PROOF_QUERY_KEY || key.toLowerCase() === "input_token") continue;
       query[key] = value;
     }
     return this.request<T>(path, { accessToken, query });
