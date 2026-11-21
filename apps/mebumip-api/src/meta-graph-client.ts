@@ -172,6 +172,10 @@ export class MetaGraphClient {
         throw new MetaGraphError("Meta Graph API network request failed", { status: 0, retryable: true });
       }
 
+      const responseVersion = response.headers.get("facebook-api-version");
+      if (responseVersion && responseVersion !== this.version) {
+        throw new MetaGraphError("Meta Graph API returned an unexpected version", { status: response.status });
+      }
       let payload: unknown;
       try {
         payload = await response.json();
