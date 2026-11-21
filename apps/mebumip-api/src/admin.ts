@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { ObjectId, type Db } from "mongodb";
 import { z } from "zod";
-import { appendAuditEvent, hashToken, newOpaqueToken, signAuditExport } from "./security.js";
+import { appendAuditEvent, hashToken, newOpaqueToken, signAuditExport, verifyAuditChain } from "./security.js";
 import { resolvePrincipal } from "./auth.js";
 import { hasPlatformPermission, verifyAuditEvent } from "./security.js";
 import { buildAuditArchivePackage } from "./audit-archive.js";
@@ -294,13 +294,14 @@ export function registerAdminRoutes(app: FastifyInstance, db: Db): void {
     const resolved = await resolvePrincipal(db, request);
     if (!resolved) return reply.code(401).send({ error: "UNAUTHORIZED" });
     if (!hasPlatformPermission(resolved.principal, "platform:audit:read")) return reply.code(403).send({ error: "FORBIDDEN" });
+    const chain = await verifyAuditChain(db);
     const events = await db.collection("auditEvents").find({}).sort({ sequence: -1, _id: -1 }).limit(500).toArray();
     const verified = events.filter((event) => verifyAuditEvent(event as Record<string, unknown>)).length;
     const unsigned = events.filter((event) => !event.integrity || (event.integrity as { algorithm?: string }).algorithm === "unsigned").length;
     const sequenced = events.filter((event) => Number.isSafeInteger(event.sequence)).sort((left, right) => Number(left.sequence) - Number(right.sequence));
     let sequenceGaps = 0;
     for (let index = 1; index < sequenced.length; index += 1) if (Number(sequenced[index]!.sequence) !== Number(sequenced[index - 1]!.sequence) + 1) sequenceGaps += 1;
-    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, sequenceGaps, integrity: process.env.AUDIT_SIGNING_KEYRING ? "hmac_sha256_v2_key_ring" : process.env.AUDIT_SIGNING_KEY ? "hmac_sha256_legacy" : "signing_key_not_configured", scope: "latest_500_events", note: "Sequence gaps can indicate missing or failed writes and require investigation; signatures do not replace restricted database roles or independent immutable archives." });
+    return reply.send({ checked: events.length, verified, invalid: events.length - verified - unsigned, unsigned, sequenceGaps, chain: { valid: chain.valid, chainValid: chain.chainValid, checked: chain.checked, legacyUnchainedEvents: chain.legacyUnchainedEvents, firstInvalidSequence: chain.firstInvalidSequence, latestSequence: chain.latestSequence, counterSequence: chain.counterSequence, counterMatches: chain.counterMatches }, integrity: process.env.AUDIT_SIGNING_KEYRING ? "hmac_sha256_v2_key_ring" : process.env.AUDIT_SIGNING_KEY ? "hmac_sha256_legacy" : "signing_key_not_configured", scope: "latest_500_event_signatures_and_full_chain_integrity", note: "Event signatures and the full predecessor-linked chain are verified separately; neither replaces restricted database roles or independent immutable archives." });
   });
 
   app.get("/v1/mac/audit-events/archive", async (request, reply) => {
