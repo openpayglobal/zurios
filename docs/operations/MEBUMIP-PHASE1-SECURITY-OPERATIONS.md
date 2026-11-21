@@ -13,7 +13,13 @@
 - Stop on unexpected counts, mixed audit histories, failed integrity verification, missing backup evidence, permission errors or any unplanned write.
 - CI against disposable MongoDB is not production evidence. A successful application build is not deployment acceptance.
 
-## 2. First-owner bootstrap atomicity\n\nThe first platform owner, initial tenant, tenant-owner membership and signed `platform.bootstrap.completed` audit event must be written in one MongoDB transaction. The bootstrap lease serializes competing requests; the unique platform-owner index remains the database-level invariant. The transaction-scoped audit append must use the caller session, not create a nested transaction. Failed transactions must roll back together: never compensate by deleting an audit event or by leaving partially created owner/tenant records. If an existing owner is detected while the lock record is absent or expired, reseal the lock as completed. Classify duplicate-key conflicts by key pattern so owner, normalized-email and tenant-slug conflicts return distinct safe responses. The integration test must exercise concurrent bootstrap requests, missing-lock recovery and exactly one successful owner/bootstrap audit event.\n\n**Evidence:** successful replica-set concurrency test; one owner, one tenant and one owner membership; exactly one bootstrap audit event; clean signed-chain verification.\n\n## 3. Production identity, email and browser configuration
+## 2. First-owner bootstrap atomicity
+
+The first platform owner, initial tenant, tenant-owner membership and signed `platform.bootstrap.completed` audit event must be written in one MongoDB transaction. The bootstrap lease serializes competing requests; the unique platform-owner index remains the database-level invariant. The transaction-scoped audit append must use the caller session, not create a nested transaction. Failed transactions must roll back together: never compensate by deleting an audit event or by leaving partially created owner/tenant records. If an existing owner is detected while the lock record is absent or expired, reseal the lock as completed. Classify duplicate-key conflicts by key pattern so owner, normalized-email and tenant-slug conflicts return distinct safe responses. The integration test must exercise concurrent bootstrap requests, missing-lock recovery and exactly one successful owner/bootstrap audit event.
+
+**Evidence:** successful replica-set concurrency test; one owner, one tenant and one owner membership; exactly one bootstrap audit event; clean signed-chain verification.
+
+## 3. Production identity, email and browser configuration
 
 Before enabling public traffic:
 
@@ -102,7 +108,7 @@ Export and verification:
 
 1. Require a clean chain and zero legacy unchained events.
 2. Run `AUDIT_ARCHIVE_OUTPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive`.
-3. Verify locally with `AUDIT_ARCHIVE_FILE=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify`.
+3. Verify locally with `AUDIT_ARCHIVE_INPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify`.
 4. Upload through the dedicated archive-writer identity to the locked bucket; capture the object version and retention metadata.
 5. Download the retained object through the read-only restore identity and run the offline verifier against the retrieved bytes.
 6. Perform a documented restore drill and verify signatures, manifest, event count, sequence range and boundary hashes.
