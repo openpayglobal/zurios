@@ -398,6 +398,7 @@ paths:
       security: []
       responses:
         "200": {description: Public access-request availability and privacy notice URL}
+        "400": {description: Invalid request}
   /auth/login:
     servers:
       - url: /
@@ -910,7 +911,7 @@ paths:
       operationId: updatePlatformRuntimeConfiguration
       summary: Update approved origins and public runtime settings without redeployment
       parameters:
-        - {name: idempotency-key, in: header, required: true, schema: {type: string, minLength: 16}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16}}
       requestBody:
         required: true
         content:
