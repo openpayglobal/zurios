@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { getMeBuMIPApiBase } from "./runtime-api";
 
-const API_BASE = import.meta.env.VITE_MEBUMIP_API_BASE ?? "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app";
 function csrfHeaders(): Record<string, string> { const value = document.cookie.split("; ").find((part) => part.startsWith("mebumip_csrf="))?.split("=").slice(1).join("="); return value ? { "x-csrf-token": decodeURIComponent(value) } : {}; }
 type Resource = "overview" | "tenants" | "admins" | "audit" | "sessions" | "settings";
 type ApiData = {
@@ -17,7 +17,7 @@ export function AuthPanel() {
   const [password, setPassword] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
   const [checking, setChecking] = useState(true);
-  useEffect(() => { fetch(API_BASE + "/v1/auth/me", { credentials: "include" }).then((response) => setAuthenticated(response.ok)).catch(() => setAuthenticated(false)).finally(() => setChecking(false)); }, []);
+  useEffect(() => { void getMeBuMIPApiBase().then((base) => fetch(base + "/v1/auth/me", { credentials: "include" })).then((response) => setAuthenticated(response.ok)).catch(() => setAuthenticated(false)).finally(() => setChecking(false)); }, []);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [recoveryMode, setRecoveryMode] = useState<"login" | "request" | "reset" | "admin-register" | "tenant-register">("login");
@@ -43,7 +43,7 @@ export function AuthPanel() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/login", {
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/login", {
         method: "POST", credentials: "include", headers: { "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
@@ -58,7 +58,7 @@ export function AuthPanel() {
   async function requestPasswordRecovery(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setRecoveryMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/password/recovery", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: recoveryEmail }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/password/recovery", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: recoveryEmail }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Could not request recovery.");
       setRecoveryMessage(body.message ?? "If the account exists, recovery instructions will be sent.");
@@ -69,7 +69,7 @@ export function AuthPanel() {
   async function resetAccountPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setRecoveryMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/password/reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: resetToken, newPassword }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/password/reset", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: resetToken, newPassword }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Password reset failed.");
       setRecoveryMode("login"); setPassword(""); setNewPassword(""); setResetToken(""); setRecoveryMessage("Password reset successful. Sign in with your new password.");
@@ -79,7 +79,7 @@ export function AuthPanel() {
   async function registerInvitedPlatformAdmin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setPlatformInviteMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/register-platform-admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: platformInviteToken, email: platformInviteEmail, password: platformInvitePassword, displayName: platformInviteName }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/register-platform-admin", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: platformInviteToken, email: platformInviteEmail, password: platformInvitePassword, displayName: platformInviteName }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Administrator registration failed.");
       setEmail(platformInviteEmail); setPassword(""); setPlatformInviteToken(""); setPlatformInvitePassword(""); setRecoveryMode("login");
@@ -91,7 +91,7 @@ export function AuthPanel() {
   async function acceptExistingPlatformAdmin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setPlatformInviteMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/admin-invitations/accept", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ token: platformInviteToken }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/admin-invitations/accept", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ token: platformInviteToken }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Invitation acceptance failed.");
       setPlatformInviteToken(""); setPlatformInviteMessage("Platform administrator access activated as " + body.role + "."); setAcceptInviteMode(false); window.location.reload();
@@ -101,7 +101,7 @@ export function AuthPanel() {
   async function registerInvitedTenantUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setTenantInviteMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: tenantInviteToken, email: tenantInviteEmail, password: tenantInvitePassword, displayName: tenantInviteName }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: tenantInviteToken, email: tenantInviteEmail, password: tenantInvitePassword, displayName: tenantInviteName }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Business invitation registration failed.");
       setEmail(tenantInviteEmail); setPassword(""); setTenantInviteToken(""); setTenantInvitePassword(""); setRecoveryMode("login");
@@ -113,7 +113,7 @@ export function AuthPanel() {
   async function acceptTenantInvitation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setAcceptTenantMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/tenant-invitations/accept", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ token: acceptTenantToken }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/tenant-invitations/accept", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ token: acceptTenantToken }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Workspace invitation acceptance failed.");
       setAcceptTenantToken(""); setAcceptTenantMode(false); setAcceptTenantMessage("Workspace access activated. Refresh your workspace list.");
@@ -123,7 +123,7 @@ export function AuthPanel() {
   }
 
   async function logout() {
-    await fetch(API_BASE + "/v1/auth/logout", { method: "POST", credentials: "include", headers: csrfHeaders() }).catch(() => undefined);
+    await fetch((await getMeBuMIPApiBase()) + "/v1/auth/logout", { method: "POST", credentials: "include", headers: csrfHeaders() }).catch(() => undefined);
     setAuthenticated(false); window.location.reload();
   }
 
@@ -163,8 +163,8 @@ export function AdminData({ resource }: { resource: Resource }) {
   useEffect(() => {
     let active = true;
     const path = resource === "overview" ? "/v1/mad/overview" : resource === "tenants" ? "/v1/mac/tenants" : resource === "admins" ? "/v1/mac/admins" : resource === "sessions" ? "/v1/auth/sessions" : resource === "settings" ? "/v1/mac/settings" : "/v1/mac/audit-events?limit=50";
-    if (resource === "admins") fetch(API_BASE + "/v1/mac/admin-invitations", { credentials: "include" }).then((response) => response.ok ? response.json() : null).then((body) => { if (active && body) setPendingAdminInvitations(body.items ?? []); }).catch(() => undefined);
-    fetch(API_BASE + path, { credentials: "include" })
+    if (resource === "admins") fetch((await getMeBuMIPApiBase()) + "/v1/mac/admin-invitations", { credentials: "include" }).then((response) => response.ok ? response.json() : null).then((body) => { if (active && body) setPendingAdminInvitations(body.items ?? []); }).catch(() => undefined);
+    fetch((await getMeBuMIPApiBase()) + path, { credentials: "include" })
       .then(async (response) => {
         const body = await response.json();
         if (response.status === 401) throw new Error("Sign in above to view protected platform data.");
@@ -177,7 +177,7 @@ export function AdminData({ resource }: { resource: Resource }) {
   useEffect(() => {
     if (resource !== "tenants" || !selectedTenantId) return;
     let active = true;
-    fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" })
+    fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" })
       .then(async (response) => { const body = await response.json(); if (!response.ok) throw new Error(body.error ?? "Could not load tenant membership."); if (active) { setTenantMembers(body.members ?? []); setTenantInvitations(body.invitations ?? []); } })
       .catch((cause) => { if (active) setTenantMessage(cause instanceof Error ? cause.message : "Could not load tenant membership."); });
     return () => { active = false; };
@@ -192,7 +192,7 @@ export function AdminData({ resource }: { resource: Resource }) {
     event.preventDefault();
     setStepUpBusy(true); setStepUpMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "MFA verification failed.");
       setStepUpCode(""); setStepUpMessage("MFA verified. Privileged MAC actions are enabled for five minutes.");
@@ -202,7 +202,7 @@ export function AdminData({ resource }: { resource: Resource }) {
 
   async function revokePlatformAdminInvitation(invitationId: string) {
     try {
-      const response = await fetch(API_BASE + "/v1/mac/admin-invitations/" + encodeURIComponent(invitationId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/admin-invitations/" + encodeURIComponent(invitationId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
       if (!response.ok) throw new Error(response.status === 404 ? "Invitation is no longer pending." : "Could not revoke invitation.");
       setPendingAdminInvitations((current) => current.filter((item) => String(item.id) !== invitationId));
       setAdminInviteMessage("Invitation revoked and audited.");
@@ -211,11 +211,11 @@ export function AdminData({ resource }: { resource: Resource }) {
   async function invitePlatformAdmin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setAdminInviteBusy(true); setAdminInviteMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/admin-invitations", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ email: adminInviteEmail, role: adminInviteRole }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/admin-invitations", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ email: adminInviteEmail, role: adminInviteRole }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before inviting administrators." : body.error ?? "Invitation failed.");
       setAdminInviteEmail(""); setAdminInviteMessage("Invitation email sent to " + body.email + ". Expires " + new Date(body.expiresAt).toLocaleString() + ".");
-      const pending = await fetch(API_BASE + "/v1/mac/admin-invitations", { credentials: "include" });
+      const pending = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/admin-invitations", { credentials: "include" });
       if (pending.ok) setPendingAdminInvitations((await pending.json()).items ?? []);
     } catch (cause) { setAdminInviteMessage(cause instanceof Error ? cause.message : "Invitation failed."); }
     finally { setAdminInviteBusy(false); }
@@ -223,7 +223,7 @@ export function AdminData({ resource }: { resource: Resource }) {
   async function updatePlatformAdmin(userId: string, changes: { role?: string; status?: string }) {
     setAdminBusy(userId); setStepUpMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/admins/" + encodeURIComponent(userId), { method: "PATCH", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/admins/" + encodeURIComponent(userId), { method: "PATCH", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(changes) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before changing administrators." : body.error ?? "Administrator update failed.");
       setData((current) => current ? { ...current, items: (current.items ?? []).map((item) => String(item.id) === userId ? { ...item, role: body.role, status: body.status } : item) } : current);
@@ -250,17 +250,17 @@ export function AdminData({ resource }: { resource: Resource }) {
     event.preventDefault(); if (!selectedTenantId) return;
     setTenantBusy("invite"); setTenantMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/invitations", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ email: tenantInviteEmail, role: tenantInviteRole }) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/invitations", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ email: tenantInviteEmail, role: tenantInviteRole }) });
       const body = await response.json(); if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before inviting members." : body.error ?? "Invitation failed.");
       setTenantInviteEmail(""); setTenantMessage("Invitation emailed to " + body.email + ".");
-      const latest = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" }); if (latest.ok) { const result = await latest.json(); setTenantMembers(result.members ?? []); setTenantInvitations(result.invitations ?? []); }
+      const latest = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members", { credentials: "include" }); if (latest.ok) { const result = await latest.json(); setTenantMembers(result.members ?? []); setTenantInvitations(result.invitations ?? []); }
     } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Invitation failed."); } finally { setTenantBusy(""); }
   }
 
   async function updateTenantMember(userId: string, changes: { role?: string; status?: string }) {
     if (!selectedTenantId) return; setTenantBusy(userId); setTenantMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members/" + encodeURIComponent(userId), { method: "PATCH", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(changes) });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members/" + encodeURIComponent(userId), { method: "PATCH", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify(changes) });
       const body = response.status === 204 ? {} : await response.json(); if (!response.ok) throw new Error(body.error === "STEP_UP_REQUIRED" ? "Verify MFA above before changing membership." : body.error ?? "Membership update failed.");
       setTenantMembers((current) => current.map((member) => String(member.userId) === userId ? { ...member, ...changes } : member)); setTenantMessage("Membership updated and audited.");
     } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Membership update failed."); } finally { setTenantBusy(""); }
@@ -269,7 +269,7 @@ export function AdminData({ resource }: { resource: Resource }) {
   async function removeTenantMember(userId: string) {
     if (!selectedTenantId) return; setTenantBusy(userId); setTenantMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members/" + encodeURIComponent(userId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/members/" + encodeURIComponent(userId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
       if (!response.ok) throw new Error(response.status === 404 ? "Membership not found or protected." : "Membership removal failed.");
       setTenantMembers((current) => current.filter((member) => String(member.userId) !== userId)); setTenantMessage("Membership removed and audited.");
     } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Membership removal failed."); } finally { setTenantBusy(""); }
@@ -278,14 +278,14 @@ export function AdminData({ resource }: { resource: Resource }) {
   async function revokeTenantInvitation(invitationId: string) {
     if (!selectedTenantId) return; setTenantBusy(invitationId); setTenantMessage("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/invitations/" + encodeURIComponent(invitationId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/tenants/" + encodeURIComponent(selectedTenantId) + "/invitations/" + encodeURIComponent(invitationId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
       if (!response.ok) throw new Error("Invitation revocation failed.");
       setTenantInvitations((current) => current.filter((invite) => String(invite.id) !== invitationId)); setTenantMessage("Invitation revoked and audited.");
     } catch (cause) { setTenantMessage(cause instanceof Error ? cause.message : "Invitation revocation failed."); } finally { setTenantBusy(""); }
   }
   async function revokeSession(sessionId: string) {
     try {
-      const response = await fetch(API_BASE + "/v1/auth/sessions/" + encodeURIComponent(sessionId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/auth/sessions/" + encodeURIComponent(sessionId), { method: "DELETE", credentials: "include", headers: csrfHeaders() });
       if (!response.ok) throw new Error(response.status === 404 ? "Session is already revoked or expired." : "Could not revoke session.");
       setData((current) => current ? { ...current, items: (current.items ?? []).filter((item) => String(item.id) !== sessionId) } : current);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not revoke session."); }
@@ -302,7 +302,7 @@ export function AdminData({ resource }: { resource: Resource }) {
     }
     setAuditAction("archive"); setAuditResult("");
     try {
-      const response = await fetch(API_BASE + "/v1/mac/audit-events/archive?fromSequence=" + fromSequence + "&toSequence=" + toSequence, { credentials: "include" });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/audit-events/archive?fromSequence=" + fromSequence + "&toSequence=" + toSequence, { credentials: "include" });
       if (!response.ok) { const body = await response.json(); throw new Error(body.error ?? "Archive package preparation failed."); }
       const blob = await response.blob(), objectUrl = URL.createObjectURL(blob);
       const link = document.createElement("a"); link.href = objectUrl; link.download = "mebumip-audit-" + fromSequence + "-" + toSequence + ".json"; link.click(); URL.revokeObjectURL(objectUrl);
@@ -316,7 +316,7 @@ export function AdminData({ resource }: { resource: Resource }) {
   async function runAuditAction(action: "verify" | "export") {
     setAuditAction(action); setAuditResult("");
     try {
-      const response = await fetch(API_BASE + (action === "verify" ? "/v1/mac/audit-events/verify" : "/v1/mac/audit-events/export?limit=200"), { credentials: "include" });
+      const response = await fetch((await getMeBuMIPApiBase()) + (action === "verify" ? "/v1/mac/audit-events/verify" : "/v1/mac/audit-events/export?limit=200"), { credentials: "include" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Audit operation failed.");
       if (action === "export") {
