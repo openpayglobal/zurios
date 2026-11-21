@@ -9,7 +9,8 @@
 3. The state record binds the exact tenant, user, session, callback URI and sorted requested scopes. The callback first checks the same authenticated user/session and current tenant permission. It consumes the state atomically before calling Meta.
 4. The authorization code is exchanged, the user token is debug-validated against the configured app ID, and all requested permissions must be granted. The service then exchanges for a long-lived token and validates the identity/permissions again.
 5. The token is encrypted with AES-256-GCM using the dedicated Meta keyring. Authenticated associated data binds the envelope to the tenant ID and connection ID. The database record stores only the ciphertext.
-6. The API returns a token-free connection summary. Listing is tenant-scoped. Disconnect requires a recent MFA step-up. The API attempts Meta `DELETE /{user-id}/permissions` using the encrypted user token, then always clears local ciphertext and commits the outcome with its audit event in one transaction. The response distinguishes `succeeded`, `failed` and `not_attempted`; a local disconnect is not misreported as a successful remote revoke.\n7. A tenant member with `social:assets:write` and recent MFA step-up can discover Pages through `me/accounts`. Pagination is same-origin and bounded to 20 pages/2,000 Pages. Page access tokens are separately encrypted with tenant/connection/Page-bound AES-GCM associated data. Linked Instagram Business account IDs/usernames are recorded as Page metadata. A complete discovery marks no-longer-returned Pages unavailable and clears their Page tokens.
+6. The API returns a token-free connection summary. Listing is tenant-scoped. Disconnect requires a recent MFA step-up. The API attempts Meta `DELETE /{user-id}/permissions` using the encrypted user token, then always clears local ciphertext and commits the outcome with its audit event in one transaction. The response distinguishes `succeeded`, `failed` and `not_attempted`; a local disconnect is not misreported as a successful remote revoke.
+7. A tenant member with `social:assets:write` and recent MFA step-up can discover Pages through `me/accounts`. Pagination is same-origin and bounded to 20 pages/2,000 Pages. Page access tokens are separately encrypted with tenant/connection/Page-bound AES-GCM associated data. Linked Instagram Business account IDs/usernames are recorded as Page metadata. A complete discovery marks no-longer-returned Pages unavailable and clears their Page tokens.
 
 ## API routes
 
@@ -18,7 +19,9 @@
 | POST | `/v1/tenants/{tenantId}/meta/oauth/start` | `meta:connections:write` | Recent MFA step-up; dedicated OAuth initiation rate limit |
 | GET | `/v1/meta/oauth/callback` | Original tenant's `meta:connections:write` | Same user and session as initiation; state single-use; recent MFA step-up |
 | GET | `/v1/tenants/{tenantId}/meta/connections` | `meta:connections:read` | Tenant isolation |
-| GET | `/v1/tenants/{tenantId}/meta/connections/{connectionId}/assets` | `social:assets:read` | Tenant-scoped metadata only; token-free |\n| POST | `/v1/tenants/{tenantId}/meta/connections/{connectionId}/assets/discover` | `social:assets:write` | Recent MFA step-up; bounded pagination and dedicated rate limit |\n| DELETE | `/v1/tenants/{tenantId}/meta/connections/{connectionId}` | `meta:connections:write` | Recent MFA step-up; attempt Meta permission revocation, always erase local tokens and audit the result |
+| GET | `/v1/tenants/{tenantId}/meta/connections/{connectionId}/assets` | `social:assets:read` | Tenant-scoped metadata only; token-free |
+| POST | `/v1/tenants/{tenantId}/meta/connections/{connectionId}/assets/discover` | `social:assets:write` | Recent MFA step-up; bounded pagination and dedicated rate limit |
+| DELETE | `/v1/tenants/{tenantId}/meta/connections/{connectionId}` | `meta:connections:write` | Recent MFA step-up; attempt Meta permission revocation, always erase local tokens and audit the result |
 
 The authoritative machine-readable contract is [MeBuMIP OpenAPI](../api/mebumip-openapi.yaml).
 
