@@ -317,12 +317,34 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
     const token = newOpaqueToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + config.SESSION_TTL_HOURS * 60 * 60 * 1000);
-    await db.collection("sessions").updateOne(
-      { _id: resolved.sessionId, revokedAt: { $exists: false } },
-      { $set: { revokedAt: now, rotatedAt: now } },
+    const sessions = db.collection("sessions");
+    const newSession = await sessions.insertOne({
+      userId: resolved.principal.userId,
+      tokenHash: hashToken(token),
+      createdAt: now,
+      expiresAt,
+      userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256),
+      ipHash: hashToken(request.ip || "unknown"),
+      rotatedFromSessionId: String(resolved.sessionId),
+    });
+    const rotated = await sessions.updateOne(
+      { _id: resolved.sessionId, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+      { $set: { revokedAt: now, rotatedAt: now, rotatedToSessionId: String(newSession.insertedId) } },
     );
-    await db.collection("sessions").insertOne({ userId: resolved.principal.userId, tokenHash: hashToken(token), createdAt: now, expiresAt, userAgent: String(request.headers["user-agent"] ?? "unknown").slice(0, 256), ipHash: hashToken(request.ip || "unknown") });
-    await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
+    if (rotated.modifiedCount !== 1) {
+      await sessions.deleteOne({ _id: newSession.insertedId });
+      return unauthorized(reply);
+    }
+    try {
+      await writeAudit(db, request, resolved.principal.userId, "auth.session.rotated", "session", "success", String(resolved.sessionId));
+    } catch (error) {
+      await sessions.deleteOne({ _id: newSession.insertedId });
+      await sessions.updateOne(
+        { _id: resolved.sessionId, rotatedToSessionId: String(newSession.insertedId) },
+        { $unset: { revokedAt: "", rotatedAt: "", rotatedToSessionId: "" } },
+      );
+      throw error;
+    }
     setSessionCookies(reply, token);
     return reply.send({ ...(config.NODE_ENV === "production" ? {} : { accessToken: token }), tokenType: config.NODE_ENV === "production" ? "Cookie" : "Bearer", expiresAt: expiresAt.toISOString() });
   });
