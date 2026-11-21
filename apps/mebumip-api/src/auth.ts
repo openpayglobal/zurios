@@ -257,17 +257,18 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       created = await withAuditTransaction(
         db,
         async (session) => {
-          const accepted = await db.collection("platformAdminInvitations").updateOne(
-            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
-            { $set: { acceptedAt: now } },
-            { session },
-          );
-          if (accepted.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_INVITATION_ALREADY_USED");
-          return db.collection("users").insertOne({
+          const created = await db.collection("users").insertOne({
             normalizedEmail: email, displayName: parsed.data.displayName, passwordHash,
             platformRole: invitation.role, platformAdminStatus: "active", status: "active",
             platformAdminInvitedAt: invitation.createdAt, platformAdminAcceptedAt: now, createdAt: now, updatedAt: now,
           }, { session });
+          const accepted = await db.collection("platformAdminInvitations").updateOne(
+            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+            { $set: { acceptedAt: now, acceptedBy: String(created.insertedId) } },
+            { session },
+          );
+          if (accepted.modifiedCount !== 1) throw new Error("PLATFORM_ADMIN_INVITATION_ALREADY_USED");
+          return created;
         },
         (result) => ({ actorUserId: String(result.insertedId), action: "platform.admin.invitation.registration.completed", targetType: "platform_admin", targetId: String(result.insertedId), outcome: "success", correlationId: request.id, metadata: { role: String(invitation.role) } }),
       );
@@ -293,15 +294,15 @@ export function registerAuthRoutes(app: FastifyInstance, db: Db): void {
       userResult = await withAuditTransaction(
         db,
         async (session) => {
-          const accepted = await db.collection("tenantInvitations").updateOne(
-            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
-            { $set: { acceptedAt: now } },
-            { session },
-          );
-          if (accepted.modifiedCount !== 1) throw new Error("INVITATION_ALREADY_USED");
           const created = await db.collection("users").insertOne({
             normalizedEmail: email, displayName: parsed.data.displayName, passwordHash, status: "active", createdAt: now, updatedAt: now,
           }, { session });
+          const accepted = await db.collection("tenantInvitations").updateOne(
+            { _id: invitation._id, acceptedAt: { $exists: false }, revokedAt: { $exists: false }, expiresAt: { $gt: now } },
+            { $set: { acceptedAt: now, acceptedBy: String(created.insertedId) } },
+            { session },
+          );
+          if (accepted.modifiedCount !== 1) throw new Error("INVITATION_ALREADY_USED");
           await db.collection("memberships").insertOne({
             tenantId: invitation.tenantId, userId: String(created.insertedId), role: invitation.role, status: "active", createdAt: now, updatedAt: now,
           }, { session });
