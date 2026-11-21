@@ -66,9 +66,10 @@ test("invitation acceptance and password login use active tenant membership", {s
   const currentWorkspaceSession=await db.collection("sessions").findOne({sessionId:switched.sessionId,tenantId:tenant.tenantId});
   assert.equal(currentWorkspaceSession?.revokedAt,undefined);
 
-  const platformChoice=workspaceLogin.workspaces.find(choice=>choice.tenantId==="platform");
-  assert.ok(platformChoice);
-  const platformSession=await selectWorkspace(db,cfg,workspaceLogin.selectionToken,"platform");
+  const platformLogin=await login(db,cfg,{email:"AUTH@example.test",password,ipHash:"integration"});
+  if(platformLogin.mfaRequired||!("workspaceSelectionRequired" in platformLogin)||!platformLogin.workspaceSelectionRequired)throw new Error("Expected a fresh workspace-selection challenge");
+  assert.ok(platformLogin.workspaces.some(choice=>choice.tenantId==="platform"));
+  const platformSession=await selectWorkspace(db,cfg,platformLogin.selectionToken,"platform");
   const platformSessionDoc=await db.collection("sessions").findOne({tenantId:"platform",sessionId:platformSession.sessionId,membershipId:"platform"});
   assert.ok(platformSessionDoc);
   const platformRefreshed=await refreshLogin(db,cfg,"platform",platformSession.sessionId,platformSession.refreshToken);
