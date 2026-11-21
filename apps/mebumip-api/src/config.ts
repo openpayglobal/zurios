@@ -61,6 +61,15 @@ const runtimeSchema = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
   }
+  const configuredOrigins = value.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean);
+  if (configuredOrigins.length === 0 || configuredOrigins.some((origin) => {
+    try {
+      const parsed = new URL(origin);
+      return !["http:", "https:"].includes(parsed.protocol) || parsed.origin !== origin || Boolean(parsed.username || parsed.password);
+    } catch { return true; }
+  })) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "CORS_ORIGINS must be a comma-separated list of absolute HTTP(S) origins without paths, credentials, queries or fragments" });
+  }
   if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => !origin.trim().startsWith("https://"))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must contain HTTPS origins only" });
   }
