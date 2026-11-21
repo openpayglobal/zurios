@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 export type MetaGraphMethod = "GET" | "POST" | "DELETE";
@@ -10,6 +11,8 @@ export interface MetaGraphClientOptions {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   maxRetries?: number;
+  appSecret?: string;
+  requireAppSecretProof?: boolean;
   sleep?: (milliseconds: number) => Promise<void>;
 }
 
@@ -59,6 +62,7 @@ export class MetaGraphError extends Error {
 
 const GRAPH_API_ORIGIN = "https://graph.facebook.com";
 const TOKEN_QUERY_KEY = "access_token";
+const APP_SECRET_PROOF_QUERY_KEY = "appsecret_proof";
 
 function safeMessage(message: unknown, token: string): string {
   const value = typeof message === "string" && message.trim() ? message : "Meta Graph API request failed";
@@ -80,11 +84,11 @@ function normalizePath(path: string, version: string): string {
   return normalized;
 }
 
-function appendParams(url: URL, params: MetaGraphParams | undefined, rejectAccessToken = true): void {
+function appendParams(url: URL, params: MetaGraphParams | undefined, rejectCredentials = true): void {
   if (!params) return;
   for (const [key, value] of Object.entries(params)) {
-    if (rejectAccessToken && key.toLowerCase() === TOKEN_QUERY_KEY) {
-      throw new MetaGraphError("Access tokens must be sent in the Authorization header", { status: 0 });
+    if (rejectCredentials && [TOKEN_QUERY_KEY, APP_SECRET_PROOF_QUERY_KEY].includes(key.toLowerCase())) {
+      throw new MetaGraphError("Credential parameters are managed by the Meta Graph client", { status: 0 });
     }
     if (value === undefined || value === null) continue;
     url.searchParams.set(key, String(value));
@@ -104,6 +108,8 @@ export class MetaGraphClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
+  private readonly appSecret?: string;
+  private readonly requireAppSecretProof: boolean;
   private readonly sleep: (milliseconds: number) => Promise<void>;
 
   constructor(options: MetaGraphClientOptions) {
@@ -112,9 +118,13 @@ export class MetaGraphClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 10_000;
     this.maxRetries = options.maxRetries ?? 2;
+    this.appSecret = options.appSecret;
+    this.requireAppSecretProof = options.requireAppSecretProof ?? Boolean(options.appSecret);
     this.sleep = options.sleep ?? ((milliseconds) => delay(milliseconds));
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 100 || this.timeoutMs > 60_000) throw new Error("META_GRAPH_TIMEOUT_INVALID");
     if (!Number.isSafeInteger(this.maxRetries) || this.maxRetries < 0 || this.maxRetries > 5) throw new Error("META_GRAPH_RETRY_LIMIT_INVALID");
+    if (this.appSecret !== undefined && (this.appSecret.length < 16 || this.appSecret.length > 512)) throw new Error("META_APP_SECRET_INVALID");
+    if (this.requireAppSecretProof && !this.appSecret) throw new Error("META_APP_SECRET_PROOF_REQUIRED");
   }
 
   async request<T = Record<string, unknown>>(path: string, options: MetaGraphRequestOptions): Promise<T> {
@@ -127,6 +137,7 @@ export class MetaGraphClient {
     const safePath = normalizePath(path, this.version);
     const url = new URL(`/${this.version}/${safePath}`, GRAPH_API_ORIGIN);
     appendParams(url, options.query);
+    if (this.appSecret) url.searchParams.set(APP_SECRET_PROOF_QUERY_KEY, createHmac("sha256", this.appSecret).update(accessToken).digest("hex"));
     const headers = new Headers({ accept: "application/json", authorization: `Bearer ${accessToken}` });
     let body: URLSearchParams | undefined;
     if (options.body) {
@@ -148,6 +159,10 @@ export class MetaGraphClient {
           headers,
           ...(body ? { body } : {}),
           signal: AbortSignal.timeout(this.timeoutMs),
+          redirect: "error",
+          credentials: "omit",
+          cache: "no-store",
+          referrerPolicy: "no-referrer",
         });
       } catch {
         if (retryableMethod && attempt + 1 < attempts) {
@@ -200,7 +215,7 @@ export class MetaGraphClient {
     const path = parsed.pathname.slice(prefix.length);
     const query: MetaGraphParams = {};
     for (const [key, value] of parsed.searchParams.entries()) {
-      if (key.toLowerCase() === TOKEN_QUERY_KEY) continue;
+      if (key.toLowerCase() === TOKEN_QUERY_KEY || key.toLowerCase() === APP_SECRET_PROOF_QUERY_KEY) continue;
       query[key] = value;
     }
     return this.request<T>(path, { accessToken, query });
