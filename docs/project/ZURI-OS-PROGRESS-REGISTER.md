@@ -226,3 +226,20 @@ This checkpoint supersedes the previous 52-overlap/2-path-only inventory. Curren
 
 
 **Critical mutation/audit atomicity hardening (2026-11-21):** introduced `withAuditTransaction` over the keyring-aware predecessor-linked audit append. MeBuMIP tenant provisioning, member/invitation lifecycle, platform-admin lifecycle and suspension/session revocation, auth session lifecycle, invited registration, password change/recovery, MFA lifecycle and logout now commit state and audit events in one MongoDB transaction. Email delivery remains outside transactions and its success/failure lifecycle is recorded separately. Added a replica-set rollback regression proving a domain write and audit counter both roll back when signing fails. Code and integration tests are pending exact-head verification.
+
+
+## 2026-11-21 — Verified security integration checkpoint
+
+**Exact PR #14 source/test head:** `f542bddb1af2358491fcdf2de2b52c087bdfa09a`.
+
+- [Full monorepo CI #44868067358](https://github.com/openpayglobal/zurios/actions/runs/44868067358) passed OpenAPI validation, route drift, documentation mirrors, typecheck, tests and build. Test suites reported 31 passed, 0 failed, 0 skipped.
+- [MeBuMIP Phase 1 #44868067363](https://github.com/openpayglobal/zurios/actions/runs/44868067363) passed API typecheck, 31 API tests (31 passed, 0 failed, 0 skipped), API build, web typecheck and web build.
+- Audit append now allocates sequence, reads predecessor, writes signed hash-linked event and advances counter in one majority transaction. The shared `withAuditTransaction` helper couples platform/tenant control-plane mutations with their audit records. The chain verifier checks the full persisted history and counter; API readiness fails closed if MongoDB is not a replica set/sharded topology or if the chain does not verify.
+- First-owner bootstrap is lease-protected and transactionally creates the platform owner, first tenant, owner membership and audit event. Refresh/password reset, tenant/member/admin operations and invitation lifecycle have transactional audit coupling where applicable.
+- Membership validity is enforced through workspace listing, selection, switching, tenant-specific login, MFA completion and principal resolution. Invitation delivery failures conditionally revoke only still-pending invitations; email subjects strip CR/LF.
+- Production CORS validation now requires HTTPS-only origins. Audit diagnostics expose full-chain verification separately from individual event signatures.
+- Audit backfill remains dry-run-first and bounded; partial/mixed or sequence-only pre-chain records are refused for separate signature-preserving reconciliation. Signed local archive export/offline verification exists; no object-store/WORM adapter is configured.
+- Root `pnpm-lock.yaml` is committed; both workflows use frozen lockfile installs. `MONGODB_TEST_URI` is passed through Turbo and MongoDB CI uses an initialized replica set.
+- Vercel preview inspection returned HTTP 403; no local Vercel CLI/token/session is available. Current-head deployment readiness is therefore unverified.
+
+**Current branch inventory:** PR #13 has 54 changed paths, PR #14 has 97, with 53 overlaps and one PR #13-only audit-service path whose behavior is integrated into PR #14's keyring-aware security module. PR #13 remains open/draft; PR #14 remains open/non-draft and unmerged. Production readiness is not established.
