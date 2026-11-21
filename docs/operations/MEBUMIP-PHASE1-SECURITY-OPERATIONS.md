@@ -80,6 +80,7 @@ Procedure:
 1. Run `pnpm --filter @zuri/mebumip-api audit:backfill` with production connectivity using the temporary migration identity. This is a dry run.
 2. Review the complete sanitized output, count, ordering and detected legacy/mixed-history conditions with the independent approver.
 3. If the count exceeds 5,000, or the utility reports mixed histories/invalid records, stop. Do not split or force the migration; create a separately reviewed reconciliation design.
+4. **Sequenced pre-chain events require separate handling.** Earlier MeBuMIP builds allocated a sequence before predecessor hashes/event hashes were introduced. Those records are classified as malformed/partial by the current backfill utility and are intentionally not auto-renumbered or rewritten. If the dry run finds any record with a sequence but incomplete chain metadata, stop and preserve the original bytes/signatures. A separately approved reconciliation must verify the original signature with the correct historical key, prove sequence continuity, preserve the old signature as signed provenance, and then add the new chain metadata. Do not delete, reset or silently renumber those events.
 4. Confirm the backup restore point and rollback owner. Obtain explicit written approval for apply.
 5. Run `AUDIT_CHAIN_BACKFILL_APPLY=true pnpm --filter @zuri/mebumip-api audit:backfill` once.
 6. Immediately run `verifyAuditChain` through the authorized MAC verification endpoint and require zero invalid links and zero legacy unchained records.
