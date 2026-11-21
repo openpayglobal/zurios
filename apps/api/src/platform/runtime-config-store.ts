@@ -22,12 +22,47 @@ export type PlatformRuntimeConfig = {
   reason?: string;
 };
 
-export const VERIFIED_PROJECT_HOSTS = new Set([
+export const VERIFIED_BROWSER_HOSTS = new Set([
   "zurios.vercel.app",
-  "zurios-api-openpayglobal-5300s-projects.vercel.app",
   "zuri-mebumip-openpayglobal-5300s-projects.vercel.app",
+]);
+
+export const VERIFIED_API_HOSTS = new Set([
+  "zurios-api-openpayglobal-5300s-projects.vercel.app",
   "zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app",
 ]);
+
+function normalizeHttpsOrigin(value: string, verifiedHosts: Set<string>, label: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${label}_INVALID`);
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.origin !== value ||
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error(`${label}_MUST_BE_EXACT_HTTPS_ORIGIN`);
+  }
+  if (!verifiedHosts.has(url.hostname)) throw new Error(`${label}_DOMAIN_NOT_VERIFIED`);
+  return url.origin;
+}
+
+export function normalizeVerifiedApiOrigin(value: string): string {
+  return normalizeHttpsOrigin(value, VERIFIED_API_HOSTS, "API_ORIGIN");
+}
+
+export function normalizeOriginList(values: string[]): string[] {
+  const normalized = [...new Set(values.map((value) => normalizeHttpsOrigin(value, VERIFIED_BROWSER_HOSTS, "BROWSER_ORIGIN")))];
+  if (normalized.length < 1 || normalized.length > 20) throw new Error("BROWSER_ORIGIN_COUNT_INVALID");
+  return normalized;
+}
 
 export const defaultPlatformRuntimeConfig: PlatformRuntimeConfig = {
   _id: "global",
