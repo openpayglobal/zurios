@@ -74,10 +74,6 @@ test("creates a versioned Business Login service from explicit app configuration
     META_REDIRECT_URI: "https://app.example.test/v1/meta/oauth/callback",
     META_GRAPH_API_VERSION: "v27.0",
     META_LOGIN_CONFIG_ID: "business_config_2026",
-    META_TOKEN_ENCRYPTION_KEYRING: undefined,
-    META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: undefined,
-    META_MARKETING_API_VERSION: undefined,
-    META_WEBHOOK_VERIFY_TOKEN: undefined,
   });
   const url = new URL(service.buildAuthorizationUrl({ state: "state_token_012345678901234567890123456789", mode: "business" }));
   assert.equal(url.pathname, "/v27.0/dialog/oauth");
