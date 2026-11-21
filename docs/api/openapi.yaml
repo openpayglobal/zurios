@@ -40,6 +40,8 @@ tags:
     description: Governance, administration, approvals and operational controls
   - name: Identity
     description: Global identity and tenant membership lifecycle
+  - name: Runtime Configuration
+    description: MAC-managed non-secret runtime settings and workload configuration
 paths:
   /platform/tenant:
     get:
@@ -932,7 +934,7 @@ paths:
                   type: object
                   properties:
                     accessRequestsEnabled: {type: boolean}
-                    privacyNoticeUrl: {type: string, format: uri}
+                    privacyNoticeUrl: {type: [string, "null"], format: uri}
                     supportEmail: {type: string, format: email}
                     supportUrl: {type: string, format: uri}
                     defaultLocale: {type: string}
@@ -946,6 +948,7 @@ paths:
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/public/runtime-config:
     get:
+      security: []
       tags: [Runtime Configuration]
       operationId: getPublicRuntimeConfiguration
       summary: Read the non-secret public runtime configuration with ETag support
