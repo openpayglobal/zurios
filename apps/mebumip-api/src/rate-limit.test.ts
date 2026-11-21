@@ -24,3 +24,12 @@ test("credential and MFA recovery routes use stricter per-IP windows", () => {
   assert.equal(passwordChange?.limit, 8);
   assert.equal(passwordChange?.windowMs, 15 * 60_000);
 });
+
+test("Meta OAuth initiation and callback use dedicated anti-abuse windows", () => {
+  const start = rateLimitPolicyForPath("/v1/tenants/:tenantId/meta/oauth/start");
+  assert.equal(start?.limit, 8);
+  assert.equal(start?.windowMs, 15 * 60_000);
+  const callback = rateLimitPolicyForPath("/v1/meta/oauth/callback");
+  assert.equal(callback?.limit, 20);
+  assert.equal(callback?.windowMs, 15 * 60_000);
+});
