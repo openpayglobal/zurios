@@ -108,7 +108,7 @@ Export and verification:
 
 1. Require a clean chain and zero legacy unchained events.
 2. Run `AUDIT_ARCHIVE_OUTPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive`.
-3. Verify locally with `AUDIT_ARCHIVE_INPUT=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify`.
+3. Verify locally with `AUDIT_ARCHIVE_FILE=/secure/audit-archive.json pnpm --filter @zuri/mebumip-api audit:archive:verify`.
 4. Upload through the dedicated archive-writer identity to the locked bucket; capture the object version and retention metadata.
 5. Download the retained object through the read-only restore identity and run the offline verifier against the retrieved bytes.
 6. Perform a documented restore drill and verify signatures, manifest, event count, sequence range and boundary hashes.
