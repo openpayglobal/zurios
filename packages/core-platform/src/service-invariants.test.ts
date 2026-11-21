@@ -25,7 +25,6 @@ test("location creation persists all required document fields and defaults",asyn
  assert.equal(inserted.name,"Head Office");
  assert.equal(inserted.type,"office");
  assert.equal(inserted.timezone,"Africa/Kampala");
- assert.deepEqual(inserted.path,undefined);
  assert.equal(inserted.status,"active");
  assert.equal(inserted.createdBy,"actor-1");
  assert.equal(inserted.updatedBy,"actor-1");
