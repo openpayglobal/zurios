@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { getMeBuMIPApiBase } from "./runtime-api";
 
-const INFRA_API = import.meta.env.VITE_MEBUMIP_API_BASE ?? "https://zuri-mebumip-api-openpayglobal-5300s-projects.vercel.app";
 type Infrastructure = {
   generatedAt: string;
   environment: string;
@@ -22,7 +22,7 @@ export function InfrastructurePanel() {
   const load = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const response = await fetch(INFRA_API + "/v1/mac/infrastructure", { credentials: "include", cache: "no-store" });
+      const response = await fetch((await getMeBuMIPApiBase()) + "/v1/mac/infrastructure", { credentials: "include", cache: "no-store" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Infrastructure inventory unavailable.");
       setData(body);
