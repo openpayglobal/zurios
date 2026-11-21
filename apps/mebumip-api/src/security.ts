@@ -81,6 +81,14 @@ export interface AuditEventInput {
 }
 
 type AuditEventPayload = Omit<AuditEventInput, "occurredAt"> & { occurredAt: Date };
+const sensitiveAuditKey = /(password|secret|token|authorization|cookie|otp|recovery|credential|private.?key)/i;
+function redactAuditMetadata(metadata: NonNullable<AuditEventInput["metadata"]>): NonNullable<AuditEventInput["metadata"]> {
+  const safe: NonNullable<AuditEventInput["metadata"]> = {};
+  for (const [key, value] of Object.entries(metadata).slice(0, 100)) {
+    safe[key] = sensitiveAuditKey.test(key) ? "[REDACTED]" : typeof value === "string" ? value.slice(0, 4000) : value;
+  }
+  return safe;
+}
 
 type AuditKeyRing={keys:Record<string,Buffer>;activeKeyId:string;legacyKey?:Buffer};
 function loadAuditKeyRing():AuditKeyRing|null{
@@ -126,7 +134,13 @@ function auditPayload(event: AuditEventPayload,keyId?:string): string {
 }
 
 export function createAuditEvent(input: AuditEventInput) {
-  const event: AuditEventPayload = { ...input, occurredAt: input.occurredAt ?? new Date() };
+  if (!input.actorUserId.trim() || !input.action.trim() || !input.targetType.trim() || !input.correlationId.trim() ||
+      !["success", "denied", "failure"].includes(input.outcome)) throw new Error("AUDIT_EVENT_REQUIRED_FIELDS_INVALID");
+  const event: AuditEventPayload = {
+    ...input,
+    ...(input.metadata ? { metadata: redactAuditMetadata(input.metadata) } : {}),
+    occurredAt: input.occurredAt ?? new Date(),
+  };
   const ring=loadAuditKeyRing();
   if(ring){
    const keyId=ring.activeKeyId,key=ring.keys[keyId]!;
@@ -144,7 +158,7 @@ export function verifyAuditEvent(event: Record<string, unknown>, signingKey?: st
  if(!event.integrity||typeof event.integrity!=="object")return false;
  const integrity=event.integrity as {algorithm?:unknown;signature?:unknown;keyId?:unknown};
  if(typeof integrity.signature!=="string"||!/^[a-f0-9]{64}$/.test(integrity.signature))return false;
- if(!(event.occurredAt instanceof Date)||typeof event.actorUserId!=="string"||typeof event.action!=="string"||typeof event.targetType!=="string"||typeof event.outcome!=="string"||typeof event.correlationId!=="string")return false;
+ if(!(event.occurredAt instanceof Date)||typeof event.actorUserId!=="string"||!event.actorUserId.trim()||typeof event.action!=="string"||!event.action.trim()||typeof event.targetType!=="string"||!event.targetType.trim()||!["success","denied","failure"].includes(String(event.outcome))||typeof event.correlationId!=="string"||!event.correlationId.trim())return false;
  const payload:AuditEventPayload={
   actorUserId:event.actorUserId,action:event.action,targetType:event.targetType,
   ...(typeof event.targetId==="string"?{targetId:event.targetId}:{}),
@@ -232,6 +246,7 @@ export async function appendAuditEventInTransaction(db: Db, input: AuditEventInp
   if (sequence > 1 && (!previous || typeof previous.eventHash !== "string")) throw new Error("AUDIT_CHAIN_PREDECESSOR_MISSING");
   if (sequence === 1 && await events.countDocuments({}, { session }) > 0) throw new Error("AUDIT_CHAIN_BACKFILL_REQUIRED");
   const event = createChainedAuditEvent(input, sequence, previous?.eventHash ?? AUDIT_GENESIS_HASH);
+  if ((event.integrity as { algorithm?: string }).algorithm === "unsigned") throw new Error("AUDIT_SIGNING_KEY_REQUIRED");
   await events.insertOne(event as ChainedAuditEvent, { session });
 }
 
