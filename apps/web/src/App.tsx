@@ -32,7 +32,7 @@ const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:str
  {id:"audit",label:"Audit centre",icon:FileSearch,permission:"platform.audit.read"},
  {id:"breakglass",label:"Break-glass",icon:KeyRound,permission:"platform.breakglass.read"},
  {id:"configuration",label:"Configuration",icon:Settings2,permission:"platform.configuration.read"},
- {id:"infrastructure",label:"Infrastructure & secrets",icon:KeyRound,platform:"platform.tenants.read"},
+ {id:"infrastructure",label:"Infrastructure & secrets",icon:KeyRound,platform:"platform.configuration.read"},
  {id:"tenants",label:"Tenant directory",icon:Layers3,platform:"platform.tenants.read"},
  {id:"access",label:"Access requests",icon:Mail,platform:"platform.tenants.read"}
 ];
