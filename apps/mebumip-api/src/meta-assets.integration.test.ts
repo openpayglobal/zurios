@@ -4,7 +4,7 @@ import { MongoClient } from "mongodb";
 import { MetaTokenVault } from "./meta-token-vault.js";
 import { MetaGraphClient } from "./meta-graph-client.js";
 import { createMetaConnection, revokeMetaConnection } from "./meta-connections.js";
-import { getMetaPageAccessToken, discoverMetaPages, listMetaPageAssets } from "./meta-assets.js";
+import { getMetaPageAccessToken, discoverMetaPages, listMetaPageAssets, rotateMetaPageAssetTokenEnvelopes } from "./meta-assets.js";
 import { verifyAuditChain } from "./security.js";
 
 process.env.NODE_ENV = "test";
@@ -97,8 +97,23 @@ test("Meta Page discovery paginates safely, encrypts Page tokens and reconciles 
     assert.equal(await getMetaPageAccessToken(db, vault, "tenant-assets-1", connection.connectionId, "111111"), "EAAG_page_token_111");
     await assert.rejects(() => getMetaPageAccessToken(db, vault, "tenant-assets-other", connection.connectionId, "111111"), /META_CONNECTION_NOT_FOUND/);
 
+    const rotatedVault = new MetaTokenVault({
+      keyring: { "meta-old": oldKey, "meta-new": newKey },
+      activeKeyId: "meta-new",
+    });
+    const rotation = await rotateMetaPageAssetTokenEnvelopes(db, rotatedVault, {
+      tenantId: "tenant-assets-1",
+      connectionId: connection.connectionId,
+      actorUserId: "user-assets-1",
+      correlationId: "meta-assets-key-rotation",
+    });
+    assert.equal(rotation.rotated, 2);
+    const rotatedStored = await db.collection("metaAssets").findOne({ tenantId: "tenant-assets-1", connectionId: connection.connectionId, providerAssetId: "111111" });
+    assert.equal(rotatedVault.keyId(String(rotatedStored?.pageAccessTokenCiphertext)), "meta-new");
+    assert.equal(await getMetaPageAccessToken(db, rotatedVault, "tenant-assets-1", connection.connectionId, "111111"), "EAAG_page_token_111");
+
     discoveryMode = "one-page";
-    const second = await discoverMetaPages(db, vault, graph, {
+    const second = await discoverMetaPages(db, rotatedVault, graph, {
       tenantId: "tenant-assets-1",
       connectionId: connection.connectionId,
       actorUserId: "user-assets-1",
