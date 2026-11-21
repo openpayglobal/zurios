@@ -7,7 +7,7 @@
 
 ## 1. Purpose and non-negotiable rules
 
-The two pull requests are divergent implementation streams, not a safe linear stack. The latest repository comparison reports 197 commits ahead on the PR #14 side and 366 commits ahead on the PR #13 side, with merge base `1b01d0ece95925cad708bb7a113df0a2c59cc105`. The changed-file inventory records 54 paths on PR #13, 73 on PR #14 and 39 overlapping paths.
+The two pull requests are divergent implementation streams, not a safe linear stack. The latest repository comparison reports PR #14 ahead by 435 commits and behind by 197 commits relative to PR #13, with merge base `1b01d0ece95925cad708bb7a113df0a2c59cc105`. The current changed-file inventory records 54 paths on PR #13, 91 on PR #14 and 52 overlapping paths; only two PR #13 changed paths are still absent from PR #14's changed-file set.
 
 Do not merge either pull request into the other or into the release branch merely because GitHub reports it mergeable. Git mergeability does not prove semantic equivalence, authorization correctness, audit integrity or runtime compatibility.
 
@@ -101,7 +101,7 @@ The integration candidate must:
 ## 6. Evidence required before merge
 
 - [ ] Exact source SHAs and merge-base recorded.
-- [ ] Changed-file inventory reconciled; all 15 PR #13-only paths accounted for.
+- [ ] Changed-file inventory reconciled; both remaining PR #13-only paths accounted for.
 - [ ] All 39 overlapping paths reviewed semantically.
 - [ ] Canonical audit-chain design approved and tests pass.
 - [ ] Cookie/CSRF and auth lifecycle behavior reviewed and tests pass.
@@ -174,3 +174,28 @@ The original full-collection chain verification and archive export still necessa
 
 
 The chain verifier was also changed to stream complete chain records in sequence order instead of materializing and sorting the entire audit collection in application memory. It separately counts all incomplete/legacy records, and uses the sparse unique sequence index for the ordered chain cursor. This keeps verification memory bounded while ensuring partial records still cause a failed integrity result. The archive exporter remains intentionally full-output because it must produce the requested archive bundle.
+
+
+## 8. Implementation checkpoint — security integration work applied on PR #14
+
+**Source heads at checkpoint:** PR #13 `52e94d1c6b1a87d516cba9fdd64337463259199f`; PR #14 `86827ed57885fe6a85de6cd396da29016c97f4c6`. PR #14 remains open and unmerged. At this checkpoint, PR #14 has 91 changed paths; PR #13 has 54; 52 overlap; two PR #13 changed paths remain outside PR #14's changed-file inventory.
+
+The following PR #13 security behavior has been ported or reconciled on PR #14:
+
+- The transactional, predecessor-linked audit writer, chain verifier, bounded dry-run-first backfill, signed archive manifest and offline verifier are implemented in `apps/mebumip-api/src/security.ts`, integrated with PR #14's existing versioned audit keyring rather than copying PR #13's incompatible configuration interface.
+- The audit archive preparation service now rejects sequence gaps, invalid event signatures and invalid chain links. The local archive CLI is not an object-store/WORM uploader.
+- The operational CLIs are exposed as `audit:backfill`, `audit:archive` and `audit:archive:verify`. Backfill refuses partial chain metadata and mixed histories; ambiguous sequenced legacy records require a reviewed reconciliation, not an automatic rewrite.
+- First-owner bootstrap now uses a unique expiring lease and a MongoDB transaction covering the owner, initial tenant, owner membership and audit event. The audit append participates in the caller transaction rather than starting a nested transaction.
+- Added MongoDB-backed audit concurrency/tamper/backfill, atomic bootstrap/session lifecycle and tenant-membership/invitation/MFA integration tests.
+- API startup now keeps readiness false until the persisted audit chain and sequence counter verify successfully.
+- MeBuMIP CI now sets `MONGODB_TEST_URI` and initializes a MongoDB replica set. Both CI workflows advertise the replica-set member as `127.0.0.1:27017`, preventing clients from discovering an unresolvable container hostname.
+- Added and indexed the MeBuMIP Phase 1 security operations runbook, aligned to the implemented keyring variable names.
+
+The two remaining changed-path differences are:
+
+1. `apps/mebumip-api/src/audit-service.ts` — its required behavior is now implemented in the existing `security.ts` module. The old file is intentionally not copied as a duplicate service.
+2. `packages/core-platform/src/idempotency-service.ts` — the file already exists on PR #14; the PR #13 delta is a narrow parsed-input type assertion, not a separate missing workflow. Confirm the exact diff and typecheck before deciding whether the cast should be retained.
+
+**Verification status:** the MeBuMIP workflow [#44866839352](https://github.com/openpayglobal/zurios/actions/runs/44866839352) passed on the immediately preceding head. Full monorepo CI [#44866845001](https://github.com/openpayglobal/zurios/actions/runs/44866845001) and MeBuMIP verification [#44866845017](https://github.com/openpayglobal/zurios/actions/runs/44866845017) are running on the checkpoint head. Do not mark the exact head verified until both finish successfully.
+
+**Remaining integration work:** review all 52 overlapping paths semantically, reconcile any remaining security behavior not yet covered by tests, and verify the exact candidate against the full regression matrix. Vercel preview verification, production secrets, WORM storage, backup/restore, mail sender verification, legal/privacy approval and production release remain separate blockers.
