@@ -471,7 +471,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const apiOrigins={zuriOs:normalizeVerifiedApiOrigin(body.apiOrigins.zuriOs),mebumip:normalizeVerifiedApiOrigin(body.apiOrigins.mebumip)};
     if(body.publicSettings.accessRequestsEnabled===true&&!body.publicSettings.privacyNoticeUrl)throw new Error("PRIVACY_NOTICE_REQUIRED");
     return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.runtime_config.update",async(session)=>{
-     const current=await readPlatformRuntimeConfig(db);
+     const current=await readPlatformRuntimeConfig(db,session);
      const now=new Date();
      const revision=current.revision+1;
      const next={revision,allowedOrigins,apiOrigins,publicSettings:body.publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
