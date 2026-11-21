@@ -23,6 +23,6 @@ test("deduplicates approved browser origins", () => {
 
 test("ships a safe non-secret bootstrap runtime configuration", () => {
   assert.equal(defaultPlatformRuntimeConfig.revision, 0);
-  assert.equal(defaultPlatformRuntimeConfig.publicSettings.accessRequestsEnabled, undefined);
+  assert.equal(defaultPlatformRuntimeConfig.publicSettings.accessRequestsEnabled, null);
   assert.deepEqual(defaultPlatformRuntimeConfig.privateSettings, {});
 });
