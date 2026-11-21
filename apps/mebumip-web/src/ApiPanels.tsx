@@ -326,7 +326,6 @@ export function MetaConnectionsPanel() {
   });
   const [stepUpCode, setStepUpCode] = useState("");
   const [stepUpMessage, setStepUpMessage] = useState("");
-  const [stepUpReady, setStepUpReady] = useState(false);
   const [refreshCount, setRefreshCount] = useState(0);
 
   useEffect(() => {
@@ -384,8 +383,8 @@ export function MetaConnectionsPanel() {
       const response = await fetch(API_BASE + "/v1/auth/step-up", { method: "POST", credentials: "include", headers: { ...csrfHeaders(), "content-type": "application/json" }, body: JSON.stringify({ code: stepUpCode }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "MFA verification failed.");
-      setStepUpReady(true); setStepUpCode(""); setStepUpMessage("MFA verified. Sensitive Meta actions are enabled for five minutes.");
-    } catch (cause) { setStepUpReady(false); setStepUpMessage(cause instanceof Error ? cause.message : "MFA verification failed."); }
+      setStepUpCode(""); setStepUpMessage("MFA verified. Sensitive Meta actions are enabled for five minutes.");
+    } catch (cause) { setStepUpMessage(cause instanceof Error ? cause.message : "MFA verification failed."); }
     finally { setBusy(""); }
   }
 
