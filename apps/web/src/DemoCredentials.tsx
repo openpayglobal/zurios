@@ -1,7 +1,7 @@
 import type {ReactNode} from "react";
 
 declare global {
- interface ImportMetaEnv { readonly VITE_DEMO_MODE?: string; readonly VITE_VERCEL_ENV?: string; readonly VITE_DEMO_PASSWORD?: string }
+ interface ImportMetaEnv { readonly DEV: boolean; readonly MODE: string; readonly VITE_DEMO_MODE?: string; readonly VITE_VERCEL_ENV?: string; readonly VITE_DEMO_PASSWORD?: string }
  interface ImportMeta { readonly env: ImportMetaEnv }
 }
 
