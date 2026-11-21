@@ -17,6 +17,7 @@ export interface MetaConnectionDocument extends Document {
   createdAt: Date;
   updatedAt: Date;
   revokedAt?: Date;
+  revocationStatus?: "succeeded" | "failed" | "not_attempted";
 }
 
 export interface MetaConnectionSummary {
@@ -32,6 +33,7 @@ export interface MetaConnectionSummary {
   createdAt: Date;
   updatedAt: Date;
   revokedAt?: Date;
+  revocationStatus?: "succeeded" | "failed" | "not_attempted";
 }
 
 export interface CreateMetaConnectionInput {
@@ -78,6 +80,7 @@ function toSummary(document: MetaConnectionDocument): MetaConnectionSummary {
     createdAt: document.createdAt,
     updatedAt: document.updatedAt,
     ...(document.revokedAt ? { revokedAt: document.revokedAt } : {}),
+    ...(document.revocationStatus ? { revocationStatus: document.revocationStatus } : {}),
   };
 }
 
@@ -219,6 +222,7 @@ export async function revokeMetaConnection(
   connectionIdInput: string,
   actorUserIdInput: string,
   correlationIdInput: string,
+  revocationStatus: "succeeded" | "failed" | "not_attempted" = "not_attempted",
 ): Promise<void> {
   const tenantId = requiredText(tenantIdInput, "tenant_id");
   const connectionId = requiredText(connectionIdInput, "connection_id");
@@ -231,7 +235,7 @@ export async function revokeMetaConnection(
     async (session) => {
       const result = await collection.updateOne(
         { tenantId, connectionId, status: "connected" },
-        { $set: { status: "revoked", accessTokenCiphertext: null, revokedAt: now, updatedAt: now } },
+        { $set: { status: "revoked", accessTokenCiphertext: null, revokedAt: now, updatedAt: now, revocationStatus } },
         { session },
       );
       if (result.modifiedCount !== 1) throw new Error("META_CONNECTION_NOT_FOUND");
@@ -245,6 +249,7 @@ export async function revokeMetaConnection(
       tenantId,
       outcome: "success",
       correlationId,
+      metadata: { remoteRevocation: revocationStatus },
     }),
   );
 }
