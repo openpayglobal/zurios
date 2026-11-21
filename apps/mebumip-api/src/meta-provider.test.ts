@@ -43,7 +43,7 @@ test("builds the tenant-bound token vault only from a dedicated configured keyri
   const context = { tenantId: "tenant-001", connectionId: "connection-001" };
   const envelope = vault.encrypt("EAAG_meta_token_value", context);
   assert.equal(vault.decrypt(envelope, context), "EAAG_meta_token_value");
-  assert.throws(() => createMetaTokenVault({ META_TOKEN_ENCRYPTION_KEYRING: "{}", META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: "missing" }), /META_TOKEN_ACTIVE_KEY_ID_INVALID/);
+  assert.throws(() => createMetaTokenVault({ META_TOKEN_ENCRYPTION_KEYRING: JSON.stringify({ old: "22".repeat(32) }), META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID: "missing" }), /META_TOKEN_ACTIVE_KEY_ID_INVALID/);
   assert.throws(() => createMetaTokenVault({}), /META_TOKEN_VAULT_NOT_CONFIGURED/);
 });
 
