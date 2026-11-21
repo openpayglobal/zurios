@@ -78,7 +78,7 @@ function frontendReturnUrl(status: string, tenantId: string, connectionId?: stri
   return target.toString();
 }
 
-function isBrowserNavigation(request: { headers: { accept?: string } }): boolean {
+function isBrowserNavigation(request: { headers: { accept?: string | string[] } }): boolean {
   return typeof request.headers.accept === "string" && request.headers.accept.includes("text/html");
 }
 
