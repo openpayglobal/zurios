@@ -1,4 +1,4 @@
-import type { MetaGraphParams } from "./meta-graph-client.js";
+import { MetaGraphClient, type MetaGraphParams } from "./meta-graph-client.js";
 
 export type MetaOAuthMode = "standard" | "business";
 export type MetaOAuthScope =
@@ -41,6 +41,16 @@ export interface MetaOAuthToken {
   accessToken: string;
   tokenType: "bearer";
   expiresInSeconds: number | null;
+}
+
+export interface MetaValidatedUserToken {
+  appId: string;
+  userId: string;
+  tokenType: "USER";
+  scopes: string[];
+  granularScopes: Array<{ scope: string; targetIds: string[] }>;
+  expiresAt: Date | null;
+  dataAccessExpiresAt: Date | null;
 }
 
 interface ProviderTokenResponse {
@@ -155,6 +165,82 @@ export class MetaOAuthService {
     };
     for (const [key, value] of Object.entries(params)) if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
     return this.fetchToken(url);
+  }
+
+  async debugAccessToken(accessToken: string): Promise<MetaValidatedUserToken> {
+    validateToken(accessToken);
+    const graph = new MetaGraphClient({
+      version: this.options.version,
+      appSecret: this.options.appSecret,
+      requireAppSecretProof: true,
+      fetchImpl: this.fetchImpl,
+      timeoutMs: this.timeoutMs,
+    });
+    let payload: { data?: Record<string, unknown> };
+    try {
+      payload = await graph.request("debug_token", {
+        accessToken: this.options.appId + "|" + this.options.appSecret,
+        query: { input_token: accessToken },
+      }) as { data?: Record<string, unknown> };
+    } catch (error) {
+      if (error instanceof Error && "status" in error) {
+        const details = error as Error & { status?: number; providerCode?: number; providerSubcode?: number; fbtraceId?: string };
+        throw new MetaOAuthError("Meta access token validation failed", {
+          status: details.status ?? 0,
+          ...(typeof details.providerCode === "number" ? { providerCode: details.providerCode } : {}),
+          ...(typeof details.providerSubcode === "number" ? { providerSubcode: details.providerSubcode } : {}),
+          ...(typeof details.fbtraceId === "string" ? { fbtraceId: details.fbtraceId } : {}),
+        });
+      }
+      throw new MetaOAuthError("Meta access token validation failed", { status: 0 });
+    }
+    const data = payload.data;
+    if (!data || data.app_id !== this.options.appId || data.is_valid !== true || data.type !== "USER" || typeof data.user_id !== "string" || !data.user_id) {
+      throw new MetaOAuthError("Meta access token is invalid or belongs to another app/user type", { status: 200 });
+    }
+    if (!Array.isArray(data.scopes) || !data.scopes.every((scope) => typeof scope === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(scope))) {
+      throw new MetaOAuthError("Meta access token returned invalid scopes", { status: 200 });
+    }
+    const granularScopes: MetaValidatedUserToken["granularScopes"] = [];
+    if (data.granular_scopes !== undefined) {
+      if (!Array.isArray(data.granular_scopes)) throw new MetaOAuthError("Meta access token returned invalid granular scopes", { status: 200 });
+      for (const entry of data.granular_scopes) {
+        if (!entry || typeof entry !== "object" || typeof (entry as Record<string, unknown>).scope !== "string") {
+          throw new MetaOAuthError("Meta access token returned invalid granular scopes", { status: 200 });
+        }
+        const targetIds = (entry as Record<string, unknown>).target_ids;
+        if (targetIds !== undefined && (!Array.isArray(targetIds) || !targetIds.every((id) => typeof id === "string"))) {
+          throw new MetaOAuthError("Meta access token returned invalid granular scopes", { status: 200 });
+        }
+        granularScopes.push({ scope: (entry as Record<string, unknown>).scope as string, targetIds: (targetIds as string[] | undefined) ?? [] });
+      }
+    }
+    const toDate = (value: unknown, field: string): Date | null => {
+      if (value === undefined || value === null || value === 0) return null;
+      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new MetaOAuthError("Meta access token returned invalid " + field, { status: 200 });
+      return new Date(value * 1000);
+    };
+    return {
+      appId: this.options.appId,
+      userId: data.user_id,
+      tokenType: "USER",
+      scopes: [...new Set(data.scopes as string[])].sort(),
+      granularScopes,
+      expiresAt: toDate(data.expires_at, "expiry"),
+      dataAccessExpiresAt: toDate(data.data_access_expires_at, "data access expiry"),
+    };
+  }
+
+  async exchangeAuthorizationCodeAndValidate(code: string): Promise<MetaOAuthToken & { identity: MetaValidatedUserToken }> {
+    const token = await this.exchangeAuthorizationCode(code);
+    const identity = await this.debugAccessToken(token.accessToken);
+    return { ...token, identity };
+  }
+
+  async exchangeLongLivedTokenAndValidate(shortLivedToken: string): Promise<MetaOAuthToken & { identity: MetaValidatedUserToken }> {
+    const token = await this.exchangeLongLivedToken(shortLivedToken);
+    const identity = await this.debugAccessToken(token.accessToken);
+    return { ...token, identity };
   }
 
   async exchangeLongLivedToken(shortLivedToken: string): Promise<MetaOAuthToken> {
