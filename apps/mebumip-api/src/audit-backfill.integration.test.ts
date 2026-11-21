@@ -26,12 +26,14 @@ test("audit chain appends serialize, verify, and detect tampering", {
       targetType: "test",
       outcome: "success",
       correlationId: `audit-concurrent-${index}`,
-      metadata: { index },
+      metadata: { index, password: index === 0 ? "must-not-be-stored" : null },
     })));
     const verification = await verifyAuditChain(db);
     assert.equal(verification.valid, true);
     assert.equal(verification.checked, 12);
     assert.equal(verification.latestSequence, 12);
+    const redactedEvent = await db.collection("auditEvents").findOne({ correlationId: "audit-concurrent-0" });
+    assert.equal((redactedEvent?.metadata as Record<string, unknown> | undefined)?.password, "[REDACTED]");
     const archive = await exportAuditArchive(db);
     assert.equal(verifyAuditArchiveBundle(archive).valid, true);
     assert.equal(verifyAuditArchiveBundle(JSON.parse(JSON.stringify(archive))).valid, true, "serialized archive timestamps must verify offline");
