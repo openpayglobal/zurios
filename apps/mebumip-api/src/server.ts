@@ -53,17 +53,17 @@ await app.register(cors, {
 // A real Vercel request may expose its short-lived OIDC token through the
 // x-vercel-oidc-token header. Refresh the MAC configuration in request context.
 app.addHook("preHandler", async (request) => {
-  if (Date.now() - lastRuntimeRefreshAt <= 5_000) return;
+  if (request.url.startsWith("/health/") || Date.now() - lastRuntimeRefreshAt <= 5_000) return;
   lastRuntimeRefreshAt = Date.now();
   const oidcHeader = request.headers["x-vercel-oidc-token"];
-  const runtime = await getMacRuntimeConfig(true, typeof oidcHeader === "string" ? oidcHeader : undefined).catch((error) => {
+  void getMacRuntimeConfig(true, typeof oidcHeader === "string" ? oidcHeader : undefined).then((runtime) => {
+    if (runtime) {
+      allowedOriginsCache = runtime.allowedOrigins;
+      allowedOriginsCacheAt = Date.now();
+    }
+  }).catch((error) => {
     app.log.warn({ err: error }, "MAC runtime refresh unavailable; retaining last known-good settings");
-    return null;
   });
-  if (runtime) {
-    allowedOriginsCache = runtime.allowedOrigins;
-    allowedOriginsCacheAt = Date.now();
-  }
 });
 
 app.get("/health/live", async () => ({
