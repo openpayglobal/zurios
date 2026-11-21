@@ -28,7 +28,10 @@ const callbackSchema = z.object({
   state: z.string().min(32).max(128),
   code: z.string().min(8).max(4096).optional(),
   error: z.string().max(128).optional(),
-}).strict().refine((value) => Boolean(value.code) !== Boolean(value.error), {
+  error_description: z.string().max(2048).optional(),
+  error_reason: z.string().max(128).optional(),
+  error_code: z.string().max(32).optional(),
+}).passthrough().refine((value) => Boolean(value.code) !== Boolean(value.error), {
   message: "Exactly one of code or provider error is required",
 });
 
@@ -47,7 +50,6 @@ function configuredServices() {
       allowInsecureLocalhost,
       ...(config.META_LOGIN_CONFIG_ID ? { loginConfigId: config.META_LOGIN_CONFIG_ID } : {}),
     }),
-    states: undefined as MetaOAuthStateService | undefined,
     vault: new MetaTokenVault({ keyring, activeKeyId: config.META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID }),
     redirectUri: config.META_REDIRECT_URI,
     allowInsecureLocalhost,
