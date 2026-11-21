@@ -1,6 +1,6 @@
 # Meta Graph API Client Contract
 
-**Status:** Phase 2 transport foundation; not a live Meta integration approval  
+**Status:** Phase 2 transport, token-vault and OAuth-state foundation; not a live Meta integration approval  
 **Applies to:** Zuri MeBuMIP Objective A and shared Meta provider operations  
 **Owner:** Blockchain Innovations LTD
 
@@ -16,9 +16,11 @@ The MeBuMIP API now has a reusable Meta Graph transport client in `apps/mebumip-
 - No automatic retry for POST/DELETE operations.
 - Retry-After support for rate limits.
 - Safe pagination that accepts only the official Graph API host and the same configured version, and strips an embedded access token before replay.
-- Token redaction in provider error messages.
+- App Secret Proof (`HMAC-SHA256(accessToken, appSecret)`) when the app is configured to require it; raw app secrets are never sent to Graph API.
+- Redirects, cookies, cache and referrers are disabled on outbound requests.
+- Token and app-secret redaction in provider error messages.
 
-This client does not implement OAuth, app review, asset authorization, token storage, publishing, Marketing API, WhatsApp or webhook processing. Those are separate services and acceptance gates.
+A dedicated AES-256-GCM Meta token vault and tenant/user/session-bound OAuth-state store are also implemented. This does not yet implement the OAuth callback/code exchange, persistent Meta connection lifecycle, asset authorization, publishing, Marketing API, WhatsApp or webhook processing. Those remain separate services and acceptance gates.
 
 ## 2. Version governance
 
@@ -29,11 +31,12 @@ The 20 November 2026 research snapshot identifies Graph API v27.0 on Meta's land
 ## 3. Request contract
 
 - Pass the token only through `accessToken`; the client sets `Authorization: Bearer ...`.
+- When a configured app secret is supplied, the client calculates App Secret Proof internally; callers cannot override `access_token` or `appsecret_proof` parameters.
 - Pass a relative Graph resource path, e.g. `me/accounts` or `page-id/feed`. Absolute URLs, query fragments, traversal segments and duplicated version prefixes are rejected.
 - GET requests may use bounded retries for network failures, HTTP 429/5xx and provider-marked transient errors.
 - POST/DELETE are never automatically retried. Mutating application services must use idempotency keys and an outbox where external effects are involved.
 - Form fields are encoded as URL-encoded body parameters. Never put access tokens, app secrets or webhook secrets in body/query fields.
-- Provider errors are normalized and token-redacted; raw authorization headers and tokens must never be logged.
+- Provider errors are normalized and redact access tokens, app secrets and App Secret Proof; raw authorization headers and tokens must never be logged.
 
 ## 4. Pagination contract
 
@@ -49,12 +52,12 @@ Use `requestNext(nextUrl, accessToken)` for Graph paging links. It validates HTT
 
 ## 6. Verification
 
-`meta-graph-client.test.ts` covers explicit versioning, token-header handling, query/body token rejection, traversal/absolute-path rejection, transient GET retry, no POST retry, provider-error redaction and same-host/same-version pagination.
+`meta-graph-client.test.ts` covers explicit versioning, token-header handling, App Secret Proof, credential parameter rejection, traversal/absolute-path rejection, transient GET retry, no POST retry, provider-error redaction and same-host/same-version pagination. `meta-token-vault.test.ts`, `meta-provider.test.ts`, `config.meta.test.ts` and `meta-oauth-state.integration.test.ts` cover token encryption/key rotation, config isolation, secret-safe readiness diagnostics and single-use tenant/session-bound OAuth state.
 
 ## 7. Remaining Objective A work
 
-1. Dedicated Meta provider-token key ring and tenant-bound encrypted token vault.
-2. Single-use OAuth state bound to tenant, user and session; server-side code exchange and token rotation.
+1. Complete the OAuth authorization URL/callback and server-side code exchange, binding the callback to the single-use state and initiating session.
+2. Persist Meta connections with encrypted tokens, scopes, expiry, key ID, external asset IDs, refresh/re-auth state and audited revocation.
 3. Facebook Login for Business permission and asset-selection flow.
 4. Page/Instagram Professional account discovery and tenant-asset binding.
 5. Webhook signature verification, durable inbox, deduplication and replay controls.
@@ -83,3 +86,14 @@ Official Meta references checked 2026-11-21:
 These are configuration and cryptographic primitives only. The OAuth authorization/callback lifecycle, encrypted token persistence, page discovery, Instagram account linking, connection revocation, webhook subscription and provider app-review approvals are still outstanding; no Meta account is connected and no live Page/Instagram mutation is enabled by this work.
 
 The client also checks Meta's `facebook-api-version` response header when present and rejects a version mismatch instead of silently accepting a provider-side version change.
+
+
+## Token vault and OAuth state foundation
+
+- `MetaTokenVault` uses AES-256-GCM with a dedicated `META_TOKEN_ENCRYPTION_KEYRING` and `META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID`. Each envelope contains a format version, key ID, IV, authentication tag and ciphertext; no plaintext token is stored in the envelope.
+- Authenticated associated data binds the ciphertext to the tenant ID, connection ID, envelope version and key ID. Moving ciphertext to another tenant/connection fails authentication.
+- The vault can decrypt retained old key IDs and re-encrypt under the active key. Config validation rejects reuse of MFA-encryption or audit-signing key material.
+- `MetaOAuthStateService` stores only a SHA-256 hash of a random 256-bit state, binds it to tenant/user/session/redirect URI, expires it after five minutes by default, and consumes it with one atomic conditional update. MongoDB has unique state-hash, TTL and context-lookup indexes.
+- `meta-provider.ts` supplies config-backed Graph-client/token-vault factories and secret-safe readiness diagnostics. The app ID/secret, explicit Graph version, HTTPS redirect URI and dedicated token key ring remain optional until the owner provisions a Meta app; if an app ID is configured, incomplete settings fail config validation.
+
+The vault and state store are primitives only. No token exchange, token persistence, connected account, webhook subscription or live Meta permission is claimed yet.
