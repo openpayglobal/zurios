@@ -1,8 +1,8 @@
 # User Workflow and MAC Infrastructure — Progress Register
 
 **Date:** 2026-11-21  
-**Branch:** `feat/mac-secrets-user-workflow`  
-**Base:** PR #16 head `2087923fd6446e8ae0f2c09b7628101402454fbf`  
+**Branch:** `feat/mac-secrets-user-workflow-v2`  
+**Base:** `integration/pr13-pr14-security-reconciliation` (PR #18)  
 **Status:** Workflow gap diagnosed; customer onboarding API/UI started; control-plane workload identity provisioned; Meta and infrastructure secret activation remain blocked.
 
 ## Confirmed user workflow decisions
@@ -225,4 +225,4 @@ Implemented in PR #18 source:
 - Auto-fill is hidden unless explicitly enabled for local development or a Vercel Preview build. It additionally requires a preview-only `VITE_DEMO_PASSWORD` of at least 16 characters and `VITE_VERCEL_ENV=preview` for Vercel Preview. Do not configure any demo variables in Production.
 - Added `docs/operations/ZURI-OS-DEMO-ACCOUNTS.md` with setup, isolation, rotation and acceptance guidance.
 
-**Verification status:** source changes committed; exact-head CI/typecheck/build and an isolated demo-database seed/login smoke test are pending. No demo database was provisioned and no credentials were generated in this repository session.
+**Verification status — passed:** exact-head GitHub Actions run `44919771589` passed typecheck, tests and build. The new MongoDB replica-set integration test executes the seeder twice against an isolated ephemeral `zuri_demo_test_*` database, verifies all three password hashes and membership counts, and exercises standard-member, multi-workspace and no-membership login results. The test drops its database afterward. No persistent demo database was provisioned and no credentials were created for a live Preview deployment.
