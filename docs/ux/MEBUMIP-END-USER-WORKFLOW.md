@@ -115,3 +115,10 @@ The current implementation branch now adds a first customer workspace onboarding
 - Expose a Meta connect action that fails closed with an explicit not-configured response until real Meta provider credentials and OAuth callback configuration exist.
 
 This is the beginning of the end-user workflow, not completion of all A–E product functionality. Social publishing, ads, WhatsApp, Meta OAuth/asset discovery, multiple-business provisioning and external developer integrations remain phase-gated work.
+
+
+## Vercel deployment wiring — 2026-11-21
+
+The MeBuMIP frontend and API now have dedicated Vercel projects, verified project domains and Node 22 settings. The frontend's API fallback points to the verified MeBuMIP API project domain. The API's production CORS default points to the verified frontend domain; development keeps the localhost origin. Preview deployments remain SSO-protected; production deployments are intended to be publicly accessible.
+
+The projects are not live yet. The API requires production MongoDB replica-set, MFA encryption, audit-signing and Resend email configuration before a production deployment can pass startup validation. The customer workflow source is therefore implemented but not yet live for end users.
