@@ -183,3 +183,25 @@ The internal endpoint intentionally returns no secret values yet. MongoDB bootst
 - Central MAC verifies the OIDC signature using Vercel's team JWKS and enforces exact owner ID, project ID, subject and Production environment. The MeBuMIP API project has team OIDC enabled.
 
 Live token verification and end-to-end runtime fetch remain pending because the central Zuri OS API's Vercel SSO protection currently intercepts its default domain. A public production endpoint or verified custom domain is required before the MeBuMIP API can reach the internal runtime-config endpoint.
+
+
+## Previously agreed Zuri OS user journey — verification
+
+The original user journey is present in the current integration source and is now explicitly tracked:
+
+| Step | Expected behavior | Source status |
+|---|---|---|
+| Sign in to Zuri OS | Global email/password identity | Implemented |
+| MFA | Complete MFA before workspace disclosure when enabled | Implemented |
+| Resolve memberships | Return only active, valid memberships for the identity | Implemented |
+| Choose workspace | Show only authorized workspaces when multiple memberships exist | Implemented |
+| Establish session | Bind session to user, tenant and membership | Implemented |
+| Switch workspace | Switch only to another authorized membership without duplicate identity | Implemented |
+| No active membership | Offer “Request Zuri OS access” separately from workspace joining | Implemented; public toggle currently off pending privacy notice |
+| Access request review | MAC privileged reviewer approves/rejects; request alone never creates membership or grants access | Implemented |
+| Join an existing workspace | Requires authorized administrator invitation/assignment | Implemented |
+| Revalidate access | Protected requests re-check session, membership and tenant status | Implemented |
+
+The UI already contains the “Choose your workspace” screen, workspace switcher and “Request Zuri OS access” flow. The reason this was not visible in the live product is deployment/access state, not absence of the workflow in source: PR #15 remains the integration base, PR #18 is still a draft implementation PR, the existing Zuri OS Vercel projects have no production deployment target, their default domains are SSO-protected, and public access requests remain disabled until an approved HTTPS privacy notice is saved in MAC.
+
+This is separate from MeBuMIP's customer workspace workflow, which is also implemented in PR #18 but not yet deployed.
