@@ -17,18 +17,28 @@ Delivery model: controlled phases, all five objectives retained in scope.
 |---|---|---|---|
 | 0 — External prerequisites & product governance | Project identity, Meta setup checklist, compliance plan | Product owner recorded; Meta setup runbook; app and portfolio prerequisites documented | Owner can create the portfolio and developer app later; no secrets required in repository |
 | 1 — Standalone platform foundation | Product workspace, authentication integration, tenant model, RBAC, MAC, MAD shell, audit, config | Deployable app/API boundaries; tenant isolation; MAC/MAD navigation and access policy; health and audit foundations | Automated tests demonstrate tenant isolation, default-deny access and audited privileged actions |
-| 2 — Facebook & Instagram management | Objective A | Customer authorization, asset discovery, Page/Instagram connections, publishing, inbox/comment capabilities as supported, insights | Supported flows pass tests with Meta test assets; token revocation and disconnection work |
+| 2 — Facebook & Instagram management | Objective A | OAuth authorization, Page discovery, encrypted Page-token handling and linked Instagram metadata, followed by Page/Instagram publishing, inbox/comment capabilities as supported, insights | Supported flows pass tests with Meta test assets; remote revoke outcome, local token erasure and tenant isolation are verified |
 | 3 — Advertising | Objective B | Ad account connections, campaign/ad set/ad workflows, reporting, spend guardrails | Read/write capabilities tested against approved test accounts; spend-affecting actions have confirmation and audit controls |
 | 4 — WhatsApp Business Platform | Objective C | Embedded Signup integration, WABA/phone-number onboarding, messaging, templates, statuses, webhooks | Test WABA end-to-end messaging and webhook lifecycle pass; policy and opt-in controls verified |
 | 5 — Multi-business SaaS | Objective D | Tenant self-service onboarding, per-tenant Meta authorization, role delegation, usage/billing hooks, tenant administration | Cross-tenant security tests pass; tenant can connect/disconnect assets without platform operator handling passwords |
 | 6 — Unified integrations | Objective E | Unified API, outbound webhooks, integration credentials, event contracts, Zuri OS adapter, external developer documentation | A separate client application can securely consume documented APIs and webhooks |
 | 7 — Production readiness & launch | All objectives | App Review evidence, Advanced Access where needed, business verification, privacy/data deletion, monitoring, incident and support runbooks | Formal go-live checklist signed off; no unresolved critical security or compliance findings |
 
+## Current implementation snapshot — 2026-11-20
+
+Objective A has entered implementation, but Phase 2 is not complete:
+
+- Implemented: tenant-authorized standard OAuth start/callback; hashed, single-use state bound to tenant/user/session/scopes; app/token/scope validation; encrypted user-token persistence; tenant-scoped connection list/disconnect; Meta remote permission revoke attempt with explicit outcome.
+- Implemented: tenant-authorized Page discovery/list; bounded same-origin pagination; encrypted Page access tokens bound to tenant/connection/Page; linked Instagram Business ID/username metadata; stale Page and Instagram-link reconciliation; transactional Page-token key rotation.
+- Verified at code checkpoint `8b9ea3cf2babcd285fc81f7d5257658bc4920bc8`: full CI and MeBuMIP Phase 1 workflows passed, including OpenAPI 3.1, route drift, docs mirror, typecheck, tests and builds.
+- Remaining: Page-level management/publishing/media/inbox/comments/insights, Instagram eligibility/operations, Business Login HTTP flow, webhooks/deauthorization, token health/re-authorisation jobs, frontend UX, Meta App Review and production provider tests.
+- No live Meta account is connected. Owner Meta app credentials, approved scopes, business verification and production authorization remain prerequisites.
+
 ## Objective-to-phase traceability
 
 | Objective | Primary phase | Supporting phases | Current delivery state |
 |---|---:|---|---|
-| A — Facebook and Instagram management | 2 | 1, 5, 6, 7 | Planned |
+| A — Facebook and Instagram management | 2 | 1, 5, 6, 7 | In progress — OAuth connection and Page discovery foundation; functional acceptance open |
 | B — Facebook and Instagram advertising | 3 | 1, 5, 6, 7 | Planned |
 | C — WhatsApp Business API | 4 | 1, 5, 6, 7 | Planned |
 | D — Multi-business Meta management platform | 5 | 1, 2, 3, 4, 6, 7 | Planned |
