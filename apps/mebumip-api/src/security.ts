@@ -238,33 +238,6 @@ export function verifyAuditChainEvents(events: Array<Record<string, unknown>>, e
   return true;
 }
 
-/**
- * Run a database mutation and its audit append in the same MongoDB transaction.
- * The work callback can be retried by the driver and must keep all effects inside
- * the supplied session; external effects belong in a transactional outbox.
- */
-export async function withAuditTransaction<T>(
-  db: Db,
-  work: (session: ClientSession) => Promise<T>,
-  buildAudit: (result: T) => AuditEventInput,
-): Promise<T> {
-  const session = db.client.startSession();
-  let result!: T;
-  let completed = false;
-  try {
-    await session.withTransaction(async () => {
-      const value = await work(session);
-      await appendAuditEventInTransaction(db, buildAudit(value), session);
-      result = value;
-      completed = true;
-    }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" }, readPreference: "primary" });
-    if (!completed) throw new Error("AUDITED_TRANSACTION_RESULT_MISSING");
-    return result;
-  } finally {
-    await session.endSession();
-  }
-}
-
 /** Append inside a caller-owned transaction; used by atomic multi-record mutations. */
 export async function appendAuditEventInTransaction(db: Db, input: AuditEventInput, session: ClientSession): Promise<void> {
   const counters = db.collection<{ _id: string; sequence: number; updatedAt: Date }>("auditCounters");
