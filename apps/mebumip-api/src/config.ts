@@ -6,7 +6,7 @@ const envSchema = z.object({
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4100),
   MONGODB_URI: z.string().url().optional(),
   MONGODB_DATABASE: z.string().min(1).default("zuri_mebumip"),
-  CORS_ORIGINS: z.string().default("http://localhost:5174"),
+  CORS_ORIGINS: z.string().optional(),
   SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(24),
   SESSION_COOKIE_SAME_SITE: z.enum(["Strict", "Lax", "None"]).default("Lax"),
   TRUSTED_PROXY_CIDRS: z.string().optional(),
@@ -52,7 +52,8 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
   }
-  if (value.NODE_ENV === "production" && value.CORS_ORIGINS.split(",").some((origin) => origin.includes("localhost") || origin.includes("127.0.0.1"))) {
+  const effectiveCorsOrigins = value.CORS_ORIGINS ?? (value.NODE_ENV === "production" ? "https://zuri-mebumip-openpayglobal-5300s-projects.vercel.app" : "http://localhost:5174");
+  if (value.NODE_ENV === "production" && effectiveCorsOrigins.split(",").some((origin) => origin.includes("localhost") || origin.includes("127.0.0.1"))) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["CORS_ORIGINS"], message: "Production CORS_ORIGINS must not include localhost" });
   }
   let auditKeyring: Record<string, unknown> | undefined;
@@ -82,5 +83,5 @@ if (!parsed.success) {
   throw new Error(`Invalid Zuri MeBuMIP API configuration: ${parsed.error.message}`);
 }
 
-export const config = parsed.data;
+export const config = { ...parsed.data, CORS_ORIGINS: parsed.data.CORS_ORIGINS ?? (parsed.data.NODE_ENV === "production" ? "https://zuri-mebumip-openpayglobal-5300s-projects.vercel.app" : "http://localhost:5174") };
 export const corsOrigins = config.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean);
