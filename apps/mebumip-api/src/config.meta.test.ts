@@ -5,7 +5,7 @@ import { parseConfig } from "./config.js";
 const base = {
   NODE_ENV: "test",
   META_APP_ID: "123456789",
-  META_APP_SECRET: "test_meta_app_secret_0123456789",
+  META_APP_SECRET: "test_meta_app_secret_0123456789x",
   META_REDIRECT_URI: "https://example.test/meta/callback",
   META_GRAPH_API_VERSION: "v27.0",
   META_TOKEN_ENCRYPTION_KEYRING: JSON.stringify({ "meta-2026": "22".repeat(32) }),
