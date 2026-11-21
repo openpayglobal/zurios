@@ -120,3 +120,18 @@ No WORM provider, retention duration, archive destination, legal-hold policy, or
 ## 9. Formal release approval
 
 Phase 1 remains **In progress** until the release owner records evidence for every applicable gate, unresolved critical/high findings are closed or explicitly risk-accepted, and the production deployment architecture is reviewed. Completion of this checklist does not itself complete Meta business verification, App Review, Advanced Access, or WhatsApp Tech Provider prerequisites.
+
+
+## 4A. Meta provider credential and token-key lifecycle
+
+Meta app credentials are optional until Objective A is explicitly enabled. When configured:
+
+- Keep META_APP_SECRET and META_WEBHOOK_VERIFY_TOKEN in the approved secret manager. META_APP_ID is an identifier, not a secret. Register the exact META_REDIRECT_URI with Meta and use HTTPS outside local development.
+- Set META_GRAPH_API_VERSION explicitly. Do not silently inherit a new Graph API version; Marketing API version selection is separate and must be reviewed against the target endpoint.
+- Set META_TOKEN_ENCRYPTION_KEYRING to a JSON object mapping key IDs to 32-byte hexadecimal keys and META_TOKEN_ENCRYPTION_ACTIVE_KEY_ID to the active key. This keyring must be distinct from AUDIT_SIGNING_KEYRING and MFA_ENCRYPTION_KEYRING.
+- Meta connection access tokens are stored only as AES-256-GCM envelopes. Authenticated associated data binds ciphertext to tenant ID and connection ID. Application responses and connection summaries must never return ciphertext or plaintext tokens.
+- Customer disconnect/revocation marks the connection revoked and clears its ciphertext in the same audited transaction. Encryption-key rotation re-encrypts an existing connection under the active key and records an audit event. The current service rotates individual connections; a bulk rotation CLI and operational batch evidence are still required before production key rollover.
+- The OAuth state store stores only a SHA-256 hash of the random state, binds it to tenant, user, session and the exact configured redirect URI, expires after five minutes, and atomically permits one successful consume. State creation, consumption and rejection are audited. The callback/code-exchange route is not yet implemented.
+- When Meta's Require App Secret setting is enabled, the server-side Graph client derives appsecret_proof from the access token and app secret. Never send the raw app secret to the browser or include it in logs.
+
+**Evidence:** secret-manager references and key IDs only; Meta redirect URI registration evidence; token-keyring separation review; connection encryption/rotation/revocation tests; OAuth-state replay and tenant/session binding tests. No live Meta app or connected customer is asserted by this runbook.
