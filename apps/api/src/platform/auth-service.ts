@@ -213,16 +213,16 @@ export async function disableMfa(db:Db,userId:string,password:string,code:string
  await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.disabled",resourceType:"user",resourceId:userId,outcome:"success",metadata:{}});
 }
 export async function confirmMfaEnrollment(db:Db,userId:string,password:string,code:string,config:AuthConfig){
- const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"});
- if(!user?.pendingMfaSecretEncrypted||!(user.pendingMfaSecretExpiresAt instanceof Date)||user.pendingMfaSecretExpiresAt<=now)throw new Error("MFA_ENROLLMENT_EXPIRED");
+ const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"}),pendingSecret=user?.pendingMfaSecretEncrypted;
+ if(!user||!pendingSecret||!(user.pendingMfaSecretExpiresAt instanceof Date)||user.pendingMfaSecretExpiresAt<=now)throw new Error("MFA_ENROLLMENT_EXPIRED");
  if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
- const secret=decryptMfaSecret(user.pendingMfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
+ const secret=decryptMfaSecret(pendingSecret,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
  const recoveryCodes=generateRecoveryCodes(),mfaRecoveryCodeHashes=recoveryCodes.map(hashRecoveryCode),transaction=db.client.startSession();
  try{
   await transaction.withTransaction(async()=>{
    const updated=await c.users.updateOne(
-    {userId,status:"active",mfaEnabled:{$ne:true},pendingMfaSecretEncrypted:user.pendingMfaSecretEncrypted,pendingMfaSecretExpiresAt:{$gt:now}},
-    {$set:{mfaEnabled:true,mfaSecretEncrypted:user.pendingMfaSecretEncrypted,mfaRecoveryCodeHashes,mfaLastUsedStep:step,updatedAt:now},$unset:{pendingMfaSecretEncrypted:"",pendingMfaSecretExpiresAt:""}},
+    {userId,status:"active",mfaEnabled:{$ne:true},pendingMfaSecretEncrypted:pendingSecret,pendingMfaSecretExpiresAt:{$gt:now}},
+    {$set:{mfaEnabled:true,mfaSecretEncrypted:pendingSecret,mfaRecoveryCodeHashes,mfaLastUsedStep:step,updatedAt:now},$unset:{pendingMfaSecretEncrypted:"",pendingMfaSecretExpiresAt:""}},
     {session:transaction}
    );
    if(!updated.modifiedCount)throw new Error("MFA_ENROLLMENT_EXPIRED");
