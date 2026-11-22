@@ -20,7 +20,14 @@ export async function appendAuditEvent(db:Db,input:unknown,session?:ClientSessio
  const event=eventSchema.parse(input),now=new Date();
  const {actor,resourceId,correlationId,metadata,...rest}=event;
  const safeActor={...(actor.userId!==undefined?{userId:actor.userId}:{}),...(actor.service!==undefined?{service:actor.service}:{}),...(actor.ipHash!==undefined?{ipHash:actor.ipHash}:{}),...(actor.userAgent!==undefined?{userAgent:actor.userAgent}:{})};
- const doc:AuditEventDocument={eventId:randomUUID(),occurredAt:now,...rest,actor:safeActor,...(resourceId!==undefined?{resourceId}:{}),...(correlationId!==undefined?{correlationId}:{}),metadata:redact(metadata) as Record<string,unknown>};
+ // Zod validates all required audit fields at runtime. Spell them out here rather than
+ // relying on inferred object spread types across pnpm/TypeScript versions.
+ const doc:AuditEventDocument={
+  eventId:randomUUID(),occurredAt:now,tenantId:event.tenantId!,action:event.action!,
+  resourceType:event.resourceType!,outcome:event.outcome!,actor:safeActor,
+  ...(resourceId!==undefined?{resourceId}:{}),...(correlationId!==undefined?{correlationId}:{}),
+  metadata:redact(metadata) as Record<string,unknown>
+ };
  await coreCollections(db).auditEvents.insertOne(doc,session?{session}:{});
  return {eventId:doc.eventId,occurredAt:doc.occurredAt};
 }
