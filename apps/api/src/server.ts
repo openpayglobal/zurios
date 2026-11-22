@@ -11,7 +11,7 @@ import { platformRoutes } from "./platform/platform-routes.js";
 import { adminRoutes } from "./platform/admin-routes.js";
 import { readPlatformRuntimeConfig } from "./platform/runtime-config-store.js";
 import type { AuthConfig } from "./platform/auth-service.js";
-import { createMongoEventBusPublisher, runOutboxWorker } from "@zuri/core-platform";
+import { createMongoEventBusPublisher, dispatchOutboxBatch, runOutboxWorker } from "@zuri/core-platform";
 
 const app = Fastify({ logger: true, bodyLimit: 1_048_576 });
 const outboxAbortController = new AbortController();
@@ -21,6 +21,8 @@ const teamIssuer = `https://oidc.vercel.com/${teamSlug}`;
 const teamAudience = `https://vercel.com/${teamSlug}`;
 const vercelJwks = createRemoteJWKSet(new URL(`${teamIssuer}/.well-known/jwks`));
 let outboxWorkerPromise: Promise<void> | undefined;
+let lastOutboxDispatchAt = 0;
+let outboxDispatchInFlight: Promise<void> | undefined;
 let db: Db | undefined;
 let allowedOriginsCache = [...corsOrigins];
 let allowedOriginsCacheAt = 0;
@@ -66,6 +68,28 @@ await app.register(cors, {
   },
   credentials: true,
 });
+
+// Vercel Functions are request-scoped. Do not leave a permanent polling loop
+// alive in a serverless instance; dispatch a bounded batch during live traffic.
+// Local long-running deployments retain the dedicated worker below.
+if (process.env.VERCEL) {
+  app.addHook("onRequest", async (request) => {
+    const currentDb = db;
+    if (!currentDb || request.url.startsWith("/health/") || Date.now() - lastOutboxDispatchAt < 5_000 || outboxDispatchInFlight) return;
+    lastOutboxDispatchAt = Date.now();
+    outboxDispatchInFlight = dispatchOutboxBatch(currentDb, createMongoEventBusPublisher(currentDb), { batchSize: 5 })
+      .then((result) => {
+        if (result.claimed > 0) app.log.info({ ...result }, "Dispatched bounded outbox batch");
+      })
+      .catch((error) => {
+        app.log.error({ err: error }, "Bounded outbox dispatch failed");
+      })
+      .finally(() => {
+        outboxDispatchInFlight = undefined;
+      });
+    await outboxDispatchInFlight;
+  });
+}
 
 // Health routes are registered before database initialization so liveness remains
 // observable during Atlas outages; readiness separately reports database state.
@@ -156,9 +180,11 @@ try {
   await app.register(adminRoutes(db, authConfig), { prefix: "/v1" });
   await app.register(platformRoutes(db, authConfig));
   await app.register(adminRoutes(db, authConfig));
-  outboxWorkerPromise = runOutboxWorker(db, createMongoEventBusPublisher(db), outboxAbortController.signal).catch((error) => {
-    app.log.error({ err: error }, "Platform outbox worker stopped unexpectedly");
-  });
+  if (!process.env.VERCEL) {
+    outboxWorkerPromise = runOutboxWorker(db, createMongoEventBusPublisher(db), outboxAbortController.signal).catch((error) => {
+      app.log.error({ err: error }, "Platform outbox worker stopped unexpectedly");
+    });
+  }
   app.log.info("Zuri OS API database and routes initialized");
 } catch (error) {
   app.log.error({ err: error }, "Zuri OS API database initialization failed; liveness remains available and readiness stays false");
