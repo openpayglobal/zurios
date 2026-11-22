@@ -215,7 +215,7 @@ export default function App(){
    const response=await fetch((await getApiBase())+"/auth/mfa/step-up",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword,code:stepUpCode})});
    const result=await response.json();
    if(!response.ok&&result.error==="MFA_ENROLLMENT_REQUIRED"){
-    const enrollmentResponse=await fetch((await getApiBase())+"/auth/mfa/enroll",{method:"POST",headers:{authorization:"Bearer "+session.accessToken}});
+    const enrollmentResponse=await fetch((await getApiBase())+"/auth/mfa/enroll",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword})});
     const enrollment=await enrollmentResponse.json();if(!enrollmentResponse.ok)throw new Error(enrollment.error??"Unable to begin MFA enrollment.");
     setStepUpEnrollment({secret:enrollment.secret,otpauthUrl:enrollment.otpauthUrl,confirmed:false});
     setStepUpCode("");setEnrollmentCode("");setError("MFA enrollment is required before privileged administration. Add this account to your authenticator app.");
@@ -230,7 +230,7 @@ export default function App(){
  const confirmStepUpEnrollment=async(event:FormEvent)=>{
   event.preventDefault();if(!session||!stepUpEnrollment)return;setStepUpBusy(true);setError("");
   try{
-   const response=await fetch((await getApiBase())+"/auth/mfa/confirm",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({code:enrollmentCode})});
+   const response=await fetch((await getApiBase())+"/auth/mfa/confirm",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword,code:enrollmentCode})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA enrollment confirmation failed.");
    setStepUpEnrollment({...stepUpEnrollment,recoveryCodes:result.recoveryCodes??[],confirmed:true});setEnrollmentCode("");
    setNotice("MFA enrolled. Save your one-time recovery codes, then use a fresh authenticator code for this action.");
