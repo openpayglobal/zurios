@@ -542,7 +542,7 @@ paths:
                   status: {type: string, enum: [mfa_step_up_satisfied]}
                   expiresAt: {type: string, format: date-time}
         "401": {$ref: "#/components/responses/Unauthenticated"}
-        "403": {description: MFA is not enrolled or the step-up credentials are invalid}
+        "403": {description: MFA enrollment is required before privileged administration actions}
         "429": {description: MFA step-up rate limit exceeded}
         "503": {description: MFA encryption is not configured}
   /auth/workspace/select:
