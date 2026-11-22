@@ -9,6 +9,14 @@ export type MacRuntimeConfig = {
   secretAccess: string;
 };
 
+export function buildMacRuntimeConfigHeaders(token: string): Record<string, string> {
+  return {
+    authorization: `Bearer ${token}`,
+    "x-vercel-trusted-oidc-idp-token": token,
+    accept: "application/json",
+  };
+}
+
 const MAC_RUNTIME_CONFIG_URL = process.env.MAC_RUNTIME_CONFIG_URL
   ?? "https://zurios-api-openpayglobal-5300s-projects.vercel.app/platform/internal/runtime-config";
 let cached: MacRuntimeConfig | null = null;
@@ -24,7 +32,7 @@ export async function getMacRuntimeConfig(forceRefresh = false, suppliedOidcToke
     const token = suppliedOidcToken ?? await getVercelOidcToken();
     const response = await fetch(MAC_RUNTIME_CONFIG_URL, {
       method: "GET",
-      headers: { authorization: `Bearer ${token}`, accept: "application/json" },
+      headers: buildMacRuntimeConfigHeaders(token),
       cache: "no-store",
     });
     if (!response.ok) throw new Error(`MAC_RUNTIME_CONFIG_UNAVAILABLE_${response.status}`);
