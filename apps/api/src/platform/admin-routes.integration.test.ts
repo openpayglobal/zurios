@@ -6,8 +6,8 @@ import {MongoClient} from "mongodb";
 import {SignJWT} from "jose";
 import {adminRoutes} from "./admin-routes.js";
 import {platformRoutes} from "./platform-routes.js";
-import {acceptMembershipInvitation} from "./auth-service.js";
-import {decryptInvitationToken} from "./auth-crypto.js";
+import {acceptMembershipInvitation,verifyMfaStepUp} from "./auth-service.js";
+import {decryptInvitationToken,encryptMfaSecret,generateTotpSecret,hashPassword,hashRecoveryCode,totpCode} from "./auth-crypto.js";
 import type {AuthConfig} from "./auth-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
@@ -248,5 +248,46 @@ test("administration workspace enforces invitation, two-person approval and brea
 
  }finally{
   await app.close();await db.dropDatabase();await client.close();
+ }
+});
+
+test("MFA step-up is session-bound, audited, expires and prevents TOTP or recovery-code replay",{skip:!uri},async()=>{
+ const client=new MongoClient(uri!);await client.connect();
+ const db=client.db("zuri_mfa_stepup_it_"+randomUUID().replaceAll("-",""));
+ const userId="mfa-user-"+randomUUID(),sessionId="mfa-session-"+randomUUID(),tenantId="platform";
+ const password="MFA-StepUp-Test-Password-2026!";
+ const secret=generateTotpSecret(),passwordHash=await hashPassword(password),now=new Date();
+ const recoveryCode="A1B2C3D4E5F60718";
+ try{
+  await db.collection("users").insertOne({
+   userId,status:"active",mfaEnabled:true,passwordHash,
+   mfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),
+   mfaRecoveryCodeHashes:[hashRecoveryCode(recoveryCode)]
+  });
+  await db.collection("sessions").insertOne({
+   tenantId,sessionId,userId,expiresAt:new Date(now.getTime()+60*60_000),
+   createdAt:now,updatedAt:now
+  });
+  await assert.rejects(
+   verifyMfaStepUp(db,userId,tenantId,sessionId,"incorrect-password",totpCode(secret),config),
+   /MFA_STEP_UP_FAILED/
+  );
+  const result=await verifyMfaStepUp(db,userId,tenantId,sessionId,password,totpCode(secret),config);
+  assert.equal(result.status,"mfa_step_up_satisfied");
+  const storedSession=await db.collection("sessions").findOne({tenantId,sessionId,userId});
+  assert.ok(storedSession?.mfaStepUpAt instanceof Date);
+  assert.ok(storedSession?.mfaStepUpExpiresAt instanceof Date);
+  assert.ok(storedSession!.mfaStepUpExpiresAt.getTime()>Date.now());
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId,action:"auth.mfa.step_up",resourceId:sessionId,outcome:"success"}),1);
+  await assert.rejects(
+   verifyMfaStepUp(db,userId,tenantId,sessionId,password,totpCode(secret),config),
+   /MFA_CODE_ALREADY_USED/
+  );
+  const recoveryResult=await verifyMfaStepUp(db,userId,tenantId,sessionId,password,recoveryCode,config);
+  assert.equal(recoveryResult.status,"mfa_step_up_satisfied");
+  const storedUser=await db.collection("users").findOne({userId});
+  assert.deepEqual(storedUser?.mfaRecoveryCodeHashes,[]);
+ }finally{
+  await db.dropDatabase();await client.close();
  }
 });
