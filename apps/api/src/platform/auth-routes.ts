@@ -19,12 +19,13 @@ function statusFor(error:unknown):number{
  const code=error instanceof Error?error.message:"";
  if(code==="AUTH_RATE_LIMITED")return 429;
  if(code==="MFA_ENROLLMENT_REQUIRED")return 403;
+ if(code==="MFA_ALREADY_ENABLED")return 409;
  if(code==="WORKSPACE_ACCESS_DENIED")return 403;
  if(code==="WORKSPACE_SELECTION_REPLAYED")return 409;
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|REUSE|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_|WORKSPACE_|PLATFORM_ACCESS_REVOKED/.test(code))return 401;
  return 500;
 }
-function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?(code==="MFA_ENROLLMENT_REQUIRED"?"MFA_ENROLLMENT_REQUIRED":"WORKSPACE_ACCESS_DENIED"):status===409?"WORKSPACE_SELECTION_REPLAYED":status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
+function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?(code==="MFA_ENROLLMENT_REQUIRED"?"MFA_ENROLLMENT_REQUIRED":"WORKSPACE_ACCESS_DENIED"):status===409?(code==="MFA_ALREADY_ENABLED"?"MFA_ALREADY_ENABLED":"WORKSPACE_SELECTION_REPLAYED"):status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
 async function enforceMfaStepUpRateLimit(db:Db,userId:string,ipHash:string){
  const bucket=Math.floor(Date.now()/60_000),key=createHash("sha256").update("mfa-step-up|"+userId+"|"+ipHash+"|"+bucket).digest("hex");
  const collection=db.collection("auth_rate_limits");
@@ -120,13 +121,13 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/auth/mfa/enroll",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
-   try{return await beginMfaEnrollment(db,request.principal!.userId,config);}
+   try{const body=z.object({password:z.string().min(1).max(128)}).parse(request.body);return await beginMfaEnrollment(db,request.principal!.userId,body.password,config);}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/confirm",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
-   try{const body=z.object({code:z.string().min(6).max(64)}).parse(request.body);return await confirmMfaEnrollment(db,request.principal!.userId,body.code,config);}
+   try{const body=z.object({password:z.string().min(1).max(128),code:z.string().min(6).max(64)}).parse(request.body);return await confirmMfaEnrollment(db,request.principal!.userId,body.password,body.code,config);}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/step-up",{preHandler:requireAuth},async(request,reply)=>{
