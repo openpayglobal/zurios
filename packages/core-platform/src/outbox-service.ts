@@ -11,7 +11,7 @@ export type OutboxEventDocument=PlatformEventEnvelope&{
  availableAt:Date;leaseOwner?:string;leaseUntil?:Date;publishedAt?:Date;lastError?:string;
  createdAt:Date;updatedAt:Date;
 };
-type OutboxInput={tenantId:string;eventType:string;aggregateType:string;aggregateId?:string;payload:Record<string,unknown>;correlationId?:string};
+type OutboxInput={tenantId:string;eventType:string;aggregateType:string;aggregateId?:string|undefined;payload:Record<string,unknown>;correlationId?:string|undefined};
 const schema=z.object({
  tenantId:z.string().min(1),eventType:z.string().min(3).max(180),
  aggregateType:z.string().min(2).max(100),aggregateId:z.string().max(200).optional(),
