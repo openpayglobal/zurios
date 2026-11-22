@@ -65,3 +65,8 @@ The seeder was run successfully as an explicit one-time Vercel Preview build ste
 The Zuri OS web Preview responds HTTP 200 and is READY, but the API deployment currently assigned to the branch alias is not yet healthy. The first API deployment built successfully but failed at runtime because `@zuri/core-platform` exported a TypeScript source entry point. The package now exports compiled JavaScript and declarations; the API build compiles that package first. A dedicated runtime-import regression test was added and exact-head GitHub CI runs `44989687455` and `44989683049` passed on `4d12a6bf95c34db9e15f6cf289890e373f373138` (OpenAPI, route drift, docs mirrors, typecheck, tests and build).
 
 A corrected API Preview deployment is still pending. Vercel returned HTTP 402 `api-deployments-free-per-day` with retry-after 86,400 seconds. Until that deployment is created and `/health/live` and `/health/ready` return success, do not treat browser login or the three sign-in scenarios as live-accepted. The demo database and Preview environment remain isolated; the seeder is disabled and Production has not been modified.
+
+
+## Latest health-check behavior — 2026-11-22 UTC
+
+The API source now keeps `/health/live` available when Atlas is down and returns HTTP 503 from `/health/ready` until a replica-set connection is healthy. This was verified in an isolated Vercel sandbox against a deliberately unavailable local MongoDB. Exact-head GitHub CI passed on `746ec6dd7b378df2a2c4657cc44b9f1fa1a36a00` (runs `44989972867` and `44989968679`). These source fixes have not yet been deployed because Vercel's API deployment daily quota remains exhausted. The currently assigned API Preview still needs replacement before live sign-in acceptance.
