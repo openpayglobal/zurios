@@ -94,6 +94,8 @@ export default function App(){
  const [stepUpPassword,setStepUpPassword]=useState("");
  const [stepUpCode,setStepUpCode]=useState("");
  const [stepUpBusy,setStepUpBusy]=useState(false);
+ const [stepUpEnrollment,setStepUpEnrollment]=useState<{secret:string;otpauthUrl:string;recoveryCodes?:string[];confirmed:boolean}|null>(null);
+ const [enrollmentCode,setEnrollmentCode]=useState("");
  const refreshPromise=useRef<Promise<string>|null>(null);
  const stepUpResolver=useRef<((approved:boolean)=>void)|null>(null);
  const stepUpPromise=useRef<Promise<boolean>|null>(null);
@@ -101,7 +103,7 @@ export default function App(){
 
 
  const saveSession=useCallback((value:Session)=>{setSession(value);setError("");setNotice("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAccessRequestOpen(false);setAccessRequestSubmitted(false);},[]);
- const clearSession=useCallback(()=>{stepUpResolver.current?.(false);stepUpResolver.current=null;stepUpPromise.current=null;setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);setAccessRequestOpen(false);setAccessRequestSubmitted(false);setAccessRequestName("");setAccessRequestOrganization("");setAccessRequestNote("");},[]);
+ const clearSession=useCallback(()=>{stepUpResolver.current?.(false);stepUpResolver.current=null;stepUpPromise.current=null;setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setStepUpEnrollment(null);setEnrollmentCode("");setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);setAccessRequestOpen(false);setAccessRequestSubmitted(false);setAccessRequestName("");setAccessRequestOrganization("");setAccessRequestNote("");},[]);
  const refreshAccessToken=useCallback(async()=>{
   if(!session)throw new Error("Your session has expired. Sign in again.");
   if(!refreshPromise.current){
@@ -211,14 +213,32 @@ export default function App(){
   event.preventDefault();if(!session)return;setStepUpBusy(true);setError("");
   try{
    const response=await fetch((await getApiBase())+"/auth/mfa/step-up",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword,code:stepUpCode})});
-   const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA step-up failed.");
-   setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setError("");setNotice("Identity re-verified. Privileged administration is enabled for five minutes.");
+   const result=await response.json();
+   if(!response.ok&&result.error==="MFA_ENROLLMENT_REQUIRED"){
+    const enrollmentResponse=await fetch((await getApiBase())+"/auth/mfa/enroll",{method:"POST",headers:{authorization:"Bearer "+session.accessToken}});
+    const enrollment=await enrollmentResponse.json();if(!enrollmentResponse.ok)throw new Error(enrollment.error??"Unable to begin MFA enrollment.");
+    setStepUpEnrollment({secret:enrollment.secret,otpauthUrl:enrollment.otpauthUrl,confirmed:false});
+    setStepUpCode("");setEnrollmentCode("");setError("MFA enrollment is required before privileged administration. Add this account to your authenticator app.");
+    return;
+   }
+   if(!response.ok)throw new Error(result.error??"MFA step-up failed.");
+   setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setStepUpEnrollment(null);setEnrollmentCode("");setError("");setNotice("Identity re-verified. Privileged administration is enabled for five minutes.");
    stepUpResolver.current?.(true);stepUpResolver.current=null;
   }catch(e){setError(e instanceof Error?e.message:"MFA step-up failed.");}
   finally{setStepUpBusy(false);}
  };
+ const confirmStepUpEnrollment=async(event:FormEvent)=>{
+  event.preventDefault();if(!session||!stepUpEnrollment)return;setStepUpBusy(true);setError("");
+  try{
+   const response=await fetch((await getApiBase())+"/auth/mfa/confirm",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({code:enrollmentCode})});
+   const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA enrollment confirmation failed.");
+   setStepUpEnrollment({...stepUpEnrollment,recoveryCodes:result.recoveryCodes??[],confirmed:true});setEnrollmentCode("");
+   setNotice("MFA enrolled. Save your one-time recovery codes, then use a fresh authenticator code for this action.");
+  }catch(e){setError(e instanceof Error?e.message:"MFA enrollment confirmation failed.");}
+  finally{setStepUpBusy(false);}
+ };
  const cancelMfaStepUp=()=>{
-  setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");stepUpResolver.current?.(false);stepUpResolver.current=null;
+  setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setStepUpEnrollment(null);setEnrollmentCode("");stepUpResolver.current?.(false);stepUpResolver.current=null;
  };
  const submitAccessRequest=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
@@ -440,7 +460,12 @@ export default function App(){
     {view==="tenants"&&<><SectionTitle eyebrow="Platform operations" title="Tenant directory" description="Cross-tenant provisioning and lifecycle operations are restricted to separately provisioned platform operators."/><div className="grid gap-5 xl:grid-cols-[1fr_.9fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Tenants</h2>{tenants.length?tenants.map((tenant:any)=><div key={tenant.tenantId} className="flex items-center justify-between border-t border-white/[0.06] py-3"><div><p className="text-sm font-medium">{tenant.displayName}</p><p className="mt-1 text-[10px] text-slate-500">{tenant.slug} · {tenant.tenantId}</p></div><Status value={tenant.status}/></div>):<Empty label="No tenant records returned."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provision a tenant</h2><form onSubmit={createTenant} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant slug</span><input name="slug" required pattern="[a-z0-9-]{2,64}" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Legal name</span><input name="legalName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Display name</span><input name="displayName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner name</span><input name="ownerName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner email</span><input name="ownerEmail" type="email" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label></div><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit"><Building2 size={14}/> Provision tenant</Button></form><div className="mt-8 border-t border-white/[0.07] pt-5"><h3 className="mb-3 text-sm font-semibold">Request tenant lifecycle change</h3><form onSubmit={requestTenantLifecycle} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant ID</span><input name="tenantId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Action</span><select name="action" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"><option value="tenant.activate">Activate</option><option value="tenant.suspend">Suspend</option><option value="tenant.close">Close</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit">Request lifecycle approval</Button></form></div></Panel></div></>}
     <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-5 text-[10px] text-slate-600"><span>ZURI OS · One foundation · Many governed ecosystems</span><span>OIPTECH / ODEL Developers</span></footer>
    </main>
-   {stepUpOpen&&<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"><Panel className="w-full max-w-md p-7"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Privileged action verification</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Confirm your identity</h2><p className="mt-2 text-sm leading-6 text-slate-400">This MAC operation requires your password and a current authenticator or one-time recovery code. Verification remains valid for five minutes.</p><ErrorBanner message={error}/><form onSubmit={submitMfaStepUp} className="mt-5 space-y-4"><Input label="Current password" value={stepUpPassword} onChange={setStepUpPassword} type="password" required/><Input label="Authenticator code or one-time recovery code" value={stepUpCode} onChange={setStepUpCode} placeholder="000000" required/><div className="flex flex-wrap gap-2"><Button type="submit" disabled={stepUpBusy||!stepUpPassword||!stepUpCode}>{stepUpBusy?"Verifying…":"Verify and continue"}</Button><Button variant="secondary" onClick={cancelMfaStepUp} disabled={stepUpBusy}>Cancel</Button></div></form></Panel></div>}
+   {stepUpOpen&&<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"><Panel className="w-full max-w-md p-7"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Privileged action verification</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Confirm your identity</h2><p className="mt-2 text-sm leading-6 text-slate-400">This MAC operation requires your password and a current authenticator or one-time recovery code. Verification remains valid for five minutes.</p><ErrorBanner message={error}/>
+    {stepUpEnrollment? <div className="mt-5 space-y-4">
+     <div className="rounded-xl border border-cyan-200/20 bg-cyan-200/[0.05] p-4"><p className="text-xs font-semibold text-cyan-100">Authenticator setup secret</p><p className="mt-2 break-all font-mono text-sm text-slate-100">{stepUpEnrollment.secret}</p><p className="mt-3 text-[10px] leading-5 text-slate-400">Add this secret manually to your authenticator app, or copy the provisioning URI below. It is displayed only during this enrollment flow.</p><p className="mt-2 break-all font-mono text-[10px] text-slate-400">{stepUpEnrollment.otpauthUrl}</p></div>
+     {stepUpEnrollment.confirmed? <div className="rounded-xl border border-amber-200/20 bg-amber-200/[0.05] p-4"><p className="text-xs font-semibold text-amber-100">Save your one-time recovery codes</p><div className="mt-3 grid grid-cols-2 gap-2">{(stepUpEnrollment.recoveryCodes??[]).map(code=><code key={code} className="rounded-lg bg-black/20 px-2 py-2 text-center text-xs text-slate-200">{code}</code>)}</div><p className="mt-3 text-[10px] leading-5 text-slate-400">Each code can be used once. Store them securely. The confirmation code cannot be reused for the privileged action; wait for a fresh authenticator code.</p><Button onClick={()=>{setStepUpEnrollment(null);setStepUpCode("");setError("");}}>I've saved them — continue</Button></div>:
+      <form onSubmit={confirmStepUpEnrollment} className="space-y-4"><Input label="Current authenticator code" value={enrollmentCode} onChange={setEnrollmentCode} placeholder="000000" required/><Button type="submit" disabled={stepUpBusy||!enrollmentCode}>{stepUpBusy?"Confirming…":"Confirm MFA enrollment"}</Button></form>}
+    </div>:<form onSubmit={submitMfaStepUp} className="mt-5 space-y-4"><Input label="Current password" value={stepUpPassword} onChange={setStepUpPassword} type="password" required/><Input label="Authenticator code or one-time recovery code" value={stepUpCode} onChange={setStepUpCode} placeholder="000000" required/><div className="flex flex-wrap gap-2"><Button type="submit" disabled={stepUpBusy||!stepUpPassword||!stepUpCode}>{stepUpBusy?"Verifying…":"Verify and continue"}</Button><Button variant="secondary" onClick={cancelMfaStepUp} disabled={stepUpBusy}>Cancel</Button></div></form>}</Panel></div>}
   </div>
  </div>;
 }
