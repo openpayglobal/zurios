@@ -150,7 +150,8 @@ export async function verifyMfaStepUp(
  db:Db,userId:string,tenantId:string,sessionId:string,password:string,code:string,config:AuthConfig
 ){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
- if(!user?.passwordHash||!user.mfaSecretEncrypted||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
+ if(!user?.mfaSecretEncrypted)throw new Error("MFA_ENROLLMENT_REQUIRED");
+ if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
  const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
  const recoveryHash=step===null?hashRecoveryCode(code):undefined;
  const now=new Date(),expiresAt=new Date(now.getTime()+5*60_000),transaction=db.client.startSession();
