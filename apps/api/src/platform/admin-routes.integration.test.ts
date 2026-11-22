@@ -41,9 +41,9 @@ test("administration workspace enforces invitation, two-person approval and brea
   const now=new Date();
   await db.collection("tenants").insertOne({tenantId:"tenant-a",slug:"tenant-a",legalName:"Tenant A Ltd",displayName:"Tenant A",status:"active"});
   await db.collection("users").insertMany([
-   {userId:"operator-a",emailNormalized:"operator-a@example.test",displayName:"Operator A",status:"active",emailVerifiedAt:now},
-   {userId:"operator-b",emailNormalized:"operator-b@example.test",displayName:"Operator B",status:"active",emailVerifiedAt:now},
-   {userId:"emergency-user",emailNormalized:"emergency@example.test",displayName:"Emergency User",status:"active",emailVerifiedAt:now}
+   {userId:"operator-a",emailNormalized:"operator-a@example.test",displayName:"Operator A",status:"active",emailVerifiedAt:now,mfaEnabled:true},
+   {userId:"operator-b",emailNormalized:"operator-b@example.test",displayName:"Operator B",status:"active",emailVerifiedAt:now,mfaEnabled:true},
+   {userId:"emergency-user",emailNormalized:"emergency@example.test",displayName:"Emergency User",status:"active",emailVerifiedAt:now,mfaEnabled:true}
   ]);
   await db.collection("organizations").insertOne({tenantId:"tenant-a",organizationId:"org-a",code:"ORG-A",name:"Org A",path:[],status:"active"});
   await db.collection("locations").insertMany([{tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",code:"LOC-A",name:"Location A",status:"active"},{tenantId:"tenant-a",locationId:"loc-unused",organizationId:"org-a",code:"LOC-U",name:"Unused Location",status:"active"}]);
