@@ -226,3 +226,27 @@ Implemented in PR #18 source:
 - Added `docs/operations/ZURI-OS-DEMO-ACCOUNTS.md` with setup, isolation, rotation and acceptance guidance.
 
 **Verification status — passed:** exact-head GitHub Actions run `44919771589` passed typecheck, tests and build. The new MongoDB replica-set integration test executes the seeder twice against an isolated ephemeral `zuri_demo_test_*` database, verifies all three password hashes and membership counts, and exercises standard-member, multi-workspace and no-membership login results. The test drops its database afterward. No persistent demo database was provisioned and no credentials were created for a live Preview deployment.
+
+
+## Demo account provisioning and deployment status — 2026-11-22 UTC
+
+The isolated demo database is now provisioned and seeded on the existing Atlas free replica-set cluster:
+
+- Database: `zuri_demo` (separate from `zuri_os` and any production database).
+- Database principal: `zuri_demo_runtime`, scoped to `readWrite` on `zuri_demo` only.
+- Two synthetic active demo tenants were created: `zuri-demo-primary` and `zuri-demo-secondary`.
+- Three active synthetic identities were verified directly in Atlas. The standard member has one active membership; the multi-workspace member has two; the unassigned identity has zero memberships of any status.
+- Both tenant databases contain only the `tenant.viewer` demo role with `platform.read`; no wildcard or platform-operator grant exists.
+- The seeder completion record is present. The seeder was run from a Vercel Preview build with its explicit flag, then `DEMO_SEED_ENABLED` was set to false and the API project's normal build command restored to `pnpm --filter @zuri/api build` to prevent accidental re-seeding/password rotation.
+
+Preview-only Vercel environment variables have been created for branch `feat/mac-secrets-user-workflow-v2`. The API has a dedicated demo MongoDB URI, database name, JWT signing secret, MFA encryption key, issuer/audience and preview CORS origin. The web project has the branch API URL and demo autofill controls. The demo password is intentionally present in a `VITE_*` variable, so it is readable in the protected Preview browser bundle; synthetic accounts only, SSO protection retained, never Production.
+
+### Deployment and verification boundary
+
+- pnpm 11.28.13 is pinned in the repository; Vercel install now completes successfully using Corepack pnpm 11.
+- The deployment run proved that the seeder can connect to Atlas and provision the accounts. Its application build then exposed TypeScript issues in audit, idempotency and outbox typing; fixes are committed on the branch.
+- GitHub Actions for the latest branch head `5bb8ca91b390b0076c7f62a73e2437e63f8e5591` had typecheck and tests complete successfully; the build step was still running at the last check.
+- The latest Vercel API Preview deployment is still an error from the preceding commit; a fresh deployment is blocked by Vercel's `api-deployments-free-per-day` limit (HTTP 402; retry after 24 hours). Therefore API runtime health, live browser sign-in and the final Preview UI are not yet verified.
+- PR #18 remains open, draft and unmerged. No Production deployment or Production environment variables were changed.
+
+The earlier 2026-11-21 demo implementation section records the source-level baseline. This section supersedes its statement that no persistent demo database or Preview credentials had been provisioned.
