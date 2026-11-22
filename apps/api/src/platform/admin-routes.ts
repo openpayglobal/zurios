@@ -38,6 +38,17 @@ function fail(error:unknown,reply:FastifyReply){
 async function writeAudit(db:Db,tenantId:string,p:Principal,request:FastifyRequest,secret:string,action:string,resourceType:string,resourceId:string|undefined,outcome:"success"|"denied"|"failure",metadata:Record<string,unknown>={},session?:ClientSession){
  await appendAuditEvent(db,{tenantId,actor:{userId:p.userId,ipHash:hashIp(request,secret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType,...(resourceId?{resourceId}:{}),outcome,correlationId:request.id,metadata:{...metadata,...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}},session);
 }
+async function checkRecentMfaStepUp(db:Db,secret:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
+ if(["GET","HEAD","OPTIONS"].includes(request.method))return true;
+ const now=new Date(),session=await coreCollections(db).sessions.findOne(
+  {tenantId:p.tenantId,sessionId:p.sessionId,userId:p.userId,revokedAt:{$exists:false},expiresAt:{$gt:now},mfaStepUpExpiresAt:{$gt:now}},
+  {projection:{_id:1}}
+ );
+ if(session)return true;
+ await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{code:"MFA_STEP_UP_REQUIRED"});
+ reply.code(403).send({error:"MFA_STEP_UP_REQUIRED"});
+ return false;
+}
 async function checkTenantPermission(db:Db,secret:string,permission:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
  if(!authorize(p,{permission,resourceTenantId:p.tenantId})){
   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission});
@@ -48,6 +59,7 @@ async function checkTenantPermission(db:Db,secret:string,permission:string,reque
   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,code:"ABAC_POLICY_DENIED"});
   reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
  }
+ if(!await checkRecentMfaStepUp(db,secret,request,reply,p))return false;
  return true;
 }
 async function checkPlatformPermission(db:Db,secret:string,permission:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
@@ -60,6 +72,7 @@ async function checkPlatformPermission(db:Db,secret:string,permission:string,req
   await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code:"ABAC_POLICY_DENIED"});
   reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
  }
+ if(!await checkRecentMfaStepUp(db,secret,request,reply,p))return false;
  return true;
 }
 function tenantGuard(db:Db,secret:string,permission:string){
