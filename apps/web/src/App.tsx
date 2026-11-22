@@ -18,7 +18,7 @@ let apiBaseCachedAt=0;
 async function getApiBase():Promise<string>{
  if(apiBasePromise&&Date.now()-apiBaseCachedAt<30_000)return apiBasePromise;
  apiBaseCachedAt=Date.now();
- apiBasePromise=(async()=>{try{const response=await fetch(API_BOOTSTRAP_BASE+"/platform/public/runtime-config",{cache:"no-store"});if(response.ok){const runtime=await response.json();const origin=runtime?.apiOrigins?.zuriOs;if(typeof origin==="string"&&origin.startsWith("https://"))API_BASE=origin;}}catch{}return API_BASE;})();
+ apiBasePromise=(async()=>{try{const response=await fetch(API_BOOTSTRAP_BASE+"/platform/public/runtime-config",{cache:"no-store"});if(response.ok){const runtime=await response.json();const origin=runtime?.apiOrigins?.zuriOs;const previewOverride=import.meta.env.VITE_VERCEL_ENV==="preview"&&Boolean(import.meta.env.VITE_API_BASE_URL);if(!previewOverride&&typeof origin==="string"&&origin.startsWith("https://"))API_BASE=origin;}}catch{}return API_BASE;})();
  return apiBasePromise;
 }
 type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"infrastructure"|"tenants"|"access";
