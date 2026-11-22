@@ -70,3 +70,8 @@ A corrected API Preview deployment is still pending. Vercel returned HTTP 402 `a
 ## Latest health-check behavior — 2026-11-22 UTC
 
 The API source now keeps `/health/live` available when Atlas is down and returns HTTP 503 from `/health/ready` until a replica-set connection is healthy. This was verified in an isolated Vercel sandbox against a deliberately unavailable local MongoDB. Exact-head GitHub CI passed on `746ec6dd7b378df2a2c4657cc44b9f1fa1a36a00` (runs `44989972867` and `44989968679`). These source fixes have not yet been deployed because Vercel's API deployment daily quota remains exhausted. The currently assigned API Preview still needs replacement before live sign-in acceptance.
+
+
+## Demo autofill password/hash consistency — 2026-11-22 UTC
+
+Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored Argon2id password hashes retrieved from the isolated `zuri_demo` database. All three checks returned `passwordMatches: true` for standard member, multi-workspace member and unassigned identity. The check ran in an ephemeral Vercel sandbox; the password was passed as a transient environment variable and was not printed or committed. This verifies the autofill password is synchronized with the seeded demo accounts; live API login still awaits a corrected API Preview deployment.
