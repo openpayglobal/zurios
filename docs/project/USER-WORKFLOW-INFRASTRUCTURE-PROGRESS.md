@@ -310,3 +310,14 @@ Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored A
 - The latest MeBuMIP web and API Preview deployments are CANCELED because their triggering commits did not affect those project roots. The latest source line now changes MeBuMIP API runtime configuration code, so a new API deployment is required; project Preview environment configuration and API runtime acceptance are still outstanding.
 - Vercel deployment checks continue to report the team's daily build/deployment quota limit. No Production environment variables, aliases, public SSO policy or production deployments were changed.
 - A metadata-only environment inventory confirmed that the Zuri MeBuMIP Vercel projects currently have no project environment variables configured. The Zuri OS demo environment remains branch-scoped to Preview; the demo seeder remains disabled. No environment variable values were requested for decryption.
+
+
+## MAC privileged-write MFA step-up and Vercel outbox runtime correction — 2026-11-22 UTC
+
+- Added authenticated `POST /auth/mfa/step-up`. It requires the current password plus a TOTP code or one-time recovery code, consumes TOTP/recovery material to prevent replay, rate-limits attempts to five per user/IP per minute, binds the grant to the current session, and expires it after five minutes.
+- The step-up update and success audit event commit in one MongoDB transaction. Failed step-up attempts are audited without recording passwords, MFA codes or recovery material.
+- MAC administration permission guards now require an unexpired, recent five-minute step-up for mutating administration requests. Read-only GET/HEAD/OPTIONS operations remain available without step-up. Denied writes are audited and return `MFA_STEP_UP_REQUIRED`.
+- Added OpenAPI documentation and integration coverage for denied privileged writes without step-up, TOTP replay rejection, recovery-code single use and session-bound expiry.
+- Fixed the MeBuMIP API TypeScript library-target incompatibility by replacing `Object.hasOwn` with `Object.prototype.hasOwnProperty.call`; exact-head CI run `44994248424` passed typecheck, tests and build on the intermediate source commit.
+- The latest Zuri OS API Preview `dpl_5oUtabnna4KnrqGvBXD7QiDbUEWy` built READY but runtime probes returned HTTP 500. Runtime logs showed application initialization timeout/SIGKILL after the outbox worker started. Vercel deployments now use a bounded outbox batch during live requests instead of a permanent polling loop; local long-running deployments retain the continuous worker. This correction still requires a new Preview deployment and repeat health tests.
+- Exact-head CI for the complete MFA-step-up and serverless-outbox changes is pending. Vercel build/deployment checks remain blocked by the team's daily deployment quota; no Production variables, aliases or deployment targets were changed.
