@@ -250,3 +250,10 @@ Preview-only Vercel environment variables have been created for branch `feat/mac
 - PR #18 remains open, draft and unmerged. No Production deployment or Production environment variables were changed.
 
 The earlier 2026-11-21 demo implementation section records the source-level baseline. This section supersedes its statement that no persistent demo database or Preview credentials had been provisioned.
+
+
+### Latest Preview deployment readout
+
+- Zuri OS web Preview deployment `dpl_ENHx1LVFYs7yReDxFThxiBD8aWFC` is **READY** on commit `b082502a0200e3994938b09fdb31e5824bb5d58a`; branch alias: `zurios-git-feat-mac-secrets-944b76-openpayglobal-5300s-projects.vercel.app`. Preview SSO remains enabled.
+- Zuri OS API Preview deployment `dpl_C3z17KAoYpXuFY14NUfrsdWNmszS` is **ERROR** on the same earlier commit because the API build still had the outbox TypeScript inference error. That source error was fixed afterward and exact-head GitHub CI passed at `1b1d9726fc8b92ee1d174c953f44d9b31d7e4141` (run `44988123448`).
+- The Vercel project build command is now restored to `pnpm --filter @zuri/api build`; demo seeding is disabled. The API Preview requires one new build before runtime login can be accepted. Vercel's deployment API returned HTTP 402 for `api-deployments-free-per-day` (100/day; 24-hour retry), so this final deployment cannot be triggered until the limit resets or the team resolves its deployment entitlement.
