@@ -47,3 +47,14 @@ Configure `VITE_DEMO_MODE`, `VITE_VERCEL_ENV`, and `VITE_DEMO_PASSWORD` only in 
 4. The standard member receives exactly one workspace; the multi-workspace identity receives two; the unassigned identity receives none. Each assigned membership has only the tenant-viewer role.
 5. Auto-fill is absent by default and in every Production build, even if demo mode was accidentally enabled.
 6. Auto-fill does not submit the form or bypass password authentication, MFA, rate limits or membership authorization.
+
+
+## Current provisioned environment (2026-11-22 UTC)
+
+The isolated `zuri_demo` database has been provisioned on the existing Atlas free replica-set cluster. A dedicated Atlas database principal `zuri_demo_runtime` has only `readWrite` on `zuri_demo`. The three identities and two tenants in the table above have been seeded and checked directly in Atlas. Standard member: one active membership. Multi-workspace member: two active memberships. Unassigned identity: zero memberships across all statuses. Both tenant roles are `tenant.viewer` with only `platform.read`.
+
+The Zuri OS web and API projects have Preview-only environment variables scoped to `feat/mac-secrets-user-workflow-v2`. API database, JWT and MFA settings are isolated to this demo Preview. The UI demo password is in a `VITE_*` variable and therefore visible to users who can access the protected Preview bundle; it is a synthetic-account password, not a secret suitable for production. Keep SSO Preview protection enabled and never add these variables to Production.
+
+The seeder was run successfully as an explicit one-time Vercel Preview build step. After the successful seed operation, the API project's build command was restored to `pnpm --filter @zuri/api build` and `DEMO_SEED_ENABLED=false` was set to prevent routine deployments from rotating passwords or revoking demo sessions.
+
+**Not yet live:** the Vercel API deployment that ran the seed failed during its subsequent TypeScript build. The TypeScript and CI issues found there have been fixed in source; GitHub typecheck and tests pass on the latest checked head, with build verification still running at last inspection. A fresh Vercel deployment is blocked by the team's 100/day API deployment limit (HTTP 402, 24-hour retry). Do not mark API health, browser login or final UI acceptance complete until a fresh Preview deployment reaches READY and login scenarios are exercised against it.
