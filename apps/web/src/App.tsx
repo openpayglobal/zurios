@@ -90,12 +90,18 @@ export default function App(){
  const [privacyNoticeUrlDraft,setPrivacyNoticeUrlDraft]=useState("");
  const [accessRequestsEnabledDraft,setAccessRequestsEnabledDraft]=useState(false);
  const [runtimeSaveMessage,setRuntimeSaveMessage]=useState("");
+ const [stepUpOpen,setStepUpOpen]=useState(false);
+ const [stepUpPassword,setStepUpPassword]=useState("");
+ const [stepUpCode,setStepUpCode]=useState("");
+ const [stepUpBusy,setStepUpBusy]=useState(false);
  const refreshPromise=useRef<Promise<string>|null>(null);
+ const stepUpResolver=useRef<((approved:boolean)=>void)|null>(null);
+ const stepUpPromise=useRef<Promise<boolean>|null>(null);
  useEffect(()=>{let active=true;void getApiBase().then(base=>fetch(base+"/auth/public-config",{credentials:"include"})).then(response=>response.ok?response.json():null).then(value=>{if(active&&value)setPublicConfig({accessRequestsEnabled:value.accessRequestsEnabled===true,privacyNoticeUrl:typeof value.privacyNoticeUrl==="string"?value.privacyNoticeUrl:null});}).catch(()=>{});return()=>{active=false;};},[]);
 
 
  const saveSession=useCallback((value:Session)=>{setSession(value);setError("");setNotice("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAccessRequestOpen(false);setAccessRequestSubmitted(false);},[]);
- const clearSession=useCallback(()=>{setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);setAccessRequestOpen(false);setAccessRequestSubmitted(false);setAccessRequestName("");setAccessRequestOrganization("");setAccessRequestNote("");},[]);
+ const clearSession=useCallback(()=>{stepUpResolver.current?.(false);stepUpResolver.current=null;stepUpPromise.current=null;setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);setAccessRequestOpen(false);setAccessRequestSubmitted(false);setAccessRequestName("");setAccessRequestOrganization("");setAccessRequestNote("");},[]);
  const refreshAccessToken=useCallback(async()=>{
   if(!session)throw new Error("Your session has expired. Sign in again.");
   if(!refreshPromise.current){
@@ -108,12 +114,26 @@ export default function App(){
   }
   return refreshPromise.current;
  },[session,saveSession]);
+ const requestMfaStepUp=useCallback(()=>{
+  if(!stepUpPromise.current){
+   stepUpPromise.current=new Promise<boolean>(resolve=>{stepUpResolver.current=resolve;setStepUpOpen(true);}).finally(()=>{stepUpPromise.current=null;});
+  }
+  return stepUpPromise.current;
+ },[]);
  const api=useCallback(async <T = Record<string,unknown>,>(path:string,init:RequestInit={}):Promise<T>=>{
   if(!session)throw new Error("Sign in to continue.");
   const send=async(token:string)=>fetch((await getApiBase())+path,{...init,headers:{...(init.body?{"content-type":"application/json"}:{}),...(init.headers??{}),authorization:"Bearer "+token}});
-  let response=await send(session.accessToken);
+  let accessToken=session.accessToken,response=await send(accessToken);
   if(response.status===401){
-   try{const token=await refreshAccessToken();response=await send(token);}catch{clearSession();throw new Error("Your session expired. Please sign in again.");}
+   try{accessToken=await refreshAccessToken();response=await send(accessToken);}catch{clearSession();throw new Error("Your session expired. Please sign in again.");}
+  }
+  if(response.status===403){
+   const body=await response.clone().json().catch(()=>null);
+   if(body?.error==="MFA_STEP_UP_REQUIRED"){
+    const approved=await requestMfaStepUp();
+    if(!approved)throw new Error("MFA_STEP_UP_CANCELLED");
+    response=await send(accessToken);
+   }
   }
   if(!response.ok){
    let message="Request failed ("+response.status+")";
@@ -122,7 +142,7 @@ export default function App(){
   }
   if(response.status===204)return null as T;
   return await response.json() as T;
- },[session,refreshAccessToken,clearSession]);
+ },[session,refreshAccessToken,clearSession,requestMfaStepUp]);
 
  const loadPrincipal=useCallback(async()=>{
   try{
@@ -186,6 +206,19 @@ export default function App(){
    setChallengeToken("");setMfaCode("");
   }catch(e){setError(e instanceof Error?e.message:"MFA verification failed.");}
   finally{setBusy(false);}
+ };
+ const submitMfaStepUp=async(event:FormEvent)=>{
+  event.preventDefault();if(!session)return;setStepUpBusy(true);setError("");
+  try{
+   const response=await fetch((await getApiBase())+"/auth/mfa/step-up",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword,code:stepUpCode})});
+   const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA step-up failed.");
+   setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setError("");setNotice("Identity re-verified. Privileged administration is enabled for five minutes.");
+   stepUpResolver.current?.(true);stepUpResolver.current=null;
+  }catch(e){setError(e instanceof Error?e.message:"MFA step-up failed.");}
+  finally{setStepUpBusy(false);}
+ };
+ const cancelMfaStepUp=()=>{
+  setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");stepUpResolver.current?.(false);stepUpResolver.current=null;
  };
  const submitAccessRequest=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
@@ -407,6 +440,7 @@ export default function App(){
     {view==="tenants"&&<><SectionTitle eyebrow="Platform operations" title="Tenant directory" description="Cross-tenant provisioning and lifecycle operations are restricted to separately provisioned platform operators."/><div className="grid gap-5 xl:grid-cols-[1fr_.9fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Tenants</h2>{tenants.length?tenants.map((tenant:any)=><div key={tenant.tenantId} className="flex items-center justify-between border-t border-white/[0.06] py-3"><div><p className="text-sm font-medium">{tenant.displayName}</p><p className="mt-1 text-[10px] text-slate-500">{tenant.slug} · {tenant.tenantId}</p></div><Status value={tenant.status}/></div>):<Empty label="No tenant records returned."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provision a tenant</h2><form onSubmit={createTenant} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant slug</span><input name="slug" required pattern="[a-z0-9-]{2,64}" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Legal name</span><input name="legalName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Display name</span><input name="displayName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner name</span><input name="ownerName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner email</span><input name="ownerEmail" type="email" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label></div><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit"><Building2 size={14}/> Provision tenant</Button></form><div className="mt-8 border-t border-white/[0.07] pt-5"><h3 className="mb-3 text-sm font-semibold">Request tenant lifecycle change</h3><form onSubmit={requestTenantLifecycle} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant ID</span><input name="tenantId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Action</span><select name="action" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"><option value="tenant.activate">Activate</option><option value="tenant.suspend">Suspend</option><option value="tenant.close">Close</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit">Request lifecycle approval</Button></form></div></Panel></div></>}
     <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-5 text-[10px] text-slate-600"><span>ZURI OS · One foundation · Many governed ecosystems</span><span>OIPTECH / ODEL Developers</span></footer>
    </main>
+   {stepUpOpen&&<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"><Panel className="w-full max-w-md p-7"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Privileged action verification</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Confirm your identity</h2><p className="mt-2 text-sm leading-6 text-slate-400">This MAC operation requires your password and a current authenticator or one-time recovery code. Verification remains valid for five minutes.</p><ErrorBanner message={error}/><form onSubmit={submitMfaStepUp} className="mt-5 space-y-4"><Input label="Current password" value={stepUpPassword} onChange={setStepUpPassword} type="password" required/><Input label="Authenticator code or one-time recovery code" value={stepUpCode} onChange={setStepUpCode} placeholder="000000" required/><div className="flex flex-wrap gap-2"><Button type="submit" disabled={stepUpBusy||!stepUpPassword||!stepUpCode}>{stepUpBusy?"Verifying…":"Verify and continue"}</Button><Button variant="secondary" onClick={cancelMfaStepUp} disabled={stepUpBusy}>Cancel</Button></div></form></Panel></div>}
   </div>
  </div>;
 }
