@@ -49,7 +49,9 @@ try {
     if (Date.now() - allowedOriginsCacheAt > 5_000) {
       try {
         const runtime = await readPlatformRuntimeConfig(db);
-        allowedOriginsCache = runtime.allowedOrigins.length ? runtime.allowedOrigins : [...corsOrigins];
+        allowedOriginsCache = process.env.VERCEL_ENV === "preview"
+          ? [...new Set([...runtime.allowedOrigins, ...corsOrigins])]
+          : runtime.allowedOrigins.length ? runtime.allowedOrigins : [...corsOrigins];
       } catch {
         allowedOriginsCache = [...corsOrigins];
       }
