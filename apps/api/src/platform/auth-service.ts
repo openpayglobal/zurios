@@ -146,6 +146,7 @@ export async function beginMfaEnrollment(db:Db,userId:string,password:string,con
  if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
  const secret=generateTotpSecret(),encrypted=encryptMfaSecret(secret,config.mfaEncryptionKey),now=new Date(),expiresAt=new Date(now.getTime()+10*60_000);
  await c.users.updateOne({userId},{$set:{pendingMfaSecretEncrypted:encrypted,pendingMfaSecretExpiresAt:expiresAt,updatedAt:now}});
+ await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.enrollment.started",resourceType:"user",resourceId:userId,outcome:"success",metadata:{expiresAt:expiresAt.toISOString()}});
  const label=encodeURIComponent(user.emailNormalized),issuer=encodeURIComponent("Zuri OS");
  return {secret,expiresAt:expiresAt.toISOString(),otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`};
 }
