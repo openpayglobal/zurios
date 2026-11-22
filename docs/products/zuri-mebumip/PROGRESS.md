@@ -297,3 +297,18 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **Public access-request privacy gate verification (2026-11-20):** added `GET /auth/public-config`, browser gating of the Request Zuri OS action, an optional HTTPS privacy-notice link, and a production config rule that refuses to enable public intake without the notice URL. Access requests default to disabled. Integration coverage verifies enabled/disabled public configuration, notice URL exposure, 503 behavior when disabled, non-enumerating rate limits and no account/tenant provisioning. Repository CI run 44748329176 passed both OpenAPI lint checks, route drift, typecheck, tests and build. Test totals: 52 (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44748328927 passed all API and web checks; all 23 API tests passed.
+
+
+## Runtime module-resolution correction — 2026-11-22 UTC
+
+The first READY Zuri OS API Preview deployment was runtime-tested using the protected Vercel URL fetch path. Both `GET /health/live` and `GET /health/ready` initially returned HTTP 500 / `FUNCTION_INVOCATION_FAILED`. Vercel runtime logs isolated the cause: Node attempted to load `@zuri/core-platform/src/index.ts` from the production function bundle, but the workspace package exposed TypeScript source instead of executable JavaScript.
+
+Corrected the package contract:
+
+- `packages/core-platform/package.json` now exports `dist/index.js` for ESM runtime and `dist/index.d.ts` for TypeScript consumers.
+- Added `packages/core-platform/tsconfig.build.json` to emit JavaScript, source maps and declaration files from the package source.
+- `apps/api` build now compiles `@zuri/core-platform` before compiling the API, so direct Vercel builds cannot omit the shared package artifact.
+- Exact-head repository CI runs `44989291690` and `44989287142` both passed on commit `ae406d569ad3cc1d5eb266ca5cfca70469d46d1e` (OpenAPI validation, route drift, docs mirror, typecheck, tests and build).
+- Independently ran the API build in an isolated Vercel sandbox and imported `@zuri/core-platform` from the compiled API runtime; Node resolved the package and exposed 53 exports successfully.
+
+**Deployment gate:** the corrected source has not yet been deployed. Vercel rejected the next API deployment request with HTTP 402 `api-deployments-free-per-day`, retry-after 86,400 seconds. The previous READY deployment therefore still has the runtime module-resolution error and must not be treated as healthy. Repeat deployment, `/health/live`, `/health/ready`, and authenticated login acceptance after the limit resets. Preview SSO has not been disabled; the temporary manual bypass used during diagnosis was revoked.
