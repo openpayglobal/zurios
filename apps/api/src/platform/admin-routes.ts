@@ -40,11 +40,14 @@ async function writeAudit(db:Db,tenantId:string,p:Principal,request:FastifyReque
 }
 async function checkRecentMfaStepUp(db:Db,secret:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
  if(["GET","HEAD","OPTIONS"].includes(request.method))return true;
- const now=new Date(),session=await coreCollections(db).sessions.findOne(
-  {tenantId:p.tenantId,sessionId:p.sessionId,userId:p.userId,revokedAt:{$exists:false},expiresAt:{$gt:now},mfaStepUpAt:{$gt:new Date(now.getTime()-5*60_000)},mfaStepUpExpiresAt:{$gt:now}},
-  {projection:{_id:1}}
- );
- if(session)return true;
+ const now=new Date(),c=coreCollections(db),[session,user]=await Promise.all([
+  c.sessions.findOne(
+   {tenantId:p.tenantId,sessionId:p.sessionId,userId:p.userId,revokedAt:{$exists:false},expiresAt:{$gt:now},mfaStepUpAt:{$gt:new Date(now.getTime()-5*60_000)},mfaStepUpExpiresAt:{$gt:now}},
+   {projection:{_id:1}}
+  ),
+  c.users.findOne({userId:p.userId,status:"active",mfaEnabled:true},{projection:{_id:1}})
+ ]);
+ if(session&&user)return true;
  await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{code:"MFA_STEP_UP_REQUIRED"});
  reply.code(403).send({error:"MFA_STEP_UP_REQUIRED"});
  return false;
