@@ -301,7 +301,7 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 ## Runtime module-resolution correction — 2026-11-22 UTC
 
-The first READY Zuri OS API Preview deployment was runtime-tested using the protected Vercel URL fetch path. Both `GET /health/live` and `GET /health/ready` initially returned HTTP 500 / `FUNCTION_INVOCATION_FAILED`. Vercel runtime logs isolated the cause: Node attempted to load `@zuri/core-platform/src/index.ts` from the production function bundle, but the workspace package exposed TypeScript source instead of executable JavaScript.
+The first READY Zuri OS API Preview was runtime-tested using the protected Vercel URL fetch path. Both `GET /health/live` and `GET /health/ready` initially returned HTTP 500 / `FUNCTION_INVOCATION_FAILED`. Vercel runtime logs isolated the cause: Node attempted to load `@zuri/core-platform/src/index.ts` from the production function bundle, but the workspace package exposed TypeScript source instead of executable JavaScript.
 
 Corrected the package contract:
 
