@@ -3,7 +3,7 @@ import type {FastifyPluginAsync} from "fastify";
 import {z,ZodError} from "zod";
 import {createHash} from "node:crypto";
 import type {AuthConfig} from "./auth-service.js";
-import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin} from "./auth-service.js";
+import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin,verifyMfaStepUp} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
 import {readPlatformRuntimeConfig} from "./runtime-config-store.js";
 const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64).optional()});
@@ -11,6 +11,7 @@ const workspaceSelectionSchema=z.object({selectionToken:z.string().min(40).max(2
 const workspaceSwitchSchema=z.object({tenantId:z.string().min(1).max(128)});
 const accessRequestSchema=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),organizationName:z.string().trim().min(2).max(160),requestNote:z.string().trim().max(500).optional()});
 const mfaSchema=z.object({challengeToken:z.string().min(20),code:z.string().min(6).max(64)});
+const mfaStepUpSchema=z.object({password:z.string().min(1).max(128),code:z.string().min(6).max(64)});
 const refreshSchema=z.object({sessionId:z.string().min(1),refreshToken:z.string().min(20)});
 function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
@@ -22,6 +23,13 @@ function statusFor(error:unknown):number{
  return 500;
 }
 function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?"WORKSPACE_ACCESS_DENIED":status===409?"WORKSPACE_SELECTION_REPLAYED":status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
+async function enforceMfaStepUpRateLimit(db:Db,userId:string,ipHash:string){
+ const bucket=Math.floor(Date.now()/60_000),key=createHash("sha256").update("mfa-step-up|"+userId+"|"+ipHash+"|"+bucket).digest("hex");
+ const collection=db.collection("auth_rate_limits");
+ await collection.updateOne({key},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((bucket+2)*60_000)}},{upsert:true});
+ const row=await collection.findOne({key});
+ if((row?.count??0)>5)throw new Error("AUTH_RATE_LIMITED");
+}
 export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async function registerAuthRoutes(app){
   const requireAuth=authenticate(db,config);
@@ -118,6 +126,16 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
    try{const body=z.object({code:z.string().min(6).max(64)}).parse(request.body);return await confirmMfaEnrollment(db,request.principal!.userId,body.code,config);}
    catch(error){return failure(error,reply);}
+  });
+  app.post("/auth/mfa/step-up",{preHandler:requireAuth},async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
+   try{
+    const body=mfaStepUpSchema.parse(request.body),p=request.principal!;
+    const ipHash=createHash("sha256").update(request.ip).digest("hex");
+    await enforceMfaStepUpRateLimit(db,p.userId,ipHash);
+    return await verifyMfaStepUp(db,p.userId,p.tenantId,p.sessionId,body.password,body.code,config);
+   }catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/disable",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
