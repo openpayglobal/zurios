@@ -455,7 +455,6 @@ paths:
                   otpauthUrl: {type: string}
                   expiresAt: {type: string, format: date-time}
         "401": {$ref: "#/components/responses/Unauthenticated"}
-        "403": {description: Password reauthentication failed}
         "409": {description: MFA is already enabled}
         "503": {description: MFA encryption is not configured}
   /auth/mfa/confirm:
@@ -490,7 +489,6 @@ paths:
                     type: array
                     items: {type: string}
         "401": {$ref: "#/components/responses/Unauthenticated"}
-        "403": {description: Password reauthentication failed or enrollment expired}
         "503": {description: MFA encryption is not configured}
   /auth/mfa/verify:
     servers:
