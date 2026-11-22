@@ -147,7 +147,7 @@ export async function beginMfaEnrollment(db:Db,userId:string,password:string,con
  const secret=generateTotpSecret(),encrypted=encryptMfaSecret(secret,config.mfaEncryptionKey),now=new Date(),expiresAt=new Date(now.getTime()+10*60_000),transaction=db.client.startSession();
  try{
   await transaction.withTransaction(async()=>{
-   const updated=await c.users.updateOne({userId,status:"active"},{$set:{pendingMfaSecretEncrypted:encrypted,pendingMfaSecretExpiresAt:expiresAt,updatedAt:now}},{session:transaction});
+   const updated=await c.users.updateOne({userId,status:"active",mfaEnabled:{$ne:true}},{$set:{pendingMfaSecretEncrypted:encrypted,pendingMfaSecretExpiresAt:expiresAt,updatedAt:now}},{session:transaction});
    if(!updated.modifiedCount)throw new Error("ACTIVE_USER_REQUIRED");
    await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.enrollment.started",resourceType:"user",resourceId:userId,outcome:"success",metadata:{expiresAt:expiresAt.toISOString()}},transaction);
   });
@@ -221,7 +221,7 @@ export async function confirmMfaEnrollment(db:Db,userId:string,password:string,c
  try{
   await transaction.withTransaction(async()=>{
    const updated=await c.users.updateOne(
-    {userId,status:"active",pendingMfaSecretEncrypted:user.pendingMfaSecretEncrypted,pendingMfaSecretExpiresAt:{$gt:now}},
+    {userId,status:"active",mfaEnabled:{$ne:true},pendingMfaSecretEncrypted:user.pendingMfaSecretEncrypted,pendingMfaSecretExpiresAt:{$gt:now}},
     {$set:{mfaEnabled:true,mfaSecretEncrypted:user.pendingMfaSecretEncrypted,mfaRecoveryCodeHashes,mfaLastUsedStep:step,updatedAt:now},$unset:{pendingMfaSecretEncrypted:"",pendingMfaSecretExpiresAt:""}},
     {session:transaction}
    );
