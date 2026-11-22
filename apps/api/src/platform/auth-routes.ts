@@ -25,7 +25,7 @@ function statusFor(error:unknown):number{
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|REUSE|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_|WORKSPACE_|PLATFORM_ACCESS_REVOKED/.test(code))return 401;
  return 500;
 }
-function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?(code==="MFA_ENROLLMENT_REQUIRED"?"MFA_ENROLLMENT_REQUIRED":"WORKSPACE_ACCESS_DENIED"):status===409?(code==="MFA_ALREADY_ENABLED"?"MFA_ALREADY_ENABLED":"WORKSPACE_SELECTION_REPLAYED"):status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
+function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?(code==="MFA_ENROLLMENT_REQUIRED"?"MFA_ENROLLMENT_REQUIRED":"WORKSPACE_ACCESS_DENIED"):status===409?(code==="MFA_ALREADY_ENABLED"?"MFA_ALREADY_ENABLED":"WORKSPACE_SELECTION_REPLAYED"):status===401?(["SESSION_INVALID"].includes(code)?"UNAUTHENTICATED":["MFA_STEP_UP_FAILED","MFA_CODE_ALREADY_USED","MFA_ENROLLMENT_EXPIRED","INVALID_MFA_CODE"].includes(code)?code:"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
 async function enforceMfaStepUpRateLimit(db:Db,userId:string,ipHash:string){
  const bucket=Math.floor(Date.now()/60_000),key=createHash("sha256").update("mfa-step-up|"+userId+"|"+ipHash+"|"+bucket).digest("hex");
  const collection=db.collection("auth_rate_limits");
