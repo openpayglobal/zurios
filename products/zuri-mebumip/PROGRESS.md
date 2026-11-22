@@ -330,3 +330,8 @@ The latest API deployment `dpl_z8JPqXF4i9qexDNig1LGEYqXCCFW` was built from the 
 - Exact-head GitHub CI runs `44989972867` and `44989968679` passed on `746ec6dd7b378df2a2c4657cc44b9f1fa1a36a00` (both OpenAPI contracts, route drift, docs mirror, typecheck, tests and build).
 - **Still requires Vercel owner security configuration:** the Zuri OS API project must explicitly trust the MeBuMIP API project as a Trusted Source for the intended Production-to-Production call. This is a cross-project Deployment Protection access-control grant and has not been added without owner authorization. Existing SSO protection remains enabled.
 - MAC can currently update non-secret runtime configuration (approved API/browser origins and public settings) without redeploy when the runtime-config consumer can reach it. Secret values remain unavailable from MAC pending an encryption KMS/HSM and secure bootstrap design; database bootstrap credentials remain deployment-scoped. Do not describe the complete secret-vault/no-redeploy requirement as finished.
+
+
+## Demo autofill password/hash consistency — 2026-11-22 UTC
+
+Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored Argon2id password hashes retrieved from the isolated `zuri_demo` database. All three checks returned `passwordMatches: true` for standard member, multi-workspace member and unassigned identity. The check ran in an ephemeral Vercel sandbox; the password was passed as a transient environment variable and was not printed or committed. This verifies the autofill password is synchronized with the seeded demo accounts; live API login still awaits a corrected API Preview deployment.
