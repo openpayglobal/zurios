@@ -28,7 +28,9 @@ export class IdempotencyConflictError extends Error{
 export async function runIdempotentMutation(
  db:Db,input:unknown,work:(session:ClientSession)=>Promise<StoredResult>
 ):Promise<StoredResult&{replayed:boolean}>{
- const parsed:IdempotencyInput=inputSchema.parse(input),requestHash=hash(parsed.request),filter=keyFilter(parsed),collection=db.collection<IdempotencyDocument>("idempotency_records");
+ const parsed=inputSchema.parse(input);
+ const normalized:IdempotencyInput={tenantId:parsed.tenantId!,actorId:parsed.actorId!,operation:parsed.operation!,key:parsed.key!,...(parsed.request!==undefined?{request:parsed.request}:{})};
+ const requestHash=hash(parsed.request),filter=keyFilter(normalized),collection=db.collection<IdempotencyDocument>("idempotency_records");
  const session=db.client.startSession();
  try{
   let output:(StoredResult&{replayed:boolean})|undefined;
