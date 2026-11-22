@@ -17,12 +17,13 @@ function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
  const code=error instanceof Error?error.message:"";
  if(code==="AUTH_RATE_LIMITED")return 429;
+ if(code==="MFA_ENROLLMENT_REQUIRED")return 403;
  if(code==="WORKSPACE_ACCESS_DENIED")return 403;
  if(code==="WORKSPACE_SELECTION_REPLAYED")return 409;
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|REUSE|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_|WORKSPACE_|PLATFORM_ACCESS_REVOKED/.test(code))return 401;
  return 500;
 }
-function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?"WORKSPACE_ACCESS_DENIED":status===409?"WORKSPACE_SELECTION_REPLAYED":status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
+function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?(code==="MFA_ENROLLMENT_REQUIRED"?"MFA_ENROLLMENT_REQUIRED":"WORKSPACE_ACCESS_DENIED"):status===409?"WORKSPACE_SELECTION_REPLAYED":status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
 async function enforceMfaStepUpRateLimit(db:Db,userId:string,ipHash:string){
  const bucket=Math.floor(Date.now()/60_000),key=createHash("sha256").update("mfa-step-up|"+userId+"|"+ipHash+"|"+bucket).digest("hex");
  const collection=db.collection("auth_rate_limits");
