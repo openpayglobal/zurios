@@ -7,7 +7,7 @@ type IdempotencyDocument={
  tenantId:string;actorId:string;operation:string;key:string;requestHash:string;
  status:"processing"|"completed";result?:StoredResult;createdAt:Date;updatedAt:Date;expiresAt:Date;
 };
-type IdempotencyInput={tenantId:string;actorId:string;operation:string;key:string;request:unknown};
+type IdempotencyInput={tenantId:string;actorId:string;operation:string;key:string;request?:unknown};
 const inputSchema=z.object({
  tenantId:z.string().min(1),actorId:z.string().min(1),operation:z.string().min(3).max(180),
  key:z.string().min(8).max(128),request: z.unknown()
