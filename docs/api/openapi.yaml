@@ -445,6 +445,40 @@ paths:
       responses:
         "200": {description: Workspace selection response or tenant-bound session}
         "401": {$ref: "#/components/responses/Unauthenticated"}
+  /auth/mfa/step-up:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: stepUpMfaForPrivilegedAction
+      summary: Re-authenticate with password and MFA before privileged administration writes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, code]
+              properties:
+                password: {type: string, minLength: 1, maxLength: 128}
+                code: {type: string, minLength: 6, maxLength: 64, description: TOTP code or one-time recovery code}
+      responses:
+        "200":
+          description: Privileged-action step-up valid for five minutes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, expiresAt]
+                properties:
+                  status: {type: string, enum: [mfa_step_up_satisfied]}
+                  expiresAt: {type: string, format: date-time}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {description: MFA is not enrolled or the step-up credentials are invalid}
+        "429": {description: MFA step-up rate limit exceeded}
+        "503": {description: MFA encryption is not configured}
   /auth/workspace/select:
     servers:
       - url: /
