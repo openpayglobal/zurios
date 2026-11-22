@@ -281,3 +281,12 @@ Added `apps/api/src/platform/core-platform-runtime.test.ts` to guard the compile
 Exact-head GitHub Actions runs `44989687455` and `44989683049` both passed on `4d12a6bf95c34db9e15f6cf289890e373f373138`: OpenAPI 3.1 validation for both APIs, route drift, product documentation mirror check, typecheck, tests and build. The API runtime import regression test is included in the API test suite.
 
 The latest API deployment `dpl_z8JPqXF4i9qexDNig1LGEYqXCCFW` was built from the prior source commit and is still unhealthy at runtime. The fix is committed and CI-verified, but Vercel's deployment API again returned HTTP 402 `api-deployments-free-per-day` with retry-after 86,400 seconds. No live login is claimed until the corrected commit is deployed and both health endpoints pass. The Zuri OS web Preview is HTTP 200 / READY and remains SSO-protected.
+
+
+## Health semantics and MAC workload-identity transport — 2026-11-22 UTC
+
+- Zuri OS API now registers `/health/live` and `/health/ready` before Atlas initialization and keeps the HTTP service available when MongoDB cannot connect. Liveness remains HTTP 200; readiness returns HTTP 503 with a non-secret database state. A Vercel sandbox smoke test with a deliberately unavailable local MongoDB verified both responses and confirmed that the process remains running.
+- MeBuMIP's MAC runtime-config client now sends its short-lived Vercel OIDC token both as the application `Authorization: Bearer` credential and as Vercel's `x-vercel-trusted-oidc-idp-token` Deployment Protection trusted-source proof. A unit test asserts both headers are present.
+- Exact-head GitHub CI runs `44989972867` and `44989968679` passed on `746ec6dd7b378df2a2c4657cc44b9f1fa1a36a00` (both OpenAPI contracts, route drift, docs mirror, typecheck, tests and build).
+- **Still requires Vercel owner security configuration:** the Zuri OS API project must explicitly trust the MeBuMIP API project as a Trusted Source for the intended Production-to-Production call. This is a cross-project Deployment Protection access-control grant and has not been added without owner authorization. Existing SSO protection remains enabled.
+- MAC can currently update non-secret runtime configuration (approved API/browser origins and public settings) without redeploy when the runtime-config consumer can reach it. Secret values remain unavailable from MAC pending an encryption KMS/HSM and secure bootstrap design; database bootstrap credentials remain deployment-scoped. Do not describe the complete secret-vault/no-redeploy requirement as finished.
