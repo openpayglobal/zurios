@@ -2,6 +2,7 @@ import type {Db} from "mongodb";
 import type {FastifyPluginAsync} from "fastify";
 import {z,ZodError} from "zod";
 import {createHash} from "node:crypto";
+import {appendAuditEvent} from "@zuri/core-platform";
 import type {AuthConfig} from "./auth-service.js";
 import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin,verifyMfaStepUp} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
@@ -136,7 +137,12 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     const ipHash=createHash("sha256").update(request.ip).digest("hex");
     await enforceMfaStepUpRateLimit(db,p.userId,ipHash);
     return await verifyMfaStepUp(db,p.userId,p.tenantId,p.sessionId,body.password,body.code,config);
-   }catch(error){return failure(error,reply);}
+   }catch(error){
+    const p=request.principal!,reasonCode=error instanceof Error&&/^[A-Z0-9_]{3,100}$/.test(error.message)?error.message:"MFA_STEP_UP_FAILED";
+    try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"auth.mfa.step_up.failed",resourceType:"session",resourceId:p.sessionId,outcome:"failure",metadata:{reasonCode}});}
+    catch(auditError){request.log.error({err:auditError,correlationId:request.id},"Failed to persist MFA step-up failure audit");}
+    return failure(error,reply);
+   }
   });
   app.post("/auth/mfa/disable",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
