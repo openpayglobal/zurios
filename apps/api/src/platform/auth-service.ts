@@ -146,6 +146,46 @@ export async function beginMfaEnrollment(db:Db,userId:string,config:AuthConfig){
  const label=encodeURIComponent(user.emailNormalized),issuer=encodeURIComponent("Zuri OS");
  return {secret,otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`};
 }
+export async function verifyMfaStepUp(
+ db:Db,userId:string,tenantId:string,sessionId:string,password:string,code:string,config:AuthConfig
+){
+ const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
+ if(!user?.passwordHash||!user.mfaSecretEncrypted||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
+ const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ const recoveryHash=step===null?hashRecoveryCode(code):undefined;
+ const now=new Date(),expiresAt=new Date(now.getTime()+5*60_000),transaction=db.client.startSession();
+ try{
+  await transaction.withTransaction(async()=>{
+   if(step!==null){
+    const used=await c.users.updateOne(
+     {userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},
+     {$set:{mfaLastUsedStep:step,updatedAt:now}},
+     {session:transaction}
+    );
+    if(!used.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
+   }else{
+    const used=await c.users.updateOne(
+     {userId,mfaRecoveryCodeHashes:recoveryHash},
+     {$pull:{mfaRecoveryCodeHashes:recoveryHash},$set:{updatedAt:now}},
+     {session:transaction}
+    );
+    if(!used.modifiedCount)throw new Error("MFA_STEP_UP_FAILED");
+   }
+   const updated=await c.sessions.updateOne(
+    {tenantId,sessionId,userId,revokedAt:{$exists:false},expiresAt:{$gt:now}},
+    {$set:{mfaStepUpAt:now,mfaStepUpExpiresAt:expiresAt,updatedAt:now,updatedBy:"security:mfa-step-up"}},
+    {session:transaction}
+   );
+   if(!updated.modifiedCount)throw new Error("SESSION_INVALID");
+   await appendAuditEvent(db,{
+    tenantId,actor:{userId},action:"auth.mfa.step_up",resourceType:"session",resourceId:sessionId,outcome:"success",
+    metadata:{method:step!==null?"totp":"recovery_code",expiresAt:expiresAt.toISOString()}
+   },transaction);
+  });
+ }finally{await transaction.endSession();}
+ return {status:"mfa_step_up_satisfied",expiresAt:expiresAt.toISOString()};
+}
+
 export async function disableMfa(db:Db,userId:string,password:string,code:string,config:AuthConfig){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
  if(!user?.passwordHash||!user.mfaSecretEncrypted||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
