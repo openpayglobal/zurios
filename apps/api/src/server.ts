@@ -31,23 +31,6 @@ app.setErrorHandler((error, _request, reply) => {
   return reply.code(500).send({ error: "INTERNAL_SERVER_ERROR", message: "An unexpected error occurred" });
 });
 
-// Health routes are registered before database initialization so liveness remains
-// observable during Atlas outages; readiness separately reports database state.
-app.get("/health/live", async () => ({ status: "ok", service: "zuri-api" }));
-app.get("/health/ready", async (_req, reply) => {
-  if (!db) return reply.code(503).send({ status: "not_ready", database: "unavailable" });
-  try {
-    await db.command({ ping: 1 });
-    const hello = await db.command({ hello: 1 });
-    if (typeof hello.setName !== "string" || hello.isWritablePrimary !== true || typeof hello.logicalSessionTimeoutMinutes !== "number") {
-      return reply.code(503).send({ status: "not_ready", database: "replica_set_required" });
-    }
-    return { status: "ready", database: "replica_set_connected", transactions: true };
-  } catch {
-    return reply.code(503).send({ status: "not_ready", database: "unavailable" });
-  }
-});
-
 const authConfig: AuthConfig = {
   issuer: config.JWT_ISSUER,
   audience: config.JWT_AUDIENCE,
@@ -82,6 +65,23 @@ await app.register(cors, {
     void isAllowedOrigin(origin).then((allowed) => callback(null, allowed)).catch(() => callback(null, false));
   },
   credentials: true,
+});
+
+// Health routes are registered before database initialization so liveness remains
+// observable during Atlas outages; readiness separately reports database state.
+app.get("/health/live", async () => ({ status: "ok", service: "zuri-api" }));
+app.get("/health/ready", async (_req, reply) => {
+  if (!db) return reply.code(503).send({ status: "not_ready", database: "unavailable" });
+  try {
+    await db.command({ ping: 1 });
+    const hello = await db.command({ hello: 1 });
+    if (typeof hello.setName !== "string" || hello.isWritablePrimary !== true || typeof hello.logicalSessionTimeoutMinutes !== "number") {
+      return reply.code(503).send({ status: "not_ready", database: "replica_set_required" });
+    }
+    return { status: "ready", database: "replica_set_connected", transactions: true };
+  } catch {
+    return reply.code(503).send({ status: "not_ready", database: "unavailable" });
+  }
 });
 
 const publicRuntimeConfigHandler = async (request: FastifyRequest, reply: FastifyReply) => {
