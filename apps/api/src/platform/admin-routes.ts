@@ -41,7 +41,7 @@ async function writeAudit(db:Db,tenantId:string,p:Principal,request:FastifyReque
 async function checkRecentMfaStepUp(db:Db,secret:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
  if(["GET","HEAD","OPTIONS"].includes(request.method))return true;
  const now=new Date(),session=await coreCollections(db).sessions.findOne(
-  {tenantId:p.tenantId,sessionId:p.sessionId,userId:p.userId,revokedAt:{$exists:false},expiresAt:{$gt:now},mfaStepUpExpiresAt:{$gt:now}},
+  {tenantId:p.tenantId,sessionId:p.sessionId,userId:p.userId,revokedAt:{$exists:false},expiresAt:{$gt:now},mfaStepUpAt:{$gt:new Date(now.getTime()-5*60_000)},mfaStepUpExpiresAt:{$gt:now}},
   {projection:{_id:1}}
  );
  if(session)return true;
