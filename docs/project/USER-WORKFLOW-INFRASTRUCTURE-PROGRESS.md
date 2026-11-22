@@ -272,3 +272,12 @@ Corrected the package contract:
 - Independently ran the API build in an isolated Vercel sandbox and imported `@zuri/core-platform` from the compiled API runtime; Node resolved the package and exposed 53 exports successfully.
 
 **Deployment gate:** the corrected source has not yet been deployed. Vercel rejected the next API deployment request with HTTP 402 `api-deployments-free-per-day`, retry-after 86,400 seconds. The previous READY deployment therefore still has the runtime module-resolution error and must not be treated as healthy. Repeat deployment, `/health/live`, `/health/ready`, and authenticated login acceptance after the limit resets. Preview SSO has not been disabled; the temporary manual bypass used during diagnosis was revoked.
+
+
+## Runtime export regression test and current CI — 2026-11-22 UTC
+
+Added `apps/api/src/platform/core-platform-runtime.test.ts` to guard the compiled workspace package contract. The test imports the package through the same Node ESM resolution path used by the deployed API and asserts the event publisher, outbox worker, idempotent mutation, outbox writer and approval-request exports exist. This catches a future regression back to exporting raw TypeScript source.
+
+Exact-head GitHub Actions runs `44989687455` and `44989683049` both passed on `4d12a6bf95c34db9e15f6cf289890e373f373138`: OpenAPI 3.1 validation for both APIs, route drift, product documentation mirror check, typecheck, tests and build. The API runtime import regression test is included in the API test suite.
+
+The latest API deployment `dpl_z8JPqXF4i9qexDNig1LGEYqXCCFW` was built from the prior source commit and is still unhealthy at runtime. The fix is committed and CI-verified, but Vercel's deployment API again returned HTTP 402 `api-deployments-free-per-day` with retry-after 86,400 seconds. No live login is claimed until the corrected commit is deployed and both health endpoints pass. The Zuri OS web Preview is HTTP 200 / READY and remains SSO-protected.
