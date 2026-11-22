@@ -424,6 +424,74 @@ paths:
         "400": {$ref: "#/components/responses/InvalidRequest"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "429": {description: Authentication rate limit exceeded}
+  /auth/mfa/enroll:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: beginMfaEnrollment
+      summary: Begin MFA enrollment after password reauthentication
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        "200":
+          description: One-time enrollment secret and provisioning URI; expires in ten minutes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [secret, otpauthUrl, expiresAt]
+                properties:
+                  secret: {type: string}
+                  otpauthUrl: {type: string}
+                  expiresAt: {type: string, format: date-time}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {description: Password reauthentication failed}
+        "409": {description: MFA is already enabled}
+        "503": {description: MFA encryption is not configured}
+  /auth/mfa/confirm:
+    servers:
+      - url: /
+    post:
+      tags: [Identity]
+      operationId: confirmMfaEnrollment
+      summary: Confirm MFA enrollment and issue one-time recovery codes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, code]
+              properties:
+                password: {type: string, minLength: 1, maxLength: 128}
+                code: {type: string, minLength: 6, maxLength: 64}
+      responses:
+        "200":
+          description: MFA enabled; recovery codes are returned once
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recoveryCodes]
+                properties:
+                  recoveryCodes:
+                    type: array
+                    items: {type: string}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {description: Password reauthentication failed or enrollment expired}
+        "503": {description: MFA encryption is not configured}
   /auth/mfa/verify:
     servers:
       - url: /
