@@ -74,6 +74,15 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(overview.json().data.tenant.tenantId,"tenant-a");
   assert.equal(overview.json().data.counts.organizations,1);
 
+  const deniedWithoutStepUp=await app.inject({
+   method:"PUT",url:"/platform/admin/configuration/defaultCurrency",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"config-update-currency-denied"},
+   payload:{value:"UGX",reason:"Attempt a privileged change without recent MFA step-up."}
+  });
+  assert.equal(deniedWithoutStepUp.statusCode,403);
+  assert.equal(deniedWithoutStepUp.json().error,"MFA_STEP_UP_REQUIRED");
+  await db.collection("sessions").updateMany({},{$set:{mfaStepUpAt:now,mfaStepUpExpiresAt:new Date(now.getTime()+5*60_000)}});
+
   const configUpdate=await app.inject({
    method:"PUT",url:"/platform/admin/configuration/defaultCurrency",
    headers:{authorization:"Bearer "+operatorA,"idempotency-key":"config-update-currency-0001"},
