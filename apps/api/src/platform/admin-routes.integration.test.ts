@@ -6,7 +6,7 @@ import {MongoClient} from "mongodb";
 import {SignJWT} from "jose";
 import {adminRoutes} from "./admin-routes.js";
 import {platformRoutes} from "./platform-routes.js";
-import {acceptMembershipInvitation,verifyMfaStepUp} from "./auth-service.js";
+import {acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,verifyMfaStepUp} from "./auth-service.js";
 import {decryptInvitationToken,encryptMfaSecret,generateTotpSecret,hashPassword,hashRecoveryCode,totpCode} from "./auth-crypto.js";
 import type {AuthConfig} from "./auth-service.js";
 
@@ -287,6 +287,38 @@ test("MFA step-up is session-bound, audited, expires and prevents TOTP or recove
   assert.equal(recoveryResult.status,"mfa_step_up_satisfied");
   const storedUser=await db.collection("users").findOne({userId});
   assert.deepEqual(storedUser?.mfaRecoveryCodeHashes,[]);
+ }finally{
+  await db.dropDatabase();await client.close();
+ }
+});
+
+test("MFA enrollment requires password reauthentication and expires after ten minutes",{skip:!uri},async()=>{
+ const client=new MongoClient(uri!);await client.connect();
+ const db=client.db("zuri_mfa_enroll_it_"+randomUUID().replaceAll("-",""));
+ const password="MFA-Enrollment-Test-Password-2026!";
+ const userId="enroll-user-"+randomUUID(),expiredUserId="expired-enroll-user-"+randomUUID();
+ const passwordHash=await hashPassword(password);
+ try{
+  await db.collection("users").insertMany([
+   {userId,status:"active",passwordHash,mfaEnabled:false,emailNormalized:"enroll@example.test"},
+   {userId:expiredUserId,status:"active",passwordHash,mfaEnabled:false,emailNormalized:"expired@example.test"}
+  ]);
+  await assert.rejects(beginMfaEnrollment(db,userId,"wrong-password",config),/MFA_STEP_UP_FAILED/);
+  const enrollment=await beginMfaEnrollment(db,userId,password,config);
+  const pending=await db.collection("users").findOne({userId});
+  assert.ok(pending?.pendingMfaSecretExpiresAt instanceof Date);
+  assert.ok(pending!.pendingMfaSecretExpiresAt.getTime()>Date.now());
+  await assert.rejects(confirmMfaEnrollment(db,userId,"wrong-password",totpCode(enrollment.secret),config),/MFA_STEP_UP_FAILED/);
+  const confirmed=await confirmMfaEnrollment(db,userId,password,totpCode(enrollment.secret),config);
+  assert.equal(confirmed.recoveryCodes.length,10);
+  const enabled=await db.collection("users").findOne({userId});
+  assert.equal(enabled?.mfaEnabled,true);
+  assert.equal(enabled?.pendingMfaSecretEncrypted,undefined);
+  assert.equal(enabled?.pendingMfaSecretExpiresAt,undefined);
+
+  const expiredEnrollment=await beginMfaEnrollment(db,expiredUserId,password,config);
+  await db.collection("users").updateOne({userId:expiredUserId},{$set:{pendingMfaSecretExpiresAt:new Date(Date.now()-1_000)}});
+  await assert.rejects(confirmMfaEnrollment(db,expiredUserId,password,totpCode(expiredEnrollment.secret),config),/MFA_ENROLLMENT_EXPIRED/);
  }finally{
   await db.dropDatabase();await client.close();
  }
