@@ -11,13 +11,14 @@ export type OutboxEventDocument=PlatformEventEnvelope&{
  availableAt:Date;leaseOwner?:string;leaseUntil?:Date;publishedAt?:Date;lastError?:string;
  createdAt:Date;updatedAt:Date;
 };
+type OutboxInput={tenantId:string;eventType:string;aggregateType:string;aggregateId?:string;payload:Record<string,unknown>;correlationId?:string};
 const schema=z.object({
  tenantId:z.string().min(1),eventType:z.string().min(3).max(180),
  aggregateType:z.string().min(2).max(100),aggregateId:z.string().max(200).optional(),
  payload:z.record(z.unknown()).default({}),correlationId:z.string().max(200).optional()
 });
 export async function appendOutboxEvent(db:Db,session:ClientSession,input:unknown){
- const d=schema.parse(input),now=new Date();
+ const d:OutboxInput=schema.parse(input),now=new Date();
  const doc:OutboxEventDocument={
   eventId:randomUUID(),tenantId:d.tenantId,eventType:d.eventType,schemaVersion:1,aggregateType:d.aggregateType,...(d.aggregateId?{aggregateId:d.aggregateId}:{}),payload:d.payload,...(d.correlationId?{correlationId:d.correlationId}:{}),occurredAt:now,status:"pending",attempts:0,
   availableAt:now,createdAt:now,updatedAt:now
