@@ -295,3 +295,18 @@ The latest API deployment `dpl_z8JPqXF4i9qexDNig1LGEYqXCCFW` was built from the 
 ## Demo autofill password/hash consistency — 2026-11-22 UTC
 
 Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored Argon2id password hashes retrieved from the isolated `zuri_demo` database. All three checks returned `passwordMatches: true` for standard member, multi-workspace member and unassigned identity. The check ran in an ephemeral Vercel sandbox; the password was passed as a transient environment variable and was not printed or committed. This verifies the autofill password is synchronized with the seeded demo accounts; live API login still awaits a corrected API Preview deployment.
+
+
+## Cross-project MAC Trusted Source grant — 2026-11-22 UTC
+
+- Updated the Vercel Deployment Protection Trusted Sources policy on the central `zurios-api` project to authorize only the `zuri-mebumip-api` project from Production to Production. The grant is project-scoped and environment-scoped; it does not disable or weaken the existing SSO protection policy.
+- MAC's internal runtime-config endpoint continues to validate the Vercel OIDC issuer, team owner ID, exact caller project ID, exact subject and Production environment. The Trusted Source grant supplies the separate Vercel Deployment Protection authorization required before the request reaches that endpoint.
+- The grant is configured but end-to-end runtime acceptance remains pending: the current MeBuMIP API project has no successful deployment on the latest branch head, and the current Zuri OS API Preview is 18 commits behind the latest verified source line. Do not mark cross-project runtime retrieval complete until a current MeBuMIP API Production deployment calls the protected MAC endpoint successfully.
+
+## Latest source and deployment reconciliation — 2026-11-22 UTC
+
+- Exact-head GitHub CI run `44990090813` passed on web Preview commit `d827ca1fe709a7cdec1e686b2571fa2935b9dfd0`: both OpenAPI 3.1 contracts, route drift, documentation mirrors, typecheck, tests and build all succeeded.
+- The latest Zuri OS web Preview is READY on that commit. The latest Zuri OS API Preview remains READY on `1a35ad167e932baf0f94852211a6718f791fa6fb`, which is 18 commits behind the newer verified source line and does not contain the subsequent runtime/OIDC corrections. It must be redeployed before API health/readiness or login acceptance.
+- The latest MeBuMIP web and API Preview deployments are CANCELED because their triggering commits did not affect those project roots. The latest source line now changes MeBuMIP API runtime configuration code, so a new API deployment is required; project Preview environment configuration and API runtime acceptance are still outstanding.
+- Vercel deployment checks continue to report the team's daily build/deployment quota limit. No Production environment variables, aliases, public SSO policy or production deployments were changed.
+- A metadata-only environment inventory confirmed that the Zuri MeBuMIP Vercel projects currently have no project environment variables configured. The Zuri OS demo environment remains branch-scoped to Preview; the demo seeder remains disabled. No environment variable values were requested for decryption.
