@@ -153,7 +153,7 @@ export async function verifyMfaStepUp(
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_ENROLLMENT_REQUIRED");
  if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
  const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
- const recoveryHash=step===null?hashRecoveryCode(code):undefined;
+ const recoveryHash=hashRecoveryCode(code);
  const now=new Date(),expiresAt=new Date(now.getTime()+5*60_000),transaction=db.client.startSession();
  try{
   await transaction.withTransaction(async()=>{
