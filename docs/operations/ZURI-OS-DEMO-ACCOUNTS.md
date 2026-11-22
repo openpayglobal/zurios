@@ -58,3 +58,10 @@ The Zuri OS web and API projects have Preview-only environment variables scoped 
 The seeder was run successfully as an explicit one-time Vercel Preview build step. After the successful seed operation, the API project's build command was restored to `pnpm --filter @zuri/api build` and `DEMO_SEED_ENABLED=false` was set to prevent routine deployments from rotating passwords or revoking demo sessions.
 
 **Not yet live:** the Vercel API deployment that ran the seed failed during its subsequent TypeScript build. The TypeScript and CI issues found there have been fixed in source; GitHub typecheck and tests pass on the latest checked head, with build verification still running at last inspection. A fresh Vercel deployment is blocked by the team's 100/day API deployment limit (HTTP 402, 24-hour retry). Do not mark API health, browser login or final UI acceptance complete until a fresh Preview deployment reaches READY and login scenarios are exercised against it.
+
+
+## Latest runtime and verification checkpoint — 2026-11-22 UTC
+
+The Zuri OS web Preview responds HTTP 200 and is READY, but the API deployment currently assigned to the branch alias is not yet healthy. The first API deployment built successfully but failed at runtime because `@zuri/core-platform` exported a TypeScript source entry point. The package now exports compiled JavaScript and declarations; the API build compiles that package first. A dedicated runtime-import regression test was added and exact-head GitHub CI runs `44989687455` and `44989683049` passed on `4d12a6bf95c34db9e15f6cf289890e373f373138` (OpenAPI, route drift, docs mirrors, typecheck, tests and build).
+
+A corrected API Preview deployment is still pending. Vercel returned HTTP 402 `api-deployments-free-per-day` with retry-after 86,400 seconds. Until that deployment is created and `/health/live` and `/health/ready` return success, do not treat browser login or the three sign-in scenarios as live-accepted. The demo database and Preview environment remain isolated; the seeder is disabled and Production has not been modified.
