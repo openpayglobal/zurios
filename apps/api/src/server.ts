@@ -5,7 +5,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { config, corsOrigins } from "./config.js";
-import { connectMongo, closeMongo } from "./db/mongo.js";
+import { getMongoDatabase, connectMongo, closeMongo } from "./db/mongo.js";
 import { authRoutes } from "./platform/auth-routes.js";
 import { platformRoutes } from "./platform/platform-routes.js";
 import { adminRoutes } from "./platform/admin-routes.js";
@@ -23,7 +23,23 @@ const vercelJwks = createRemoteJWKSet(new URL(`${teamIssuer}/.well-known/jwks`))
 let outboxWorkerPromise: Promise<void> | undefined;
 let lastOutboxDispatchAt = 0;
 let outboxDispatchInFlight: Promise<void> | undefined;
-let db: Db | undefined;
+const db: Db = getMongoDatabase();
+let dbReady = false;
+let dbInitialization: Promise<void> | undefined;
+
+const initializeDatabase = async (): Promise<void> => {
+  if (dbReady) return;
+  if (!dbInitialization) {
+    dbInitialization = connectMongo().then(() => {
+      dbReady = true;
+      app.log.info("Zuri OS API database and indexes are ready");
+    }).catch((error: unknown) => {
+      dbInitialization = undefined;
+      throw error;
+    });
+  }
+  await dbInitialization;
+};
 let allowedOriginsCache = [...corsOrigins];
 let allowedOriginsCacheAt = 0;
 
@@ -47,7 +63,7 @@ const authConfig: AuthConfig = {
 // CORS uses the last known MAC-approved origin list. Before Atlas connects, only
 // the deployment's explicit bootstrap list is available.
 const isAllowedOrigin = async (origin: string): Promise<boolean> => {
-  if (db && Date.now() - allowedOriginsCacheAt > 5_000) {
+  if (dbReady && Date.now() - allowedOriginsCacheAt > 5_000) {
     try {
       const runtime = await readPlatformRuntimeConfig(db);
       allowedOriginsCache = process.env.VERCEL_ENV === "preview"
@@ -67,6 +83,20 @@ await app.register(cors, {
     void isAllowedOrigin(origin).then((allowed) => callback(null, allowed)).catch(() => callback(null, false));
   },
   credentials: true,
+});
+
+// Keep health probes independent from Atlas startup. Ordinary API requests wait
+// for the bounded connection/index initialization and fail closed while unavailable.
+app.addHook("onRequest", async (request, reply) => {
+  if (request.url.startsWith("/health/")) return;
+  if (!dbReady) {
+    try {
+      await initializeDatabase();
+    } catch (error) {
+      app.log.error({ err: error }, "Database initialization unavailable for request");
+      return reply.code(503).send({ error: "DATABASE_UNAVAILABLE" });
+    }
+  }
 });
 
 // Vercel Functions are request-scoped. Do not leave a permanent polling loop
@@ -95,7 +125,7 @@ if (process.env.VERCEL) {
 // observable during Atlas outages; readiness separately reports database state.
 app.get("/health/live", async () => ({ status: "ok", service: "zuri-api" }));
 app.get("/health/ready", async (_req, reply) => {
-  if (!db) return reply.code(503).send({ status: "not_ready", database: "unavailable" });
+  if (!dbReady) return reply.code(503).send({ status: "not_ready", database: "unavailable" });
   try {
     await db.command({ ping: 1 });
     const hello = await db.command({ hello: 1 });
@@ -109,7 +139,7 @@ app.get("/health/ready", async (_req, reply) => {
 });
 
 const publicRuntimeConfigHandler = async (request: FastifyRequest, reply: FastifyReply) => {
-  if (!db) return reply.code(503).send({ error: "RUNTIME_CONFIG_DATABASE_UNAVAILABLE" });
+  if (!dbReady) return reply.code(503).send({ error: "RUNTIME_CONFIG_DATABASE_UNAVAILABLE" });
   const runtime = await readPlatformRuntimeConfig(db);
   const etag = `W/"mac-runtime-${runtime.revision}"`;
   if (request.headers["if-none-match"] === etag) return reply.code(304).header("etag", etag).send();
@@ -173,24 +203,30 @@ app.get("/v1/platform/public/runtime-config", publicRuntimeConfigHandler);
 app.get("/platform/internal/runtime-config", internalRuntimeConfigHandler);
 app.get("/v1/platform/internal/runtime-config", internalRuntimeConfigHandler);
 
-try {
-  db = await connectMongo();
-  await app.register(authRoutes(db, authConfig));
-  await app.register(platformRoutes(db, authConfig), { prefix: "/v1" });
-  await app.register(adminRoutes(db, authConfig), { prefix: "/v1" });
-  await app.register(platformRoutes(db, authConfig));
-  await app.register(adminRoutes(db, authConfig));
-  if (!process.env.VERCEL) {
-    outboxWorkerPromise = runOutboxWorker(db, createMongoEventBusPublisher(db), outboxAbortController.signal).catch((error) => {
-      app.log.error({ err: error }, "Platform outbox worker stopped unexpectedly");
-    });
-  }
-  app.log.info("Zuri OS API database and routes initialized");
-} catch (error) {
-  app.log.error({ err: error }, "Zuri OS API database initialization failed; liveness remains available and readiness stays false");
+await app.register(authRoutes(db, authConfig));
+await app.register(platformRoutes(db, authConfig), { prefix: "/v1" });
+await app.register(adminRoutes(db, authConfig), { prefix: "/v1" });
+await app.register(platformRoutes(db, authConfig));
+await app.register(adminRoutes(db, authConfig));
+
+if (!process.env.VERCEL) {
+  outboxWorkerPromise = runOutboxWorker(db, createMongoEventBusPublisher(db), outboxAbortController.signal).catch((error) => {
+    app.log.error({ err: error }, "Platform outbox worker stopped unexpectedly");
+  });
 }
 
-await app.listen({ host: config.API_HOST, port: config.API_PORT });
+// Begin connection work without holding module evaluation or the HTTP listener.
+// Vercel can export the Fastify app immediately; readiness remains false until
+// connection and all required indexes have completed successfully.
+void initializeDatabase().catch((error: unknown) => {
+  app.log.error({ err: error }, "Zuri OS API database initialization failed; liveness remains available and readiness stays false");
+});
+
+export default app;
+
+if (!process.env.VERCEL) {
+  await app.listen({ host: config.API_HOST, port: config.API_PORT });
+}
 
 const shutdown = async () => {
   outboxAbortController.abort();
