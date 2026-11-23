@@ -223,7 +223,7 @@ void initializeDatabase().catch((error: unknown) => {
 
 export default app;
 
-if (!process.env.VERCEL) {
+if (process.env.VERCEL !== "1" && !process.env.VERCEL_URL) {
   await app.listen({ host: config.API_HOST, port: config.API_PORT });
 }
 
