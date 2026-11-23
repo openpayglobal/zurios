@@ -1,4 +1,3 @@
-import { pathToFileURL } from "node:url";
 import app from "./server.js";
 import { config } from "./config.js";
 
