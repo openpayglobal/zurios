@@ -2,13 +2,21 @@ import {MongoClient,type Db,type Collection} from "mongodb";
 import {config} from "../config.js";
 let client:MongoClient|undefined;
 let database:Db|undefined;
+let connectionPromise:Promise<void>|undefined;
+export function getMongoDatabase():Db{
+ if(!client){
+  client=new MongoClient(config.MONGODB_URI,{appName:"zuri-os-api",maxPoolSize:20,minPoolSize:0,serverSelectionTimeoutMS:8_000,connectTimeoutMS:8_000});
+  database=client.db(config.MONGODB_DATABASE);
+ }
+ return database!;
+}
 export async function connectMongo():Promise<Db>{
- if(database)return database;
- client=new MongoClient(config.MONGODB_URI,{appName:"zuri-os-api",maxPoolSize:20,minPoolSize:2});
- await client.connect();
- database=client.db(config.MONGODB_DATABASE);
- await ensureIndexes(database);
- return database;
+ const db=getMongoDatabase();
+ if(!connectionPromise){
+  connectionPromise=client!.connect().then(()=>ensureIndexes(db)).catch(error=>{connectionPromise=undefined;throw error;});
+ }
+ await connectionPromise;
+ return db;
 }
 export function getDb():Db{
  if(!database)throw new Error("MongoDB has not been initialized");
@@ -64,4 +72,4 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
  ]);
 }
-export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;}
+export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;connectionPromise=undefined;}
