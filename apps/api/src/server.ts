@@ -33,6 +33,11 @@ const initializeDatabase = async (): Promise<void> => {
     dbInitialization = connectMongo().then(() => {
       dbReady = true;
       app.log.info("Zuri OS API database and indexes are ready");
+      if (!process.env.VERCEL && !outboxWorkerPromise) {
+        outboxWorkerPromise = runOutboxWorker(db, createMongoEventBusPublisher(db), outboxAbortController.signal).catch((error) => {
+          app.log.error({ err: error }, "Platform outbox worker stopped unexpectedly");
+        });
+      }
     }).catch((error: unknown) => {
       dbInitialization = undefined;
       throw error;
@@ -208,12 +213,6 @@ await app.register(platformRoutes(db, authConfig), { prefix: "/v1" });
 await app.register(adminRoutes(db, authConfig), { prefix: "/v1" });
 await app.register(platformRoutes(db, authConfig));
 await app.register(adminRoutes(db, authConfig));
-
-if (!process.env.VERCEL) {
-  outboxWorkerPromise = runOutboxWorker(db, createMongoEventBusPublisher(db), outboxAbortController.signal).catch((error) => {
-    app.log.error({ err: error }, "Platform outbox worker stopped unexpectedly");
-  });
-}
 
 // Begin connection work without holding module evaluation or the HTTP listener.
 // Vercel can export the Fastify app immediately; readiness remains false until
