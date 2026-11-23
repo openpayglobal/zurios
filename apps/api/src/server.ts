@@ -223,9 +223,8 @@ void initializeDatabase().catch((error: unknown) => {
 
 export default app;
 
-if (process.env.VERCEL !== "1" && !process.env.VERCEL_URL) {
-  await app.listen({ host: config.API_HOST, port: config.API_PORT });
-}
+// Vercel owns the HTTP listener for this exported Fastify application.
+// Local development starts the listener from src/dev.ts.
 
 const shutdown = async () => {
   outboxAbortController.abort();
