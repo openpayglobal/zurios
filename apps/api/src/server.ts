@@ -10,7 +10,7 @@ import { authRoutes } from "./platform/auth-routes.js";
 import { platformRoutes } from "./platform/platform-routes.js";
 import { adminRoutes } from "./platform/admin-routes.js";
 import { readPlatformRuntimeConfig } from "./platform/runtime-config-store.js";
-import { decryptMacSecrets,isMacSecretVaultConfigured,readMacSecretsForService,type MacSecretEnvelope } from "./platform/secret-vault.js";
+import { isMacSecretVaultConfigured,readMacSecretsForService } from "./platform/secret-vault.js";
 import { writeAuditEvent } from "./platform/audit.js";
 import type { AuthConfig } from "./platform/auth-service.js";
 import { createMongoEventBusPublisher, dispatchOutboxBatch, runOutboxWorker } from "@zuri/core-platform";
@@ -248,15 +248,7 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
     const secretVaultEnabled = isMacSecretVaultConfigured() && process.env.VERCEL_ENV === "production";
     if (secretVaultEnabled) {
       try {
-        const records = await db.collection<{
-          secretId:string; version:number; allowedServices:string[]; environment:string;
-          envelope:MacSecretEnvelope; revokedAt?:Date;
-        }>("mac_secrets").find({
-          environment:"production",
-          allowedServices:expectedProject,
-          revokedAt:{$exists:false}
-        },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
-        const values = await decryptMacSecrets(records);
+        const values = await readMacSecretsForService(db, expectedProject);
         for (const item of values) {
           secrets[item.secretId] = item.value;
         }
