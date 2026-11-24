@@ -335,3 +335,14 @@ Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored A
 - Added regression tests asserting the service boundaries and documented the change in the MAC infrastructure/secrets operations guide.
 - Initial CI type errors were fixed. Full exact-head CI passed on implementation commit `c82b76a1dc985fa892c76a1c5dd6f0ee83603d23` (run `45369507739`) and documentation head `3c68434c3f226698da41436f9cbd2ee6e513a224` (run `45369769377`).
 - **Not yet live:** Vercel deployment checks for all four projects still return `build-rate-limit`. AWS OIDC/STS/KMS provisioning, Production bootstrap configuration and live workload delivery acceptance remain outstanding. No quota bypass, billing change or Production release was performed.
+
+
+## MeBuMIP MAC runtime snapshot validation — 2026-11-24
+
+- Added strict consumer-side validation before a MAC runtime snapshot can update MeBuMIP process configuration.
+- The API now requires a non-negative safe-integer revision, the exact `zuri-mebumip-api` service identity, exact HTTPS origins without credentials/path/query/fragment, 1–20 unique approved-shape HTTPS browser origins, a recognized secret-access state, and string values for only the eight explicitly permitted MeBuMIP secret IDs.
+- A blocked secret-access response is required to contain no secret values. Unknown secret IDs, malformed values, unsafe origins, duplicate origins and invalid revisions fail closed.
+- Added regression tests for valid snapshots and each rejection boundary.
+- Implementation commits: client validation `b89e6d5b4f75bfa91a60ac9d0871be97d00e36df`; test coverage `3ecb381816c443f06044d8ab4063b0a9ba4d305e`.
+- Exact-head Full CI run **45373177245** passed, including both OpenAPI validations, route drift, documentation mirror checks, typecheck, tests and build.
+- This is source/CI validation only; the latest source remains undeployed while Vercel deployment access/quota is blocked. Live MAC-to-MeBuMIP acceptance remains pending.
