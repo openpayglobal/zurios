@@ -232,7 +232,6 @@ export async function readMacSecretsForService(
   service: keyof typeof MAC_SECRET_IDS_BY_SERVICE,
 ): Promise<Array<{secretId:string;version:number;value:string}>> {
   const secretIds = MAC_SECRET_IDS_BY_SERVICE[service];
-  if (secretIds.length === 0) return [];
   const records = await db.collection<{
     secretId:string;
     version:number;
