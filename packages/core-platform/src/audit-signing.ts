@@ -1,4 +1,4 @@
-import { createPublicKey, verify as verifyCryptoSignature } from "node:crypto";
+import { createHash, createPublicKey, verify as verifyCryptoSignature } from "node:crypto";
 import { signMessage } from "@vercel/kms";
 import type { AuditEventDocument } from "./types.js";
 
@@ -81,6 +81,8 @@ export async function verifyAuditEventSignature(
     );
     if (!jwk) return false;
     const publicKey = createPublicKey({ key: jwk as never, format: "jwk" });
+    const fingerprint = `SHA256:${createHash("sha256").update(publicKey.export({ type: "spki", format: "der" })).digest("base64")}`;
+    if (fingerprint !== integrity.fingerprint) return false;
     return verifyCryptoSignature(
       "RSA-SHA256",
       Buffer.from(auditEventSigningPayload(event), "utf8"),
