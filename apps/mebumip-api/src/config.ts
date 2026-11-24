@@ -100,7 +100,7 @@ const macRuntimeSecretSchema = z.object({
       for (const [id,key] of Object.entries(keys)) {
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Invalid MFA key-ring entry");
       }
-      if (!value.MFA_ENCRYPTION_ACTIVE_KEY_ID || !Object.hasOwn(keys,value.MFA_ENCRYPTION_ACTIVE_KEY_ID)) throw new Error("MFA active key ID must exist in the key ring");
+      if (!value.MFA_ENCRYPTION_ACTIVE_KEY_ID || !Object.prototype.hasOwnProperty.call(keys,value.MFA_ENCRYPTION_ACTIVE_KEY_ID)) throw new Error("MFA active key ID must exist in the key ring");
       if (!value.MFA_ENCRYPTION_KEY && typeof keys.legacy !== "string") throw new Error("Retain the legacy MFA key until historical secrets are re-encrypted");
       if (value.MFA_ENCRYPTION_KEY && typeof keys.legacy === "string" && value.MFA_ENCRYPTION_KEY.toLowerCase() !== keys.legacy.toLowerCase()) throw new Error("MFA legacy key conflicts with key ring");
     } catch (error) {
@@ -118,7 +118,7 @@ const macRuntimeSecretSchema = z.object({
       for (const [id,key] of Object.entries(keys)) {
         if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || typeof key !== "string" || (id === "legacy" ? !/^(?:[a-fA-F0-9]{2}){32,}$/.test(key) : !/^[a-fA-F0-9]{64}$/.test(key))) throw new Error("Invalid audit key-ring entry");
       }
-      if (!value.AUDIT_SIGNING_ACTIVE_KEY_ID || value.AUDIT_SIGNING_ACTIVE_KEY_ID === "legacy" || !Object.hasOwn(keys,value.AUDIT_SIGNING_ACTIVE_KEY_ID)) throw new Error("Audit active key ID must identify a non-legacy key");
+      if (!value.AUDIT_SIGNING_ACTIVE_KEY_ID || value.AUDIT_SIGNING_ACTIVE_KEY_ID === "legacy" || !Object.prototype.hasOwnProperty.call(keys,value.AUDIT_SIGNING_ACTIVE_KEY_ID)) throw new Error("Audit active key ID must identify a non-legacy key");
       if (!value.AUDIT_SIGNING_KEY && typeof keys.legacy !== "string") throw new Error("Retain the legacy audit key until historical events are re-signed or archived");
       if (value.AUDIT_SIGNING_KEY && typeof keys.legacy === "string" && Buffer.from(value.AUDIT_SIGNING_KEY).toString("hex") !== keys.legacy.toLowerCase()) throw new Error("Audit legacy key conflicts with key ring");
     } catch (error) {
