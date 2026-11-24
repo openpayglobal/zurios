@@ -7,7 +7,6 @@ export type MacRuntimeConfig = {
   allowedOrigins: string[];
   secrets?: Record<string,string>;
   secretAccess: string;
-  secrets: Record<string,string>;
 };
 
 export function buildMacRuntimeConfigHeaders(token: string): Record<string, string> {
