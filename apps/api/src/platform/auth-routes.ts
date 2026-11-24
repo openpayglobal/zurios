@@ -2,31 +2,46 @@ import type {Db} from "mongodb";
 import type {FastifyPluginAsync} from "fastify";
 import {z,ZodError} from "zod";
 import {createHash} from "node:crypto";
+import {appendAuditEvent} from "@zuri/core-platform";
 import type {AuthConfig} from "./auth-service.js";
-import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin} from "./auth-service.js";
+import {acceptInvitation,acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,disableMfa,getUserWorkspaces,login,logout,refreshLogin,requestWorkspaceAccess,resetPassword,selectWorkspace,switchWorkspace,verifyEmail,verifyMfaLogin,verifyMfaStepUp} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
+import {readPlatformRuntimeConfig} from "./runtime-config-store.js";
 const loginSchema=z.object({email:z.string().email().max(254),password:z.string().min(1).max(128),tenantSlug:z.string().min(2).max(64).optional()});
 const workspaceSelectionSchema=z.object({selectionToken:z.string().min(40).max(200),tenantId:z.string().min(1).max(128)});
 const workspaceSwitchSchema=z.object({tenantId:z.string().min(1).max(128)});
 const accessRequestSchema=z.object({email:z.string().email().max(254),displayName:z.string().trim().min(2).max(120),organizationName:z.string().trim().min(2).max(160),requestNote:z.string().trim().max(500).optional()});
 const mfaSchema=z.object({challengeToken:z.string().min(20),code:z.string().min(6).max(64)});
+const mfaStepUpSchema=z.object({password:z.string().min(1).max(128),code:z.string().min(6).max(64)});
 const refreshSchema=z.object({sessionId:z.string().min(1),refreshToken:z.string().min(20)});
 function statusFor(error:unknown):number{
  if(error instanceof ZodError)return 400;
  const code=error instanceof Error?error.message:"";
  if(code==="AUTH_RATE_LIMITED")return 429;
+ if(code==="MFA_ENROLLMENT_REQUIRED")return 403;
+ if(code==="MFA_ALREADY_ENABLED")return 409;
  if(code==="WORKSPACE_ACCESS_DENIED")return 403;
  if(code==="WORKSPACE_SELECTION_REPLAYED")return 409;
  if(/INVALID|EXPIRED|REQUIRED|NOT_ALLOWED|ALREADY_USED|REPLAY|REUSE|INACTIVE|STEP_UP|INVITATION|PASSWORD_SETUP|MFA_|WORKSPACE_|PLATFORM_ACCESS_REVOKED/.test(code))return 401;
  return 500;
 }
-function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?"WORKSPACE_ACCESS_DENIED":status===409?"WORKSPACE_SELECTION_REPLAYED":status===401?(code==="SESSION_INVALID"?"UNAUTHENTICATED":"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
+function failure(error:unknown,reply:any){const status=statusFor(error);const code=error instanceof Error?error.message:"";return reply.code(status).send({error:status===400?"INVALID_REQUEST":status===429?"RATE_LIMITED":status===403?(code==="MFA_ENROLLMENT_REQUIRED"?"MFA_ENROLLMENT_REQUIRED":"WORKSPACE_ACCESS_DENIED"):status===409?(code==="MFA_ALREADY_ENABLED"?"MFA_ALREADY_ENABLED":"WORKSPACE_SELECTION_REPLAYED"):status===401?(["SESSION_INVALID"].includes(code)?"UNAUTHENTICATED":["MFA_STEP_UP_FAILED","MFA_CODE_ALREADY_USED","MFA_ENROLLMENT_EXPIRED","INVALID_MFA_CODE"].includes(code)?code:"AUTHENTICATION_FAILED"):"INTERNAL_SERVER_ERROR"});}
+async function enforceMfaStepUpRateLimit(db:Db,userId:string,ipHash:string){
+ const bucket=Math.floor(Date.now()/60_000),key=createHash("sha256").update("mfa-step-up|"+userId+"|"+ipHash+"|"+bucket).digest("hex");
+ const collection=db.collection("auth_rate_limits");
+ await collection.updateOne({key},{$inc:{count:1},$setOnInsert:{expiresAt:new Date((bucket+2)*60_000)}},{upsert:true});
+ const row=await collection.findOne({key});
+ if((row?.count??0)>5)throw new Error("AUTH_RATE_LIMITED");
+}
 export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
  return async function registerAuthRoutes(app){
   const requireAuth=authenticate(db,config);
   app.get("/auth/public-config",async(_request,reply)=>{
    reply.header("Cache-Control","no-store");
-   const enabled=config.accessRequestsEnabled===true;return {accessRequestsEnabled:enabled,privacyNoticeUrl:enabled?(config.accessRequestsPrivacyNoticeUrl??null):null};
+   const runtime=await readPlatformRuntimeConfig(db);
+   const enabled=runtime.publicSettings.accessRequestsEnabled??config.accessRequestsEnabled===true;
+   const privacyNoticeUrl=runtime.publicSettings.privacyNoticeUrl??config.accessRequestsPrivacyNoticeUrl??null;
+   return {accessRequestsEnabled:enabled,privacyNoticeUrl:enabled?privacyNoticeUrl:null};
   });
   app.post("/auth/login",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
@@ -35,7 +50,8 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
   app.post("/auth/access-requests",async(request,reply)=>{
    reply.header("Cache-Control","no-store");
-   if(config.accessRequestsEnabled!==true)return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
+   const runtime=await readPlatformRuntimeConfig(db);
+   if(!(runtime.publicSettings.accessRequestsEnabled??config.accessRequestsEnabled===true))return reply.code(503).send({error:"ACCESS_REQUESTS_DISABLED"});
    try{
     const body=accessRequestSchema.parse(request.body),ipHash=createHash("sha256").update(request.ip).digest("hex");
     const result=await requestWorkspaceAccess(db,{email:body.email,displayName:body.displayName,organizationName:body.organizationName,...(body.requestNote?{requestNote:body.requestNote}:{}),ipHash});
@@ -105,14 +121,29 @@ export function authRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   app.post("/auth/mfa/enroll",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
-   try{return await beginMfaEnrollment(db,request.principal!.userId,config);}
+   try{const body=z.object({password:z.string().min(1).max(128)}).parse(request.body);return await beginMfaEnrollment(db,request.principal!.userId,body.password,config);}
    catch(error){return failure(error,reply);}
   });
   app.post("/auth/mfa/confirm",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");
    if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
-   try{const body=z.object({code:z.string().min(6).max(64)}).parse(request.body);return await confirmMfaEnrollment(db,request.principal!.userId,body.code,config);}
+   try{const body=z.object({password:z.string().min(1).max(128),code:z.string().min(6).max(64)}).parse(request.body);return await confirmMfaEnrollment(db,request.principal!.userId,body.password,body.code,config);}
    catch(error){return failure(error,reply);}
+  });
+  app.post("/auth/mfa/step-up",{preHandler:requireAuth},async(request,reply)=>{
+   reply.header("Cache-Control","no-store");
+   if(!config.mfaEncryptionKey)return reply.code(503).send({error:"MFA_NOT_CONFIGURED"});
+   try{
+    const body=mfaStepUpSchema.parse(request.body),p=request.principal!;
+    const ipHash=createHash("sha256").update(request.ip).digest("hex");
+    await enforceMfaStepUpRateLimit(db,p.userId,ipHash);
+    return await verifyMfaStepUp(db,p.userId,p.tenantId,p.sessionId,body.password,body.code,config);
+   }catch(error){
+    const p=request.principal!,reasonCode=error instanceof Error&&/^[A-Z0-9_]{3,100}$/.test(error.message)?error.message:"MFA_STEP_UP_FAILED";
+    try{await appendAuditEvent(db,{tenantId:p.tenantId,actor:{userId:p.userId},action:"auth.mfa.step_up.failed",resourceType:"session",resourceId:p.sessionId,outcome:"failure",metadata:{reasonCode}});}
+    catch(auditError){request.log.error({err:auditError,correlationId:request.id},"Failed to persist MFA step-up failure audit");}
+    return failure(error,reply);
+   }
   });
   app.post("/auth/mfa/disable",{preHandler:requireAuth},async(request,reply)=>{
    reply.header("Cache-Control","no-store");

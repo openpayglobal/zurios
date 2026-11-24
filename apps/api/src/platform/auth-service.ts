@@ -5,14 +5,14 @@ import {coreCollections} from "@zuri/core-platform";
 import {createSession,rotateRefreshToken,revokeSession} from "@zuri/core-platform";
 import {permissionsForMembership,platformPermissionsForUser} from "@zuri/core-platform";
 import {appendAuditEvent,appendOutboxEvent} from "@zuri/core-platform";
-import {decryptMfaSecret,encryptMfaSecret,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
-export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
+import {decryptMfaSecretWithConfig,encryptMfaSecretWithConfig,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
+import { signSessionAccessToken } from "./session-token.js";
+export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;mfaEncryptionKeyring?:string|undefined;mfaEncryptionActiveKeyId?:string|undefined;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
 const key=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
 const normalizeEmail=(email:string)=>email.trim().toLowerCase();
 const activeMembershipWindow=(now:Date)=>({$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]});
 async function issueAccessToken(config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string;sessionId:string;permissions:string[]}){
- return new SignJWT({tenantId:claims.tenantId,membershipId:claims.membershipId,sessionId:claims.sessionId,permissions:claims.permissions})
-  .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime(`${config.accessTokenTtlSeconds}s`).sign(key(config));
+ return signSessionAccessToken(config,claims);
 }
 async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;tenantId?:string;membershipId?:string}){
  const challengeId=randomUUID(),now=new Date();
@@ -121,7 +121,7 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
  if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.challengeId!=="string"||((typeof claims.tenantId==="string")!==(typeof claims.membershipId==="string")))throw new Error("INVALID_MFA_CHALLENGE");
  const c=coreCollections(db),user=await c.users.findOne({userId:claims.sub,status:"active",mfaEnabled:true});
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_NOT_CONFIGURED");
- const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ const secret=decryptMfaSecretWithConfig(user.mfaSecretEncrypted,config),step=verifyTotpCode(secret,code);
  if(step!==null){
   const result=await c.users.updateOne({userId:user.userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},{$set:{mfaLastUsedStep:step}});
   if(!result.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
@@ -139,17 +139,67 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
  if(!hasTenant)return issueWorkspaceSelection(db,user.userId);
  return completeLogin(db,config,{userId:user.userId,tenantId:tenantId!,membershipId:membershipId!});
 }
-export async function beginMfaEnrollment(db:Db,userId:string,config:AuthConfig){
- const c=coreCollections(db),user=await c.users.findOne({userId,status:"active"});if(!user)throw new Error("ACTIVE_USER_REQUIRED");
- const secret=generateTotpSecret(),encrypted=encryptMfaSecret(secret,config.mfaEncryptionKey);
- await c.users.updateOne({userId},{$set:{pendingMfaSecretEncrypted:encrypted,updatedAt:new Date()}});
+export async function beginMfaEnrollment(db:Db,userId:string,password:string,config:AuthConfig){
+ const c=coreCollections(db),user=await c.users.findOne({userId,status:"active"});
+ if(!user)throw new Error("ACTIVE_USER_REQUIRED");
+ if(user.mfaEnabled)throw new Error("MFA_ALREADY_ENABLED");
+ if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
+ const secret=generateTotpSecret(),encrypted=encryptMfaSecretWithConfig(secret,config),now=new Date(),expiresAt=new Date(now.getTime()+10*60_000),transaction=db.client.startSession();
+ try{
+  await transaction.withTransaction(async()=>{
+   const updated=await c.users.updateOne({userId,status:"active",mfaEnabled:{$ne:true}},{$set:{pendingMfaSecretEncrypted:encrypted,pendingMfaSecretExpiresAt:expiresAt,updatedAt:now}},{session:transaction});
+   if(!updated.modifiedCount)throw new Error("ACTIVE_USER_REQUIRED");
+   await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.enrollment.started",resourceType:"user",resourceId:userId,outcome:"success",metadata:{expiresAt:expiresAt.toISOString()}},transaction);
+  });
+ }finally{await transaction.endSession();}
  const label=encodeURIComponent(user.emailNormalized),issuer=encodeURIComponent("Zuri OS");
- return {secret,otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`};
+ return {secret,expiresAt:expiresAt.toISOString(),otpauthUrl:`otpauth://totp/${issuer}:${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`};
 }
+export async function verifyMfaStepUp(
+ db:Db,userId:string,tenantId:string,sessionId:string,password:string,code:string,config:AuthConfig
+){
+ const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
+ if(!user?.mfaSecretEncrypted)throw new Error("MFA_ENROLLMENT_REQUIRED");
+ if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
+ const secret=decryptMfaSecretWithConfig(user.mfaSecretEncrypted,config),step=verifyTotpCode(secret,code);
+ const recoveryHash=hashRecoveryCode(code);
+ const now=new Date(),expiresAt=new Date(now.getTime()+5*60_000),transaction=db.client.startSession();
+ try{
+  await transaction.withTransaction(async()=>{
+   if(step!==null){
+    const used=await c.users.updateOne(
+     {userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},
+     {$set:{mfaLastUsedStep:step,updatedAt:now}},
+     {session:transaction}
+    );
+    if(!used.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
+   }else{
+    const used=await c.users.updateOne(
+     {userId,mfaRecoveryCodeHashes:recoveryHash},
+     {$pull:{mfaRecoveryCodeHashes:recoveryHash},$set:{updatedAt:now}},
+     {session:transaction}
+    );
+    if(!used.modifiedCount)throw new Error("MFA_STEP_UP_FAILED");
+   }
+   const updated=await c.sessions.updateOne(
+    {tenantId,sessionId,userId,revokedAt:{$exists:false},expiresAt:{$gt:now}},
+    {$set:{mfaStepUpAt:now,mfaStepUpExpiresAt:expiresAt,updatedAt:now,updatedBy:"security:mfa-step-up"}},
+    {session:transaction}
+   );
+   if(!updated.modifiedCount)throw new Error("SESSION_INVALID");
+   await appendAuditEvent(db,{
+    tenantId,actor:{userId},action:"auth.mfa.step_up",resourceType:"session",resourceId:sessionId,outcome:"success",
+    metadata:{method:step!==null?"totp":"recovery_code",expiresAt:expiresAt.toISOString()}
+   },transaction);
+  });
+ }finally{await transaction.endSession();}
+ return {status:"mfa_step_up_satisfied",expiresAt:expiresAt.toISOString()};
+}
+
 export async function disableMfa(db:Db,userId:string,password:string,code:string,config:AuthConfig){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
  if(!user?.passwordHash||!user.mfaSecretEncrypted||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
- const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ const secret=decryptMfaSecretWithConfig(user.mfaSecretEncrypted,config),step=verifyTotpCode(secret,code);
  if(step!==null){
   const used=await c.users.updateOne({userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},{$set:{mfaLastUsedStep:step}});
   if(!used.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
@@ -162,12 +212,23 @@ export async function disableMfa(db:Db,userId:string,password:string,code:string
  await c.sessions.updateMany({userId,revokedAt:{$exists:false}},{$set:{revokedAt:now,updatedAt:now,updatedBy:"security:mfa-disabled"}});
  await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.disabled",resourceType:"user",resourceId:userId,outcome:"success",metadata:{}});
 }
-export async function confirmMfaEnrollment(db:Db,userId:string,code:string,config:AuthConfig){
- const c=coreCollections(db),user=await c.users.findOne({userId,status:"active"});if(!user?.pendingMfaSecretEncrypted)throw new Error("MFA_ENROLLMENT_NOT_STARTED");
- const secret=decryptMfaSecret(user.pendingMfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
- const recoveryCodes=generateRecoveryCodes(),mfaRecoveryCodeHashes=recoveryCodes.map(hashRecoveryCode);
- await c.users.updateOne({userId},{$set:{mfaEnabled:true,mfaSecretEncrypted:user.pendingMfaSecretEncrypted,mfaRecoveryCodeHashes,mfaLastUsedStep:step,updatedAt:new Date()},$unset:{pendingMfaSecretEncrypted:""}});
- await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.enabled",resourceType:"user",resourceId:userId,outcome:"success",metadata:{}});
+export async function confirmMfaEnrollment(db:Db,userId:string,password:string,code:string,config:AuthConfig){
+ const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"}),pendingSecret=user?.pendingMfaSecretEncrypted;
+ if(!user||!pendingSecret||!(user.pendingMfaSecretExpiresAt instanceof Date)||user.pendingMfaSecretExpiresAt<=now)throw new Error("MFA_ENROLLMENT_EXPIRED");
+ if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
+ const secret=decryptMfaSecretWithConfig(pendingSecret,config),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
+ const recoveryCodes=generateRecoveryCodes(),mfaRecoveryCodeHashes=recoveryCodes.map(hashRecoveryCode),transaction=db.client.startSession();
+ try{
+  await transaction.withTransaction(async()=>{
+   const updated=await c.users.updateOne(
+    {userId,status:"active",mfaEnabled:{$ne:true},pendingMfaSecretEncrypted:pendingSecret,pendingMfaSecretExpiresAt:{$gt:now}},
+    {$set:{mfaEnabled:true,mfaSecretEncrypted:pendingSecret,mfaRecoveryCodeHashes,mfaLastUsedStep:step,updatedAt:now},$unset:{pendingMfaSecretEncrypted:"",pendingMfaSecretExpiresAt:""}},
+    {session:transaction}
+   );
+   if(!updated.modifiedCount)throw new Error("MFA_ENROLLMENT_EXPIRED");
+   await appendAuditEvent(db,{tenantId:"platform",actor:{userId},action:"auth.mfa.enabled",resourceType:"user",resourceId:userId,outcome:"success",metadata:{}},transaction);
+  });
+ }finally{await transaction.endSession();}
  return {recoveryCodes};
 }
 export async function issueInvitation(db:Db,userId:string,ttlSeconds=7*24*60*60){

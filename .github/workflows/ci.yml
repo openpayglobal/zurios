@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main, develop, "feature/**", "feat/mac-runtime-config-vercel-oidc"]
+    branches: [main, develop, "feature/**", "feat/mac-runtime-config-vercel-oidc", "feat/mac-secrets-user-workflow", "feat/mac-secrets-user-workflow-v2"]
   pull_request:
     branches: [main, develop, integration/pr13-pr14-security-reconciliation]
 permissions:
@@ -14,8 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.4
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -2,7 +2,8 @@ import type {Db} from "mongodb";
 export type Migration={id:string;description:string;up:(db:Db)=>Promise<void>};
 type MigrationRecord={_id:string;description:string;status?:"running"|"applied"|"failed";startedAt?:Date;appliedAt?:Date;failedAt?:Date;error?:string};
 export async function runMigrations(db:Db,migrations:Migration[]):Promise<string[]>{
- const ledger=db.collection<MigrationRecord>("schema_migrations");await ledger.createIndex({_id:1},{unique:true});
+ // MongoDB creates a unique _id index automatically; specifying unique on that index is rejected.
+ const ledger=db.collection<MigrationRecord>("schema_migrations");
  const ids=migrations.map(m=>m.id);
  if(ids.some(id=>!/^\d{4,}_[a-z0-9_-]+$/.test(id))||new Set(ids).size!==ids.length)throw new Error("INVALID_OR_DUPLICATE_MIGRATION_ID");
  const applied:string[]=[];

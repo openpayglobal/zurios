@@ -125,3 +125,29 @@ Meta API versions must be explicit and centrally configured; never rely on unver
 ## Provider selection
 
 See the [Immutable Audit Archive Provider Comparison](./AUDIT-ARCHIVE-PROVIDER-COMPARISON.md) for current official documentation and trade-offs across Amazon S3 Object Lock, Azure Blob immutable storage and Google Cloud Storage Bucket Lock. The provider comparison is a research note, not a selection or compliance certification.
+
+
+## 9. Production audit-event signing integration — 2026-11-24
+
+- The shared core-platform audit writer and the API platform audit writer now use the existing Zuri OS Audit Event Signing Vercel KMS issuer (\`55210f93-c052-45a5-aeb8-e083ed0d5dce\`) when \`VERCEL_ENV=production\`.
+- Events are serialized into deterministic canonical JSON before signing. Persisted integrity metadata records RS256, issuer ID, KMS key ID, public-key fingerprint and the base64 signature.
+- The verifier resolves the matching key by \`kid\` from the issuer JWKS, independently recomputes and checks the public-key fingerprint, then verifies the RS256 signature. Tampered-payload and fingerprint regression tests were added.
+- Production writes fail closed if KMS signing fails. Local and Preview remain unsigned until a separately scoped non-production signing issuer is provisioned.
+- Exact-head CI run **45337383228** passed on commit **7793244a4612f62b60f4058e9e6348f322d7f6aa**: install, replica-set setup, both OpenAPI validations, route drift, documentation mirrors, typecheck, tests and build.
+- **Not yet accepted:** a live deployed Production signing/write/verification test, verification behavior across KMS key rotation and long-term retention, and independent immutable archive reconciliation. The Vercel deployment build-rate limit still blocks a fresh API deployment.
+
+
+## MAC secret vault encryption and workload federation — 2026-11-24
+
+MAC secret storage now has source support for envelope encryption backed by AWS KMS. The service requests a unique AES-256 data key per secret version, encrypts locally with AES-256-GCM and stores only the ciphertext and KMS-wrapped data key. Authenticated encryption context binds the ciphertext to the MAC application, secret identifier and version. Vercel OIDC is exchanged through AWS STS for short-lived credentials; no static AWS access keys are stored.
+
+Secret upsert, rotation and revocation are audited and versioned. Workload delivery is scoped by the verified Production service identity and allowed-service list; audit signing must succeed before secrets are returned. The adapter is disabled until the AWS owner creates the OIDC provider/trust role and KMS key and the Production-only role/key/region settings are configured. Old encrypted versions must be retained until a verified recovery and retention policy authorizes deletion.
+
+
+## First-party MAC secret consumption and rotation — 2026-11-24
+
+Both Zuri OS API and MeBuMIP API now have source-level runtime secret consumers. Zuri OS API retrieves only its own JWT/MFA keys from MAC. MeBuMIP retrieves only secrets scoped to its Production Vercel project and applies Resend, mail sender, MFA and audit signing keys/keyrings to the running process. Secret reads are audited; refresh is bounded to five seconds; missing values clear revoked credentials; failed Production refreshes fail closed.
+
+Zuri OS MFA and invitation encryption now use versioned keyring envelopes while preserving decryption of legacy unversioned values. MeBuMIP already uses versioned MFA/audit keyrings; runtime validation now requires legacy-key retention when keyrings are configured. The rotation procedure is add key → switch active key → retain legacy key through historical-data re-encryption/retention acceptance.
+
+This does not mutate Vercel's native \`process.env\` settings. The MAC API MongoDB URI remains a bootstrap deployment setting (the control plane must connect before it can read its own vault); MeBuMIP MongoDB URI remains bootstrap under the current startup model. Live Production acceptance awaits AWS role/key provisioning, Production variables, database provisioning and a deployment.

@@ -7,6 +7,7 @@ type IdempotencyDocument={
  tenantId:string;actorId:string;operation:string;key:string;requestHash:string;
  status:"processing"|"completed";result?:StoredResult;createdAt:Date;updatedAt:Date;expiresAt:Date;
 };
+type IdempotencyInput={tenantId:string;actorId:string;operation:string;key:string;request?:unknown};
 const inputSchema=z.object({
  tenantId:z.string().min(1),actorId:z.string().min(1),operation:z.string().min(3).max(180),
  key:z.string().min(8).max(128),request: z.unknown()
@@ -27,7 +28,9 @@ export class IdempotencyConflictError extends Error{
 export async function runIdempotentMutation(
  db:Db,input:unknown,work:(session:ClientSession)=>Promise<StoredResult>
 ):Promise<StoredResult&{replayed:boolean}>{
- const parsed=inputSchema.parse(input),requestHash=hash(parsed.request),filter=keyFilter(parsed),collection=db.collection<IdempotencyDocument>("idempotency_records");
+ const parsed=inputSchema.parse(input);
+ const normalized:IdempotencyInput={tenantId:parsed.tenantId!,actorId:parsed.actorId!,operation:parsed.operation!,key:parsed.key!,...(parsed.request!==undefined?{request:parsed.request}:{})};
+ const requestHash=hash(parsed.request),filter=keyFilter(normalized),collection=db.collection<IdempotencyDocument>("idempotency_records");
  const session=db.client.startSession();
  try{
   let output:(StoredResult&{replayed:boolean})|undefined;

@@ -6,8 +6,8 @@ import {MongoClient} from "mongodb";
 import {SignJWT} from "jose";
 import {adminRoutes} from "./admin-routes.js";
 import {platformRoutes} from "./platform-routes.js";
-import {acceptMembershipInvitation} from "./auth-service.js";
-import {decryptInvitationToken} from "./auth-crypto.js";
+import {acceptMembershipInvitation,beginMfaEnrollment,confirmMfaEnrollment,verifyMfaStepUp} from "./auth-service.js";
+import {decryptInvitationToken,encryptMfaSecret,generateTotpSecret,hashPassword,hashRecoveryCode,totpCode} from "./auth-crypto.js";
 import type {AuthConfig} from "./auth-service.js";
 
 const uri=process.env.MONGODB_TEST_URI;
@@ -41,9 +41,9 @@ test("administration workspace enforces invitation, two-person approval and brea
   const now=new Date();
   await db.collection("tenants").insertOne({tenantId:"tenant-a",slug:"tenant-a",legalName:"Tenant A Ltd",displayName:"Tenant A",status:"active"});
   await db.collection("users").insertMany([
-   {userId:"operator-a",emailNormalized:"operator-a@example.test",displayName:"Operator A",status:"active",emailVerifiedAt:now},
-   {userId:"operator-b",emailNormalized:"operator-b@example.test",displayName:"Operator B",status:"active",emailVerifiedAt:now},
-   {userId:"emergency-user",emailNormalized:"emergency@example.test",displayName:"Emergency User",status:"active",emailVerifiedAt:now}
+   {userId:"operator-a",emailNormalized:"operator-a@example.test",displayName:"Operator A",status:"active",emailVerifiedAt:now,mfaEnabled:true},
+   {userId:"operator-b",emailNormalized:"operator-b@example.test",displayName:"Operator B",status:"active",emailVerifiedAt:now,mfaEnabled:true},
+   {userId:"emergency-user",emailNormalized:"emergency@example.test",displayName:"Emergency User",status:"active",emailVerifiedAt:now,mfaEnabled:true}
   ]);
   await db.collection("organizations").insertOne({tenantId:"tenant-a",organizationId:"org-a",code:"ORG-A",name:"Org A",path:[],status:"active"});
   await db.collection("locations").insertMany([{tenantId:"tenant-a",locationId:"loc-a",organizationId:"org-a",code:"LOC-A",name:"Location A",status:"active"},{tenantId:"tenant-a",locationId:"loc-unused",organizationId:"org-a",code:"LOC-U",name:"Unused Location",status:"active"}]);
@@ -73,6 +73,15 @@ test("administration workspace enforces invitation, two-person approval and brea
   assert.equal(overview.statusCode,200);
   assert.equal(overview.json().data.tenant.tenantId,"tenant-a");
   assert.equal(overview.json().data.counts.organizations,1);
+
+  const deniedWithoutStepUp=await app.inject({
+   method:"PUT",url:"/platform/admin/configuration/defaultCurrency",
+   headers:{authorization:"Bearer "+operatorA,"idempotency-key":"config-update-currency-denied"},
+   payload:{value:"UGX",reason:"Attempt a privileged change without recent MFA step-up."}
+  });
+  assert.equal(deniedWithoutStepUp.statusCode,403);
+  assert.equal(deniedWithoutStepUp.json().error,"MFA_STEP_UP_REQUIRED");
+  await db.collection("sessions").updateMany({},{$set:{mfaStepUpAt:now,mfaStepUpExpiresAt:new Date(now.getTime()+5*60_000)}});
 
   const configUpdate=await app.inject({
    method:"PUT",url:"/platform/admin/configuration/defaultCurrency",
@@ -239,5 +248,78 @@ test("administration workspace enforces invitation, two-person approval and brea
 
  }finally{
   await app.close();await db.dropDatabase();await client.close();
+ }
+});
+
+test("MFA step-up is session-bound, audited, expires and prevents TOTP or recovery-code replay",{skip:!uri},async()=>{
+ const client=new MongoClient(uri!);await client.connect();
+ const db=client.db("zuri_mfa_stepup_it_"+randomUUID().replaceAll("-",""));
+ const userId="mfa-user-"+randomUUID(),sessionId="mfa-session-"+randomUUID(),tenantId="platform";
+ const password="MFA-StepUp-Test-Password-2026!";
+ const secret=generateTotpSecret(),passwordHash=await hashPassword(password),now=new Date();
+ const recoveryCode="A1B2C3D4E5F60718";
+ try{
+  await db.collection("users").insertOne({
+   userId,status:"active",mfaEnabled:true,passwordHash,
+   mfaSecretEncrypted:encryptMfaSecret(secret,config.mfaEncryptionKey),
+   mfaRecoveryCodeHashes:[hashRecoveryCode(recoveryCode)]
+  });
+  await db.collection("sessions").insertOne({
+   tenantId,sessionId,userId,expiresAt:new Date(now.getTime()+60*60_000),
+   createdAt:now,updatedAt:now
+  });
+  await assert.rejects(
+   verifyMfaStepUp(db,userId,tenantId,sessionId,"incorrect-password",totpCode(secret),config),
+   /MFA_STEP_UP_FAILED/
+  );
+  const result=await verifyMfaStepUp(db,userId,tenantId,sessionId,password,totpCode(secret),config);
+  assert.equal(result.status,"mfa_step_up_satisfied");
+  const storedSession=await db.collection("sessions").findOne({tenantId,sessionId,userId});
+  assert.ok(storedSession?.mfaStepUpAt instanceof Date);
+  assert.ok(storedSession?.mfaStepUpExpiresAt instanceof Date);
+  assert.ok(storedSession!.mfaStepUpExpiresAt.getTime()>Date.now());
+  assert.equal(await db.collection("audit_events").countDocuments({tenantId,action:"auth.mfa.step_up",resourceId:sessionId,outcome:"success"}),1);
+  await assert.rejects(
+   verifyMfaStepUp(db,userId,tenantId,sessionId,password,totpCode(secret),config),
+   /MFA_CODE_ALREADY_USED/
+  );
+  const recoveryResult=await verifyMfaStepUp(db,userId,tenantId,sessionId,password,recoveryCode,config);
+  assert.equal(recoveryResult.status,"mfa_step_up_satisfied");
+  const storedUser=await db.collection("users").findOne({userId});
+  assert.deepEqual(storedUser?.mfaRecoveryCodeHashes,[]);
+ }finally{
+  await db.dropDatabase();await client.close();
+ }
+});
+
+test("MFA enrollment requires password reauthentication and expires after ten minutes",{skip:!uri},async()=>{
+ const client=new MongoClient(uri!);await client.connect();
+ const db=client.db("zuri_mfa_enroll_it_"+randomUUID().replaceAll("-",""));
+ const password="MFA-Enrollment-Test-Password-2026!";
+ const userId="enroll-user-"+randomUUID(),expiredUserId="expired-enroll-user-"+randomUUID();
+ const passwordHash=await hashPassword(password);
+ try{
+  await db.collection("users").insertMany([
+   {userId,status:"active",passwordHash,mfaEnabled:false,emailNormalized:"enroll@example.test"},
+   {userId:expiredUserId,status:"active",passwordHash,mfaEnabled:false,emailNormalized:"expired@example.test"}
+  ]);
+  await assert.rejects(beginMfaEnrollment(db,userId,"wrong-password",config),/MFA_STEP_UP_FAILED/);
+  const enrollment=await beginMfaEnrollment(db,userId,password,config);
+  const pending=await db.collection("users").findOne({userId});
+  assert.ok(pending?.pendingMfaSecretExpiresAt instanceof Date);
+  assert.ok(pending!.pendingMfaSecretExpiresAt.getTime()>Date.now());
+  await assert.rejects(confirmMfaEnrollment(db,userId,"wrong-password",totpCode(enrollment.secret),config),/MFA_STEP_UP_FAILED/);
+  const confirmed=await confirmMfaEnrollment(db,userId,password,totpCode(enrollment.secret),config);
+  assert.equal(confirmed.recoveryCodes.length,10);
+  const enabled=await db.collection("users").findOne({userId});
+  assert.equal(enabled?.mfaEnabled,true);
+  assert.equal(enabled?.pendingMfaSecretEncrypted,undefined);
+  assert.equal(enabled?.pendingMfaSecretExpiresAt,undefined);
+
+  const expiredEnrollment=await beginMfaEnrollment(db,expiredUserId,password,config);
+  await db.collection("users").updateOne({userId:expiredUserId},{$set:{pendingMfaSecretExpiresAt:new Date(Date.now()-1_000)}});
+  await assert.rejects(confirmMfaEnrollment(db,expiredUserId,password,totpCode(expiredEnrollment.secret),config),/MFA_ENROLLMENT_EXPIRED/);
+ }finally{
+  await db.dropDatabase();await client.close();
  }
 });

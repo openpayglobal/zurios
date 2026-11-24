@@ -3,29 +3,72 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { MongoClient } from "mongodb";
-import { config, corsOrigins } from "./config.js";
+import { config, corsOrigins, applyMacRuntimeSecrets } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerAdminRoutes } from "./admin.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
 import { registerDatabaseRateLimit } from "./rate-limit.js";
 import { registerTenantMemberRoutes } from "./tenant-members.js";
+import { registerCustomerWorkflowRoutes } from "./customer-workflow.js";
+import { registerInfrastructureRoutes } from "./infrastructure.js";
+import { getMacRuntimeConfig } from "./runtime-config-client.js";
 
-const app = Fastify({ logger: true, bodyLimit: 1_048_576, trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false, genReqId: (request) => {
-  const supplied = request.headers["x-correlation-id"];
-  return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
-    ? supplied
-    : randomUUID();
-} });
+const app = Fastify({
+  logger: true,
+  bodyLimit: 1_048_576,
+  trustProxy: config.TRUSTED_PROXY_CIDRS ? config.TRUSTED_PROXY_CIDRS.split(",").map((value) => value.trim()).filter(Boolean) : false,
+  genReqId: (request) => {
+    const supplied = request.headers["x-correlation-id"];
+    return typeof supplied === "string" && /^[a-zA-Z0-9._-]{8,100}$/.test(supplied)
+      ? supplied
+      : randomUUID();
+  },
+});
 let mongo: MongoClient | undefined;
 let databaseReady = false;
+let allowedOriginsCache = [...corsOrigins];
+let allowedOriginsCacheAt = 0;
+let lastRuntimeRefreshAt = 0;
 
 await app.register(helmet);
 await app.register(cors, {
-  origin: corsOrigins,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (Date.now() - allowedOriginsCacheAt > 5_000) {
+      allowedOriginsCacheAt = Date.now();
+      void getMacRuntimeConfig(true).then((runtime) => {
+        if (runtime) allowedOriginsCache = runtime.allowedOrigins;
+      }).catch((error) => {
+        app.log.warn({ err: error }, "MAC origin refresh failed; retaining last known-good origin list");
+      });
+    }
+    callback(null, allowedOriginsCache.includes(origin));
+  },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["content-type", "authorization", "x-correlation-id", "x-csrf-token"],
   exposedHeaders: ["X-Audit-Archive-SHA256", "X-Audit-Archive-Object-Key", "X-Audit-Archive-Status"],
+});
+
+// Refresh MAC configuration using an OIDC token minted inside this function.
+app.addHook("preHandler", async (request) => {
+  if (request.url.startsWith("/health/live") || Date.now() - lastRuntimeRefreshAt <= 5_000) return;
+  lastRuntimeRefreshAt = Date.now();
+  const oidcHeader = request.headers["x-vercel-oidc-token"];
+  try {
+    const runtime = await getMacRuntimeConfig(true);
+    if (!runtime) throw new Error("MAC_RUNTIME_CONFIG_UNAVAILABLE");
+    // Apply a validated full snapshot; missing IDs clear revoked secrets.
+    applyMacRuntimeSecrets(runtime.secrets ?? {});
+    allowedOriginsCache = runtime.allowedOrigins;
+    allowedOriginsCacheAt = Date.now();
+  } catch (error) {
+    if (process.env.VERCEL_ENV === "production") {
+      // A failed MAC refresh must not leave a revoked credential usable indefinitely.
+      applyMacRuntimeSecrets({});
+    }
+    app.log.warn({ code:error instanceof Error?error.name:"UNKNOWN" }, "MAC runtime refresh unavailable; clearing Production secrets and retaining last known-good non-secret settings");
+  }
 });
 
 app.get("/health/live", async () => ({
@@ -41,13 +84,26 @@ app.get("/health/ready", async (_request, reply) => {
   if (!databaseReady) {
     return reply.code(503).send({ status: "not_ready", reason: "database_unavailable" });
   }
-  return { status: "ready", database: "connected" };
+  if (process.env.VERCEL_ENV === "production") {
+    const missingRuntimeSecrets = [
+      !(config.RESEND_API_KEY && config.MAIL_FROM) ? "mail_delivery" : null,
+      !(config.MFA_ENCRYPTION_KEY || config.MFA_ENCRYPTION_KEYRING) ? "mfa_encryption" : null,
+      !(config.AUDIT_SIGNING_KEY || config.AUDIT_SIGNING_KEYRING) ? "audit_signing" : null,
+    ].filter((value): value is string => value !== null);
+    if (missingRuntimeSecrets.length) {
+      return reply.code(503).send({
+        status: "not_ready",
+        reason: "mac_runtime_secrets_unavailable",
+        missing: missingRuntimeSecrets,
+      });
+    }
+  }
+  return { status: "ready", database: "connected", runtimeSecrets: "configured" };
 });
 
 // All application routes are registered only after MongoDB indexes are ready.
-// Authenticated tenant-membership routes enforce active membership, role permissions
-// and recent MFA step-up on sensitive mutations. Meta product routes remain disabled
-// until provider-specific token, webhook, consent and audit controls are implemented.
+// Meta product routes remain disabled until provider-specific token, webhook,
+// consent and audit controls have passed their acceptance tests.
 app.setNotFoundHandler((_request, reply) => {
   return reply.code(404).send({ error: "NOT_FOUND", correlationId: reply.request.id });
 });
@@ -63,11 +119,17 @@ if (config.MONGODB_URI) {
     await mongo.connect();
     const db = mongo.db(config.MONGODB_DATABASE);
     await db.command({ ping: 1 });
+    const hello = await db.command({ hello: 1 });
+    if (typeof hello.setName !== "string" || hello.isWritablePrimary !== true || typeof hello.logicalSessionTimeoutMinutes !== "number") {
+      throw new Error("MONGODB_REPLICA_SET_REQUIRED");
+    }
     await ensureMeBuMIPIndexes(db);
     registerDatabaseRateLimit(app, db);
     registerAuthRoutes(app, db);
     registerTenantMemberRoutes(app, db);
     registerAdminRoutes(app, db);
+    registerCustomerWorkflowRoutes(app, db);
+    registerInfrastructureRoutes(app, db);
     databaseReady = true;
     app.log.info("MeBuMIP database connection and foundation indexes established");
   } catch (error) {

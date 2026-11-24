@@ -1,4 +1,5 @@
 import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from "react";
+import {DemoCredentials} from "./DemoCredentials.js";
 import {
  ArrowDownToLine,ArrowRight,Blocks,Building2,Check,ChevronDown,Command,FileSearch,Grid2X2,
  KeyRound,Layers3,LockKeyhole,LogOut,Menu,RefreshCw,Settings2,ShieldCheck,UserPlus,Users,
@@ -6,12 +7,21 @@ import {
 } from "lucide-react";
 
 declare global {
- interface ImportMetaEnv { readonly VITE_API_BASE_URL?: string }
+ interface ImportMetaEnv { readonly VITE_API_BASE_URL?: string; readonly VITE_DEMO_MODE?: string; readonly VITE_VERCEL_ENV?: string; readonly VITE_DEMO_PASSWORD?: string }
  interface ImportMeta { readonly env: ImportMetaEnv }
 }
 
-const API_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api.vercel.app";
-type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"tenants"|"access";
+const API_BOOTSTRAP_BASE=import.meta.env.VITE_API_BASE_URL??"https://zurios-api-openpayglobal-5300s-projects.vercel.app";
+let API_BASE=API_BOOTSTRAP_BASE;
+let apiBasePromise:Promise<string>|null=null;
+let apiBaseCachedAt=0;
+async function getApiBase():Promise<string>{
+ if(apiBasePromise&&Date.now()-apiBaseCachedAt<30_000)return apiBasePromise;
+ apiBaseCachedAt=Date.now();
+ apiBasePromise=(async()=>{try{const response=await fetch(API_BOOTSTRAP_BASE+"/platform/public/runtime-config",{cache:"no-store"});if(response.ok){const runtime=await response.json();const origin=runtime?.apiOrigins?.zuriOs;const previewOverride=import.meta.env.VITE_VERCEL_ENV==="preview"&&Boolean(import.meta.env.VITE_API_BASE_URL);if(!previewOverride&&typeof origin==="string"&&origin.startsWith("https://"))API_BASE=origin;}}catch{}return API_BASE;})();
+ return apiBasePromise;
+}
+type View="overview"|"organizations"|"identity"|"governance"|"audit"|"breakglass"|"configuration"|"infrastructure"|"tenants"|"access";
 type Principal={userId:string;tenantId:string;membershipId:string;roleKeys:string[];permissions:string[];platformPermissions?:string[]};
 type Session={accessToken:string;refreshToken:string;sessionId:string};
 type WorkspaceOption={tenantId:string;slug:string;displayName:string;legalName:string;membershipId:string;roleKeys:string[];organizationIds:string[];locationIds:string[]};
@@ -23,6 +33,7 @@ const navigation:Array<{id:View;label:string;icon:typeof Grid2X2;permission?:str
  {id:"audit",label:"Audit centre",icon:FileSearch,permission:"platform.audit.read"},
  {id:"breakglass",label:"Break-glass",icon:KeyRound,permission:"platform.breakglass.read"},
  {id:"configuration",label:"Configuration",icon:Settings2,permission:"platform.configuration.read"},
+ {id:"infrastructure",label:"Infrastructure & secrets",icon:KeyRound,platform:"platform.configuration.read"},
  {id:"tenants",label:"Tenant directory",icon:Layers3,platform:"platform.tenants.read"},
  {id:"access",label:"Access requests",icon:Mail,platform:"platform.tenants.read"}
 ];
@@ -72,17 +83,38 @@ export default function App(){
  const [accessRequestNote,setAccessRequestNote]=useState("");
  const [busy,setBusy]=useState(false);
  const [mobileNav,setMobileNav]=useState(false);
+ const [allowedOriginsDraft,setAllowedOriginsDraft]=useState<string[]>([]);
+ const [originInput,setOriginInput]=useState("");
+ const [zuriApiOriginDraft,setZuriApiOriginDraft]=useState("");
+ const [mebumipApiOriginDraft,setMebumipApiOriginDraft]=useState("");
+ const [privacyNoticeUrlDraft,setPrivacyNoticeUrlDraft]=useState("");
+ const [accessRequestsEnabledDraft,setAccessRequestsEnabledDraft]=useState(false);
+ const [runtimeSaveMessage,setRuntimeSaveMessage]=useState("");
+ const [secretIdDraft,setSecretIdDraft]=useState("");
+ const [secretValueDraft,setSecretValueDraft]=useState("");
+ const [secretServicesDraft,setSecretServicesDraft]=useState<string[]>(["zuri-mebumip-api"]);
+ const [secretReasonDraft,setSecretReasonDraft]=useState("Provisioned through MAC secret vault after owner review");
+ const [secretActionMessage,setSecretActionMessage]=useState("");
+ const [secretBusy,setSecretBusy]=useState(false);
+ const [stepUpOpen,setStepUpOpen]=useState(false);
+ const [stepUpPassword,setStepUpPassword]=useState("");
+ const [stepUpCode,setStepUpCode]=useState("");
+ const [stepUpBusy,setStepUpBusy]=useState(false);
+ const [stepUpEnrollment,setStepUpEnrollment]=useState<{secret:string;otpauthUrl:string;recoveryCodes?:string[];confirmed:boolean}|null>(null);
+ const [enrollmentCode,setEnrollmentCode]=useState("");
  const refreshPromise=useRef<Promise<string>|null>(null);
- useEffect(()=>{let active=true;fetch(API_BASE+"/auth/public-config",{credentials:"include"}).then(response=>response.ok?response.json():null).then(value=>{if(active&&value)setPublicConfig({accessRequestsEnabled:value.accessRequestsEnabled===true,privacyNoticeUrl:typeof value.privacyNoticeUrl==="string"?value.privacyNoticeUrl:null});}).catch(()=>{});return()=>{active=false;};},[]);
+ const stepUpResolver=useRef<((approved:boolean)=>void)|null>(null);
+ const stepUpPromise=useRef<Promise<boolean>|null>(null);
+ useEffect(()=>{let active=true;void getApiBase().then(base=>fetch(base+"/auth/public-config",{credentials:"include"})).then(response=>response.ok?response.json():null).then(value=>{if(active&&value)setPublicConfig({accessRequestsEnabled:value.accessRequestsEnabled===true,privacyNoticeUrl:typeof value.privacyNoticeUrl==="string"?value.privacyNoticeUrl:null});}).catch(()=>{});return()=>{active=false;};},[]);
 
 
  const saveSession=useCallback((value:Session)=>{setSession(value);setError("");setNotice("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAccessRequestOpen(false);setAccessRequestSubmitted(false);},[]);
- const clearSession=useCallback(()=>{setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);setAccessRequestOpen(false);setAccessRequestSubmitted(false);setAccessRequestName("");setAccessRequestOrganization("");setAccessRequestNote("");},[]);
+ const clearSession=useCallback(()=>{stepUpResolver.current?.(false);stepUpResolver.current=null;stepUpPromise.current=null;setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setStepUpEnrollment(null);setEnrollmentCode("");setSession(null);setPrincipal(null);setViewData({});setChallengeToken("");setPassword("");setWorkspaceOptions([]);setWorkspaceSelectionToken("");setAvailableWorkspaces([]);setWorkspaceMenuOpen(false);setAccessRequestOpen(false);setAccessRequestSubmitted(false);setAccessRequestName("");setAccessRequestOrganization("");setAccessRequestNote("");},[]);
  const refreshAccessToken=useCallback(async()=>{
   if(!session)throw new Error("Your session has expired. Sign in again.");
   if(!refreshPromise.current){
    refreshPromise.current=(async()=>{
-    const response=await fetch(API_BASE+"/auth/refresh",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sessionId:session.sessionId,refreshToken:session.refreshToken})});
+    const response=await fetch((await getApiBase())+"/auth/refresh",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({sessionId:session.sessionId,refreshToken:session.refreshToken})});
     if(!response.ok)throw new Error("Your session has expired. Sign in again.");
     const value=await response.json() as Session;
     saveSession(value);return value.accessToken;
@@ -90,12 +122,26 @@ export default function App(){
   }
   return refreshPromise.current;
  },[session,saveSession]);
+ const requestMfaStepUp=useCallback(()=>{
+  if(!stepUpPromise.current){
+   stepUpPromise.current=new Promise<boolean>(resolve=>{stepUpResolver.current=resolve;setStepUpOpen(true);}).finally(()=>{stepUpPromise.current=null;});
+  }
+  return stepUpPromise.current;
+ },[]);
  const api=useCallback(async <T = Record<string,unknown>,>(path:string,init:RequestInit={}):Promise<T>=>{
   if(!session)throw new Error("Sign in to continue.");
-  const send=async(token:string)=>fetch(API_BASE+path,{...init,headers:{...(init.body?{"content-type":"application/json"}:{}),...(init.headers??{}),authorization:"Bearer "+token}});
-  let response=await send(session.accessToken);
+  const send=async(token:string)=>fetch((await getApiBase())+path,{...init,headers:{...(init.body?{"content-type":"application/json"}:{}),...(init.headers??{}),authorization:"Bearer "+token}});
+  let accessToken=session.accessToken,response=await send(accessToken);
   if(response.status===401){
-   try{const token=await refreshAccessToken();response=await send(token);}catch{clearSession();throw new Error("Your session expired. Please sign in again.");}
+   try{accessToken=await refreshAccessToken();response=await send(accessToken);}catch{clearSession();throw new Error("Your session expired. Please sign in again.");}
+  }
+  if(response.status===403){
+   const body=await response.clone().json().catch(()=>null);
+   if(body?.error==="MFA_STEP_UP_REQUIRED"){
+    const approved=await requestMfaStepUp();
+    if(!approved)throw new Error("MFA_STEP_UP_CANCELLED");
+    response=await send(accessToken);
+   }
   }
   if(!response.ok){
    let message="Request failed ("+response.status+")";
@@ -104,7 +150,7 @@ export default function App(){
   }
   if(response.status===204)return null as T;
   return await response.json() as T;
- },[session,refreshAccessToken,clearSession]);
+ },[session,refreshAccessToken,clearSession,requestMfaStepUp]);
 
  const loadPrincipal=useCallback(async()=>{
   try{
@@ -131,6 +177,10 @@ export default function App(){
    if(target==="audit")result=await api("/v1/platform/admin/audit-events");
    if(target==="breakglass")result=await api("/v1/platform/admin/break-glass");
    if(target==="configuration")result=await api("/v1/platform/admin/configuration");
+   if(target==="infrastructure"){
+    const [inventory,runtime,secrets]=await Promise.all([api<any>("/platform/admin/infrastructure"),api<any>("/platform/admin/runtime-config"),api<any>("/platform/admin/secrets")]);
+    result={...inventory,runtimeConfig:runtime.data,secrets:secrets.data??[]};
+   }
    if(target==="tenants")result=await api("/v1/platform/admin/tenants");
    if(target==="access")result=await api("/platform/admin/access-requests?status=pending");
    setViewData(previous=>({...previous,[target]:result}));
@@ -142,7 +192,7 @@ export default function App(){
  const login=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
+   const response=await fetch((await getApiBase())+"/auth/login",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,password})});
    const result=await response.json();
    if(!response.ok)throw new Error(result.error??"Sign-in failed.");
    if(result.mfaRequired){setChallengeToken(result.challengeToken);setNotice("Enter the current authenticator code to finish signing in.");}
@@ -156,7 +206,7 @@ export default function App(){
  const verifyMfa=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
+   const response=await fetch((await getApiBase())+"/auth/mfa/verify",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({challengeToken,code:mfaCode})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA verification failed.");
    if(result.workspaceSelectionRequired){setWorkspaceOptions(result.workspaces??[]);setWorkspaceSelectionToken(result.selectionToken??"");}
    else if(result.accessRequestAvailable){setAccessRequestOpen(true);setNotice("Your identity is verified, but no active workspace is assigned. You can request access here.");}
@@ -165,10 +215,41 @@ export default function App(){
   }catch(e){setError(e instanceof Error?e.message:"MFA verification failed.");}
   finally{setBusy(false);}
  };
+ const submitMfaStepUp=async(event:FormEvent)=>{
+  event.preventDefault();if(!session)return;setStepUpBusy(true);setError("");
+  try{
+   const response=await fetch((await getApiBase())+"/auth/mfa/step-up",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword,code:stepUpCode})});
+   const result=await response.json();
+   if(!response.ok&&result.error==="MFA_ENROLLMENT_REQUIRED"){
+    const enrollmentResponse=await fetch((await getApiBase())+"/auth/mfa/enroll",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword})});
+    const enrollment=await enrollmentResponse.json();if(!enrollmentResponse.ok)throw new Error(enrollment.error??"Unable to begin MFA enrollment.");
+    setStepUpEnrollment({secret:enrollment.secret,otpauthUrl:enrollment.otpauthUrl,confirmed:false});
+    setStepUpCode("");setEnrollmentCode("");setError("MFA enrollment is required before privileged administration. Add this account to your authenticator app.");
+    return;
+   }
+   if(!response.ok)throw new Error(result.error??"MFA step-up failed.");
+   setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setStepUpEnrollment(null);setEnrollmentCode("");setError("");setNotice("Identity re-verified. Privileged administration is enabled for five minutes.");
+   stepUpResolver.current?.(true);stepUpResolver.current=null;
+  }catch(e){setError(e instanceof Error?e.message:"MFA step-up failed.");}
+  finally{setStepUpBusy(false);}
+ };
+ const confirmStepUpEnrollment=async(event:FormEvent)=>{
+  event.preventDefault();if(!session||!stepUpEnrollment)return;setStepUpBusy(true);setError("");
+  try{
+   const response=await fetch((await getApiBase())+"/auth/mfa/confirm",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.accessToken},body:JSON.stringify({password:stepUpPassword,code:enrollmentCode})});
+   const result=await response.json();if(!response.ok)throw new Error(result.error??"MFA enrollment confirmation failed.");
+   setStepUpEnrollment({...stepUpEnrollment,recoveryCodes:result.recoveryCodes??[],confirmed:true});setEnrollmentCode("");
+   setNotice("MFA enrolled. Save your one-time recovery codes, then use a fresh authenticator code for this action.");
+  }catch(e){setError(e instanceof Error?e.message:"MFA enrollment confirmation failed.");}
+  finally{setStepUpBusy(false);}
+ };
+ const cancelMfaStepUp=()=>{
+  setStepUpOpen(false);setStepUpPassword("");setStepUpCode("");setStepUpEnrollment(null);setEnrollmentCode("");stepUpResolver.current?.(false);stepUpResolver.current=null;
+ };
  const submitAccessRequest=async(event:FormEvent)=>{
   event.preventDefault();setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/access-requests",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,displayName:accessRequestName,organizationName:accessRequestOrganization,...(accessRequestNote.trim()?{requestNote:accessRequestNote.trim()}:{})})});
+   const response=await fetch((await getApiBase())+"/auth/access-requests",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({email,displayName:accessRequestName,organizationName:accessRequestOrganization,...(accessRequestNote.trim()?{requestNote:accessRequestNote.trim()}:{})})});
    const result=await response.json();if(!response.ok)throw new Error(result.error??"Unable to submit access request.");
    setAccessRequestSubmitted(true);setNotice(result.message??"Your request has been received.");
   }catch(e){setError(e instanceof Error?e.message:"Unable to submit access request.");}
@@ -178,7 +259,7 @@ export default function App(){
   if(!workspaceSelectionToken)return;
   setBusy(true);setError("");
   try{
-   const response=await fetch(API_BASE+"/auth/workspace/select",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({selectionToken:workspaceSelectionToken,tenantId})});
+   const response=await fetch((await getApiBase())+"/auth/workspace/select",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({selectionToken:workspaceSelectionToken,tenantId})});
    const result=await response.json();
    if(!response.ok)throw new Error(result.error??"Workspace selection failed.");
    saveSession(result as Session);
@@ -203,6 +284,80 @@ export default function App(){
  const title=navigation.find(item=>item.id===view)?.label??"Overview";
  const refresh=()=>void loadView(view);
  const idempotency=()=>crypto.randomUUID();
+ const infrastructureState=(viewData.infrastructure??{}) as any;
+ const runtimeConfigState=infrastructureState.runtimeConfig as any;
+ useEffect(()=>{
+  if(runtimeConfigState){
+   setAllowedOriginsDraft(runtimeConfigState.allowedOrigins??[]);
+   setZuriApiOriginDraft(runtimeConfigState.apiOrigins?.zuriOs??"");
+   setMebumipApiOriginDraft(runtimeConfigState.apiOrigins?.mebumip??"");
+   setPrivacyNoticeUrlDraft(runtimeConfigState.publicSettings?.privacyNoticeUrl??"");
+   setAccessRequestsEnabledDraft(runtimeConfigState.publicSettings?.accessRequestsEnabled===true);
+  }
+ },[runtimeConfigState?.revision]);
+ const addAllowedOrigin=()=>{
+  const value=originInput.trim();
+  if(value&&!allowedOriginsDraft.includes(value))setAllowedOriginsDraft(current=>[...current,value]);
+  setOriginInput("");
+ };
+ const saveRuntimeConfig=async()=>{
+  if(!runtimeConfigState)return;
+  setBusy(true);setRuntimeSaveMessage("");setError("");
+  try{
+   const result=await api<any>("/platform/admin/runtime-config",{method:"PUT",headers:{"idempotency-key":idempotency()},body:JSON.stringify({
+    allowedOrigins:allowedOriginsDraft,
+    apiOrigins:{zuriOs:zuriApiOriginDraft,mebumip:mebumipApiOriginDraft},
+    publicSettings:{...runtimeConfigState.publicSettings,accessRequestsEnabled:accessRequestsEnabledDraft,privacyNoticeUrl:privacyNoticeUrlDraft||null},
+    reason:"Updated approved origins and public runtime controls through Zuri OS MAC"
+   })});
+   setRuntimeSaveMessage("Saved revision "+result.revision+". Running API instances refresh their approved-origin cache within five seconds; no redeployment is required.");
+   await loadView("infrastructure");
+  }catch(cause){setRuntimeSaveMessage(cause instanceof Error?cause.message:"Unable to save runtime configuration.");}
+  finally{setBusy(false);}
+ };
+
+
+ const macSecrets=(infrastructureState.secrets??[]) as Array<{secretId:string;version:number;allowedServices:string[];environment:string;updatedAt?:string;revokedAt?:string}>;
+ const toggleSecretService=(service:string,checked:boolean)=>setSecretServicesDraft(current=>checked?[...new Set([...current,service])]:current.filter(value=>value!==service));
+ const saveMacSecret=async(event:FormEvent)=>{
+  event.preventDefault();
+  if(secretReasonDraft.trim().length<20||!secretServicesDraft.length)return;
+  setSecretBusy(true);setSecretActionMessage("");setError("");
+  try{
+   const result=await api<any>("/platform/admin/secrets/"+encodeURIComponent(secretIdDraft.trim()),{
+    method:"PUT",headers:{"idempotency-key":idempotency()},
+    body:JSON.stringify({value:secretValueDraft,allowedServices:secretServicesDraft,reason:secretReasonDraft.trim()})
+   });
+   setSecretValueDraft("");setSecretActionMessage("Secret encrypted and stored as version "+result.version+". The plaintext is not available for read-back.");
+   await loadView("infrastructure");
+  }catch(cause){setSecretActionMessage(cause instanceof Error?cause.message:"Unable to store MAC secret.");}
+  finally{setSecretBusy(false);}
+ };
+ const rotateMacSecret=async(secretId:string)=>{
+  if(secretReasonDraft.trim().length<20){setSecretActionMessage("Enter a rotation reason of at least 20 characters first.");return;}
+  setSecretBusy(true);setSecretActionMessage("");setError("");
+  try{
+   const result=await api<any>("/platform/admin/secrets/"+encodeURIComponent(secretId)+"/rotate",{
+    method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason:secretReasonDraft.trim()})
+   });
+   setSecretActionMessage("Secret "+secretId+" rotated to version "+result.version+".");
+   await loadView("infrastructure");
+  }catch(cause){setSecretActionMessage(cause instanceof Error?cause.message:"Unable to rotate MAC secret.");}
+  finally{setSecretBusy(false);}
+ };
+ const revokeMacSecret=async(secretId:string)=>{
+  if(!window.confirm("Revoke "+secretId+" for all authorized workloads? Existing encrypted history will be retained."))return;
+  if(secretReasonDraft.trim().length<20){setSecretActionMessage("Enter a revocation reason of at least 20 characters first.");return;}
+  setSecretBusy(true);setSecretActionMessage("");setError("");
+  try{
+   await api("/platform/admin/secrets/"+encodeURIComponent(secretId),{
+    method:"DELETE",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason:secretReasonDraft.trim()})
+   });
+   setSecretActionMessage("Secret "+secretId+" revoked. Workload delivery will no longer return it.");
+   await loadView("infrastructure");
+  }catch(cause){setSecretActionMessage(cause instanceof Error?cause.message:"Unable to revoke MAC secret.");}
+  finally{setSecretBusy(false);}
+ };
 
  if(!session||!principal){
   return <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#091321] px-4 py-10 text-slate-100">
@@ -212,7 +367,7 @@ export default function App(){
     <Panel className="p-7 md:p-8">
      {challengeToken? <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Multi-factor authentication</p><h1 className="mt-2 text-2xl font-semibold">Verify your identity</h1><p className="mt-2 text-sm leading-6 text-slate-400">Enter the current code from your authenticator app.</p></div><ErrorBanner message={error}/><form onSubmit={verifyMfa} className="space-y-4"><Input label="Authenticator code or recovery code" value={mfaCode} onChange={setMfaCode} placeholder="000000" required/><Button type="submit" disabled={busy}>{busy?"Verifying…":"Verify and continue"} <ArrowRight size={15}/></Button><button type="button" onClick={()=>{setChallengeToken("");setMfaCode("");}} className="ml-3 text-xs text-slate-500 hover:text-slate-300">Back to sign in</button></form></>:
      accessRequestOpen? <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Workspace access</p><h1 className="mt-2 text-2xl font-semibold">{accessRequestSubmitted?"Request received":"Request Zuri OS access"}</h1><p className="mt-2 text-sm leading-6 text-slate-400">{accessRequestSubmitted?"Your request has been recorded for review. This does not create an account, workspace or membership, and does not grant access.":"Tell us how to contact you and which organization needs Zuri OS. We use these details only to assess this request. Requests are reviewed; submitting this form does not create an account or grant access."}{publicConfig.privacyNoticeUrl?"Read our privacy notice before submitting.":"A full privacy notice must be published before production access requests are enabled."}</p>{publicConfig.privacyNoticeUrl&&<a href={publicConfig.privacyNoticeUrl} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-cyan-200 underline">Read privacy notice</a>}</div><ErrorBanner message={error}/>{!accessRequestSubmitted? <form onSubmit={submitAccessRequest} className="space-y-4"><Input label="Work email address" value={email} onChange={setEmail} type="email" placeholder="you@organization.com" required/><Input label="Your name" value={accessRequestName} onChange={setAccessRequestName} placeholder="Full name" required/><Input label="Organization or business name" value={accessRequestOrganization} onChange={setAccessRequestOrganization} placeholder="Organization name" required/><Input label="Additional context (optional)" value={accessRequestNote} onChange={setAccessRequestNote} placeholder="What do you need Zuri OS for?"/><Button type="submit" disabled={busy}>{busy?"Submitting…":"Submit access request"} <ArrowRight size={15}/></Button></form>:<div className="rounded-xl border border-cyan-200/20 bg-cyan-200/[0.05] p-4 text-sm text-slate-300">An administrator must review and approve access separately. No workspace or membership has been created automatically.</div>}<button type="button" onClick={()=>{setAccessRequestOpen(false);setAccessRequestSubmitted(false);setError("");}} className="mt-5 text-xs text-slate-500 hover:text-slate-300">Back to sign in</button></>:
-     workspaceSelectionToken? <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Workspace access</p><h1 className="mt-2 text-2xl font-semibold">Choose your workspace</h1><p className="mt-2 text-sm leading-6 text-slate-400">Your Zuri identity can belong to more than one workspace. Choose where you want to continue.</p></div><ErrorBanner message={error}/>{workspaceOptions.length? <div className="space-y-3">{workspaceOptions.map(workspace=><button key={workspace.membershipId} type="button" disabled={busy} onClick={()=>void selectWorkspace(workspace.tenantId)} className="w-full rounded-xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-cyan-200/30 hover:bg-cyan-200/[0.06] disabled:opacity-50"><span className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-100">{workspace.displayName||workspace.legalName}</span><ArrowRight size={16} className="text-cyan-200"/></span><span className="mt-1 block text-xs text-slate-500">{workspace.roleKeys.join(" · ")||"Workspace member"}</span></button>)}</div>:<div className="rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm leading-6 text-slate-400">Your Zuri identity does not have an active workspace membership yet. Accept a workspace invitation or ask a workspace administrator to grant access.</div>}<button type="button" onClick={()=>{setWorkspaceSelectionToken("");setWorkspaceOptions([]);setPassword("");}} className="mt-5 text-xs text-slate-500 hover:text-slate-300">Back to sign in</button></> : <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Secure workspace access</p><h1 className="mt-2 text-2xl font-semibold">Sign in to Zuri OS</h1><p className="mt-2 text-sm leading-6 text-slate-400">Use your Zuri OS identity. You can choose among all workspaces you are authorized to access after signing in.</p></div><ErrorBanner message={error}/><form onSubmit={login} className="space-y-4"><Input label="Email address" value={email} onChange={setEmail} type="email" placeholder="you@organization.com" required/><Input label="Password" value={password} onChange={setPassword} type="password" placeholder="Your password" required/><Button type="submit" disabled={busy}>{busy?"Signing in…":"Sign in securely"} <ArrowRight size={15}/></Button></form><div className="mt-6 flex items-center gap-2 border-t border-white/[0.07] pt-5 text-[11px] text-slate-500"><LockKeyhole size={14}/> Credentials are sent only to your configured Zuri OS API.</div>{publicConfig.accessRequestsEnabled&&<button type="button" onClick={()=>{setAccessRequestOpen(true);setAccessRequestSubmitted(false);setError("");}} className="mt-4 w-full rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-300 transition hover:border-cyan-200/30 hover:text-cyan-100">Request Zuri OS access</button>}</>}
+     workspaceSelectionToken? <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Workspace access</p><h1 className="mt-2 text-2xl font-semibold">Choose your workspace</h1><p className="mt-2 text-sm leading-6 text-slate-400">Your Zuri identity can belong to more than one workspace. Choose where you want to continue.</p></div><ErrorBanner message={error}/>{workspaceOptions.length? <div className="space-y-3">{workspaceOptions.map(workspace=><button key={workspace.membershipId} type="button" disabled={busy} onClick={()=>void selectWorkspace(workspace.tenantId)} className="w-full rounded-xl border border-white/10 bg-white/[0.035] p-4 text-left transition hover:border-cyan-200/30 hover:bg-cyan-200/[0.06] disabled:opacity-50"><span className="flex items-center justify-between gap-3"><span className="font-semibold text-slate-100">{workspace.displayName||workspace.legalName}</span><ArrowRight size={16} className="text-cyan-200"/></span><span className="mt-1 block text-xs text-slate-500">{workspace.roleKeys.join(" · ")||"Workspace member"}</span></button>)}</div>:<div className="rounded-xl border border-dashed border-white/10 px-5 py-8 text-center text-sm leading-6 text-slate-400">Your Zuri identity does not have an active workspace membership yet. Accept a workspace invitation or ask a workspace administrator to grant access.<div className="mt-4"><button type="button" disabled={!publicConfig.accessRequestsEnabled} onClick={()=>{setAccessRequestOpen(true);setAccessRequestSubmitted(false);setError("");}} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs text-slate-300 enabled:hover:border-cyan-200/30 disabled:cursor-not-allowed disabled:opacity-50">Request Zuri OS access{!publicConfig.accessRequestsEnabled?" — not yet enabled":""}</button>{!publicConfig.accessRequestsEnabled&&<p className="mt-2 text-[11px] text-slate-500">Access requests are paused until the privacy notice is published and enabled in MAC.</p>}</div></div>}<button type="button" onClick={()=>{setWorkspaceSelectionToken("");setWorkspaceOptions([]);setPassword("");}} className="mt-5 text-xs text-slate-500 hover:text-slate-300">Back to sign in</button></> : <><div className="mb-6"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Secure workspace access</p><h1 className="mt-2 text-2xl font-semibold">Sign in to Zuri OS</h1><p className="mt-2 text-sm leading-6 text-slate-400">Use your Zuri OS identity. You can choose among all workspaces you are authorized to access after signing in.</p></div><ErrorBanner message={error}/><form onSubmit={login} className="space-y-4"><Input label="Email address" value={email} onChange={setEmail} type="email" placeholder="you@organization.com" required/><Input label="Password" value={password} onChange={setPassword} type="password" placeholder="Your password" required/><Button type="submit" disabled={busy}>{busy?"Signing in…":"Sign in securely"} <ArrowRight size={15}/></Button></form><DemoCredentials onSelect={(demoEmail,demoPassword)=>{setEmail(demoEmail);setPassword(demoPassword);setError("");setNotice("Demo credentials filled. Select Sign in securely to continue.");}} /><div className="mt-6 flex items-center gap-2 border-t border-white/[0.07] pt-5 text-[11px] text-slate-500"><LockKeyhole size={14}/> Credentials are sent only to your configured Zuri OS API.</div><button type="button" disabled={!publicConfig.accessRequestsEnabled} onClick={()=>{setAccessRequestOpen(true);setAccessRequestSubmitted(false);setError("");}} className="mt-4 w-full rounded-xl border border-white/10 px-4 py-3 text-sm text-slate-300 transition enabled:hover:border-cyan-200/30 enabled:hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50">Request Zuri OS access{!publicConfig.accessRequestsEnabled?" — not yet enabled":""}</button>{!publicConfig.accessRequestsEnabled&&<p className="mt-2 text-center text-[11px] text-slate-500">The platform administrator must publish an HTTPS privacy notice and enable access requests in MAC.</p>}</>}
     </Panel>
     <p className="mt-5 text-center text-[10px] text-slate-600">OIPTECH / ODEL Developers · Governed by default</p>
    </div>
@@ -227,6 +382,8 @@ export default function App(){
  const auditEvents=(data.data??[]) as any[];
  const grants=(data.data??[]) as any[];
  const configRows=(data.data??[]) as any[];
+ const infrastructure=(data.data??{}) as any;
+ const runtimeConfig=(data.runtimeConfig??null) as any;
  const tenants=(data.data??[]) as any[];
  const accessRequests=(data.data??[]) as any[];
 
@@ -309,10 +466,75 @@ export default function App(){
     {view==="audit"&&<><SectionTitle eyebrow="Accountability" title="Audit centre" description="Tenant-scoped event history with actor, outcome and correlation context."/><Panel className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Recent events</h2><Button variant="secondary" onClick={async()=>{try{await api("/v1/platform/admin/audit-exports",{method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({filters:{limit:10000},reason:"Export requested by authorized tenant administrator for compliance review."})});setNotice("Audit export job queued.");}catch(e){setError(e instanceof Error?e.message:"Export request failed.");}}}><ArrowDownToLine size={14}/> Request export</Button></div>{auditEvents.length?auditEvents.map((event:any)=><div key={event.eventId} className="grid gap-2 border-t border-white/[0.06] py-3 md:grid-cols-[1fr_1fr_auto] md:items-center"><div><p className="text-xs font-medium">{event.action}</p><p className="mt-1 text-[10px] text-slate-500">{event.resourceType} {event.resourceId??""} · {event.actor?.userId??event.actor?.service??"system"}</p></div><p className="text-[10px] text-slate-500">{event.occurredAt?new Date(event.occurredAt).toLocaleString():"—"}</p><Status value={event.outcome}/></div>):<Empty label="No audit events returned."/ >}</Panel></>}
     {view==="breakglass"&&<><SectionTitle eyebrow="Emergency controls" title="Break-glass access" description="Time-bound emergency permissions, constrained to explicit organizations and locations. Every action is audited."/><Panel className="p-5">{grants.length?grants.map((grant:any)=><div key={grant.grantId} className="flex flex-col justify-between gap-3 border-t border-white/[0.06] py-4 md:flex-row md:items-center"><div><p className="text-sm font-medium">{grant.userId}</p><p className="mt-1 text-xs text-slate-500">{grant.permissionKeys?.join(", ")}</p><p className="mt-1 text-[10px] text-slate-600">Expires {new Date(grant.expiresAt).toLocaleString()} · Approved by {grant.approvedBy}</p></div><div className="flex items-center gap-3"><Status value={grant.status}/>{grant.status==="active"&&<Button variant="danger" onClick={()=>{const reason=window.prompt("Reason for emergency grant revocation (20+ characters):");if(reason&&reason.length>=20)void revokeGrant(grant.grantId,reason);}}><X size={14}/> Revoke</Button>}</div></div>):<Empty label="No emergency grants found."/ >}</Panel></>}
     {view==="configuration"&&<><SectionTitle eyebrow="Tenant settings" title="Configuration" description="Controlled tenant-level defaults. Sensitive secrets and provider credentials are managed outside this workspace."/><div className="grid gap-5 xl:grid-cols-[1fr_.8fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Current configuration</h2>{configRows.length?configRows.map((row:any)=><div key={row.key} className="flex items-center justify-between border-t border-white/[0.06] py-3"><p className="text-xs text-slate-400">{row.key}</p><p className="text-xs font-medium text-slate-200">{String(row.value)}</p></div>):<Empty label="No tenant overrides are configured."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Update a setting</h2><form onSubmit={updateConfig} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Setting</span><select name="key" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"><option value="displayName">Display name</option><option value="defaultLocale">Default locale</option><option value="defaultCurrency">Default currency</option><option value="timezone">Timezone</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Value</span><input name="value" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit"><Check size={14}/> Save configuration</Button></form></Panel></div></>}
+    {view==="infrastructure"&&<><SectionTitle eyebrow="Platform control plane" title="Infrastructure & secrets" description="Central MAC inventory for Vercel-managed signing keys, database topology, API origins and provider readiness. Secret values are never returned." action={<Button variant="secondary" onClick={refresh}><RefreshCw size={14}/> Refresh inventory</Button>}/>
+     {infrastructure.database&&<div className="mb-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <Panel className="p-5"><p className="text-xs text-slate-500">Production database connection</p><div className="mt-3"><Status value={infrastructure.database.configured?"configured":"missing"}/></div><p className="mt-3 text-xs text-slate-400">Replica set: {String(infrastructure.database.topology.replicaSet)} · Primary: {String(infrastructure.database.topology.writablePrimary)} · Transactions: {String(infrastructure.database.topology.transactionsAvailable)}</p></Panel>
+      <Panel className="p-5"><p className="text-xs text-slate-500">JWT signing</p><div className="mt-3"><Status value={infrastructure.keyrings.userSessionJwt.status}/></div><p className="mt-3 text-xs text-slate-400">Legacy HS256 configured: {String(infrastructure.keyrings.userSessionJwt.legacyConfigured)}</p></Panel>
+      <Panel className="p-5"><p className="text-xs text-slate-500">Vercel workload identity</p><div className="mt-3"><Status value={infrastructure.keyrings.workloadIdentity?.status??"not_configured"}/></div><p className="mt-3 text-xs text-slate-400">{infrastructure.keyrings.workloadIdentity?.managedSigning?.length??0} project-scoped OIDC issuers provisioned.</p></Panel>
+      <Panel className="p-5"><p className="text-xs text-slate-500">MFA encryption</p><div className="mt-3"><Status value={infrastructure.keyrings.mfaEncryption.configured?"configured":"blocked"}/></div><p className="mt-3 text-xs text-slate-400">Dedicated encryption KMS/HSM required for MAC-managed rotation.</p></Panel>
+      <Panel className="p-5"><p className="text-xs text-slate-500">Audit signing</p><div className="mt-3"><Status value={infrastructure.keyrings.auditSigning.status}/></div><p className="mt-3 text-xs text-slate-400">Historical verification must be preserved during migration.</p></Panel>
+     </div>}
+     {(infrastructure.keyrings.workloadIdentity?.managedSigning?.length||infrastructure.keyrings.userSessionJwt.managedSigning?.length||infrastructure.keyrings.auditSigning.managedSigning?.length)&&<Panel className="mb-5 p-5">
+      <h2 className="mb-3 text-sm font-semibold">Vercel KMS key inventory</h2>
+      <div className="grid gap-3 md:grid-cols-2">
+       {[...(infrastructure.keyrings.workloadIdentity?.managedSigning??[]),...(infrastructure.keyrings.userSessionJwt.managedSigning??[]),...(infrastructure.keyrings.auditSigning.managedSigning??[])].map((key:any)=><div key={key.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold text-slate-200">{key.name}</p><Status value={key.status}/></div><p className="mt-2 text-[11px] text-slate-400">{key.purpose} · {key.algorithm} · {key.environment}</p><p className="mt-2 break-all font-mono text-[10px] text-slate-500">Issuer {key.id}</p><p className="break-all font-mono text-[10px] text-slate-500">Key {key.keyId}</p><p className="break-all font-mono text-[10px] text-slate-500">Project {key.projectId}</p></div>)}
+      </div>
+     </Panel>}
+     <Panel className="mb-5 p-5">
+       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-sm font-semibold">Live MAC runtime configuration</h2><p className="mt-1 text-xs text-slate-500">Version {runtimeConfig?.revision??0}. Approved origins and public settings update at runtime without a Vercel redeployment.</p></div><Status value="live runtime store"/></div>
+       <div className="grid gap-4 md:grid-cols-2">
+        <Input label="Zuri OS API origin" value={zuriApiOriginDraft} onChange={setZuriApiOriginDraft} placeholder="https://..." required/>
+        <Input label="MeBuMIP API origin" value={mebumipApiOriginDraft} onChange={setMebumipApiOriginDraft} placeholder="https://..." required/>
+       </div>
+       <div className="mt-4"><p className="mb-2 text-xs font-medium text-slate-400">Approved browser origins (verified Vercel domains only)</p>
+        <div className="mb-3 flex flex-wrap gap-2">{allowedOriginsDraft.map(origin=><span key={origin} className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300">{origin}<button type="button" onClick={()=>setAllowedOriginsDraft(current=>current.filter(item=>item!==origin))} className="text-slate-500 hover:text-rose-200" aria-label={"Remove "+origin}>×</button></span>)}</div>
+        <div className="flex flex-wrap gap-2"><div className="min-w-[240px] flex-1"><Input label="Add verified origin" value={originInput} onChange={setOriginInput} placeholder="https://your-verified-domain.example"/></div><div className="self-end"><Button variant="secondary" onClick={addAllowedOrigin} disabled={!originInput.trim()}>Add origin</Button></div></div>
+       </div>
+       <div className="mt-5 grid gap-4 md:grid-cols-2">
+        <Input label="Privacy notice URL (HTTPS)" value={privacyNoticeUrlDraft} onChange={setPrivacyNoticeUrlDraft} placeholder="https://..."/>
+        <label className="flex items-center gap-3 self-end rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-slate-300"><input type="checkbox" checked={accessRequestsEnabledDraft} onChange={event=>setAccessRequestsEnabledDraft(event.target.checked)} disabled={!privacyNoticeUrlDraft.startsWith("https://")}/> Enable public access requests (requires published HTTPS privacy notice)</label>
+       </div>
+       <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><p className="max-w-xl text-[11px] leading-5 text-slate-500">Only verified Vercel project domains are accepted. Custom domains must be verified before approval. MAC secret delivery requires the separately provisioned Production AWS KMS OIDC role and symmetric key.</p><Button onClick={saveRuntimeConfig} disabled={busy||!zuriApiOriginDraft||!mebumipApiOriginDraft||allowedOriginsDraft.length===0}>{busy?"Saving…":"Save MAC runtime configuration"}</Button></div>
+       {runtimeSaveMessage&&<p role="status" className="mt-3 text-xs text-cyan-200">{runtimeSaveMessage}</p>}
+      </Panel>
+      <div className="grid gap-5 xl:grid-cols-2">
+      <Panel className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Vercel KMS signing issuers</h2><Status value="provisioned"/></div>{(infrastructure.keyrings?.userSessionJwt?.managedSigning??[]).map((key:any)=><div key={key.id} className="border-t border-white/[0.06] py-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">{key.name}</p><Status value={key.status}/></div><p className="mt-1 text-xs text-slate-500">{key.purpose} · {key.algorithm} · {key.environment}</p><p className="mt-1 break-all text-[10px] text-slate-600">Issuer {key.id}</p><p className="mt-1 text-[10px] text-slate-600">Key {key.keyId} · project {key.projectId}</p></div>)}</Panel>
+      <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Approved API origins</h2>{(infrastructure.apiOrigins?.items??[]).length?(infrastructure.apiOrigins.items.map((origin:string)=><div key={origin} className="border-t border-white/[0.06] py-3 text-xs text-slate-300">{origin}</div>)):<Empty label="No API origins configured."/ >}<div className="mt-3"><Status value={infrastructure.apiOrigins?.status??"unknown"}/></div><p className="mt-3 text-xs leading-5 text-slate-500">Approved browser origins are read from the versioned MAC runtime registry and applied to CORS within five seconds without redeployment.</p></Panel>
+      <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provider authorization</h2>{Object.entries(infrastructure.providers??{}).map(([name,value]:[string,any])=><div key={name} className="flex items-center justify-between border-t border-white/[0.06] py-3"><span className="text-xs capitalize text-slate-400">{name}</span><Status value={value.status??(value.configured?"configured":"not_configured")}/></div>)}</Panel>
+      <Panel className="p-5">
+       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">MAC encrypted secret vault</h2><Status value={infrastructure.secretStore?.status??"unknown"}/></div>
+       <p className="mb-4 text-xs leading-6 text-slate-400">{infrastructure.secretStore?.reason??"Secret delivery remains disabled until AWS KMS OIDC federation is provisioned."}</p>
+       <form onSubmit={saveMacSecret} className="space-y-4 border-t border-white/[0.06] pt-4">
+        <div className="grid gap-3 md:grid-cols-2">
+         <Input label="Secret identifier" value={secretIdDraft} onChange={setSecretIdDraft} placeholder="resend-api-key" required/>
+         <Input label="Secret value (write-only)" value={secretValueDraft} onChange={setSecretValueDraft} type="password" placeholder="Paste secret value; never shown again" required/>
+        </div>
+        <div><p className="mb-2 text-xs font-medium text-slate-400">Authorized Production workloads</p><div className="flex flex-wrap gap-4 text-xs text-slate-300">
+         <label className="flex items-center gap-2"><input type="checkbox" checked={secretServicesDraft.includes("zurios-api")} onChange={event=>toggleSecretService("zurios-api",event.target.checked)}/> Zuri OS API</label>
+         <label className="flex items-center gap-2"><input type="checkbox" checked={secretServicesDraft.includes("zuri-mebumip-api")} onChange={event=>toggleSecretService("zuri-mebumip-api",event.target.checked)}/> MeBuMIP API</label>
+        </div></div>
+        <Input label="Reason for storing, rotating or revoking" value={secretReasonDraft} onChange={setSecretReasonDraft} placeholder="Document the operational reason (20+ characters)" required/>
+        <div className="flex flex-wrap items-center gap-3"><Button type="submit" disabled={secretBusy||!secretIdDraft.trim()||!secretValueDraft||secretReasonDraft.trim().length<20||!secretServicesDraft.length}>{secretBusy?"Working…":"Encrypt and store secret"}</Button><p className="text-[10px] leading-5 text-slate-500">Write-only input. The console never reads plaintext back. Zuri OS IDs: <code>zuri-os-jwt-secret</code>, <code>zuri-os-mfa-encryption-key</code> (base64 32-byte legacy key), <code>zuri-os-mfa-encryption-keyring</code> (JSON of base64 keys), <code>zuri-os-mfa-encryption-active-key-id</code>. MeBuMIP IDs: <code>mebumip-mfa-encryption-key</code> (64-hex legacy key), <code>mebumip-mfa-encryption-keyring</code>, <code>mebumip-mfa-encryption-active-key-id</code>, <code>mebumip-audit-signing-key</code>, <code>mebumip-audit-signing-keyring</code>, <code>mebumip-audit-signing-active-key-id</code>, <code>resend-api-key</code> and <code>mail-from</code>. Add new key material to the keyring before switching the active key; retain legacy keys until historical records have been re-encrypted or retired.</p></div>
+       </form>
+       {secretActionMessage&&<p role="status" className="mt-4 text-xs text-cyan-200">{secretActionMessage}</p>}
+       <div className="mt-5 border-t border-white/[0.06] pt-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-semibold text-slate-200">Stored secret metadata</h3><Button variant="secondary" onClick={()=>void loadView("infrastructure")} disabled={secretBusy}><RefreshCw size={13}/> Refresh</Button></div>
+        {macSecrets.length?macSecrets.map(secret=><div key={secret.secretId} className="border-t border-white/[0.06] py-3 first:border-0"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold text-slate-200">{secret.secretId}</p><p className="mt-1 text-[10px] text-slate-500">Version {secret.version} · {secret.environment} · {secret.allowedServices.join(", ")}</p><p className="mt-1 text-[10px] text-slate-600">{secret.updatedAt?new Date(secret.updatedAt).toLocaleString():"Update time unavailable"}</p></div><div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={secretBusy||Boolean(secret.revokedAt)} onClick={()=>void rotateMacSecret(secret.secretId)}>Rotate</Button>{!secret.revokedAt&&<Button variant="danger" disabled={secretBusy} onClick={()=>void revokeMacSecret(secret.secretId)}>Revoke</Button>}<Status value={secret.revokedAt?"revoked":"active"}/></div></div></div>):<Empty label="No MAC-managed secrets have been stored."/ >}
+       </div>
+       <p className="mt-4 text-[10px] leading-5 text-slate-600">Values are encrypted with AES-256-GCM and KMS-wrapped data keys. Workloads receive only active secrets explicitly scoped to their verified Production identity. Revoked encrypted history is retained; no plaintext export is provided.</p>
+      </Panel>
+     </div>
+     <p className="mt-5 text-[10px] text-slate-600">Last checked {infrastructure.generatedAt?new Date(infrastructure.generatedAt).toLocaleString():"—"} · {infrastructure.environment??"unknown"} · Metadata only</p>
+    </>}
     {view==="access"&&<><SectionTitle eyebrow="Platform governance" title="Workspace access requests" description="Review requests for Zuri OS access. Approval records a decision only; workspace provisioning and membership assignment remain separate privileged operations."/><Panel className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Pending requests</h2><Button variant="secondary" onClick={()=>void loadView("access")}><RefreshCw size={14}/> Refresh</Button></div>{accessRequests.length?accessRequests.map((request:any)=><div key={request.requestId} className="border-t border-white/[0.06] py-4 first:border-0 first:pt-0"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0"><p className="text-sm font-semibold">{request.displayName} · {request.organizationName}</p><p className="mt-1 text-xs text-cyan-100">{request.emailNormalized}</p>{request.requestNote&&<p className="mt-2 max-w-2xl text-xs leading-5 text-slate-400">{request.requestNote}</p>}<p className="mt-2 text-[10px] text-slate-600">Received {new Date(request.requestedAt).toLocaleString()}</p></div>{principal?.platformPermissions?.includes("platform.tenants.provision")?<div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={()=>void reviewAccessRequest(request.requestId,"reviewed")}>Mark reviewed</Button><Button onClick={()=>void reviewAccessRequest(request.requestId,"approved")}>Approve</Button><Button variant="danger" onClick={()=>void reviewAccessRequest(request.requestId,"declined")}>Decline</Button></div>:<span className="text-xs text-slate-500">Read-only access</span>}</div></div>):<Empty label="There are no pending workspace access requests."/>}</Panel></>}
     {view==="tenants"&&<><SectionTitle eyebrow="Platform operations" title="Tenant directory" description="Cross-tenant provisioning and lifecycle operations are restricted to separately provisioned platform operators."/><div className="grid gap-5 xl:grid-cols-[1fr_.9fr]"><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Tenants</h2>{tenants.length?tenants.map((tenant:any)=><div key={tenant.tenantId} className="flex items-center justify-between border-t border-white/[0.06] py-3"><div><p className="text-sm font-medium">{tenant.displayName}</p><p className="mt-1 text-[10px] text-slate-500">{tenant.slug} · {tenant.tenantId}</p></div><Status value={tenant.status}/></div>):<Empty label="No tenant records returned."/ >}</Panel><Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provision a tenant</h2><form onSubmit={createTenant} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant slug</span><input name="slug" required pattern="[a-z0-9-]{2,64}" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Legal name</span><input name="legalName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Display name</span><input name="displayName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><div className="grid gap-3 sm:grid-cols-2"><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner name</span><input name="ownerName" required minLength={2} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Owner email</span><input name="ownerEmail" type="email" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label></div><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit"><Building2 size={14}/> Provision tenant</Button></form><div className="mt-8 border-t border-white/[0.07] pt-5"><h3 className="mb-3 text-sm font-semibold">Request tenant lifecycle change</h3><form onSubmit={requestTenantLifecycle} className="space-y-3"><label className="block"><span className="mb-2 block text-xs text-slate-400">Tenant ID</span><input name="tenantId" required className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Action</span><select name="action" className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"><option value="tenant.activate">Activate</option><option value="tenant.suspend">Suspend</option><option value="tenant.close">Close</option></select></label><label className="block"><span className="mb-2 block text-xs text-slate-400">Reason</span><textarea name="reason" required minLength={20} rows={3} className="w-full rounded-xl border border-white/10 bg-[#0a1422] px-3.5 py-3 text-sm"/></label><Button type="submit">Request lifecycle approval</Button></form></div></Panel></div></>}
     <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.07] pt-5 text-[10px] text-slate-600"><span>ZURI OS · One foundation · Many governed ecosystems</span><span>OIPTECH / ODEL Developers</span></footer>
    </main>
+   {stepUpOpen&&<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"><Panel className="w-full max-w-md p-7"><p className="text-[10px] font-semibold uppercase tracking-[.2em] text-cyan-200">Privileged action verification</p><h2 className="mt-2 text-xl font-semibold text-slate-100">Confirm your identity</h2><p className="mt-2 text-sm leading-6 text-slate-400">This MAC operation requires your password and a current authenticator or one-time recovery code. Verification remains valid for five minutes.</p><ErrorBanner message={error}/>
+    {stepUpEnrollment? <div className="mt-5 space-y-4">
+     <div className="rounded-xl border border-cyan-200/20 bg-cyan-200/[0.05] p-4"><p className="text-xs font-semibold text-cyan-100">Authenticator setup secret</p><p className="mt-2 break-all font-mono text-sm text-slate-100">{stepUpEnrollment.secret}</p><p className="mt-3 text-[10px] leading-5 text-slate-400">Add this secret manually to your authenticator app, or copy the provisioning URI below. It is displayed only during this enrollment flow.</p><p className="mt-2 break-all font-mono text-[10px] text-slate-400">{stepUpEnrollment.otpauthUrl}</p></div>
+     {stepUpEnrollment.confirmed? <div className="rounded-xl border border-amber-200/20 bg-amber-200/[0.05] p-4"><p className="text-xs font-semibold text-amber-100">Save your one-time recovery codes</p><div className="mt-3 grid grid-cols-2 gap-2">{(stepUpEnrollment.recoveryCodes??[]).map(code=><code key={code} className="rounded-lg bg-black/20 px-2 py-2 text-center text-xs text-slate-200">{code}</code>)}</div><p className="mt-3 text-[10px] leading-5 text-slate-400">Each code can be used once. Store them securely. The confirmation code cannot be reused for the privileged action; wait for a fresh authenticator code.</p><Button onClick={()=>{setStepUpEnrollment(null);setStepUpCode("");setError("");}}>I've saved them — continue</Button></div>:
+      <form onSubmit={confirmStepUpEnrollment} className="space-y-4"><Input label="Current authenticator code" value={enrollmentCode} onChange={setEnrollmentCode} placeholder="000000" required/><Button type="submit" disabled={stepUpBusy||!enrollmentCode}>{stepUpBusy?"Confirming…":"Confirm MFA enrollment"}</Button></form>}
+    </div>:<form onSubmit={submitMfaStepUp} className="mt-5 space-y-4"><Input label="Current password" value={stepUpPassword} onChange={setStepUpPassword} type="password" required/><Input label="Authenticator code or one-time recovery code" value={stepUpCode} onChange={setStepUpCode} placeholder="000000" required/><div className="flex flex-wrap gap-2"><Button type="submit" disabled={stepUpBusy||!stepUpPassword||!stepUpCode}>{stepUpBusy?"Verifying…":"Verify and continue"}</Button><Button variant="secondary" onClick={cancelMfaStepUp} disabled={stepUpBusy}>Cancel</Button></div></form>}</Panel></div>}
   </div>
  </div>;
 }

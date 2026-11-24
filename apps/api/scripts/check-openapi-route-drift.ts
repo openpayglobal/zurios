@@ -2,10 +2,10 @@ import {readFileSync} from "node:fs";
 import {PLATFORM_BODY_CONTRACTS} from "../src/platform/platform-schemas.js";
 import {ADMIN_BODY_CONTRACTS} from "../src/platform/admin-schemas.js";
 
-const routeSource=readFileSync("src/platform/platform-routes.ts","utf8")+"\\n"+readFileSync("src/platform/admin-routes.ts","utf8");
+const routeSource=readFileSync("src/platform/platform-routes.ts","utf8")+"\\n"+readFileSync("src/platform/admin-routes.ts","utf8")+"\\n"+readFileSync("src/server.ts","utf8");
 const contract=readFileSync("../../docs/api/openapi.yaml","utf8");
 const routeDefinitions=[...routeSource.matchAll(/app\.(get|post|put|patch|delete)\("([^"]+)"/g)];
-const routePaths=new Set(routeDefinitions.map(([, ,path])=>path.replace(/:([A-Za-z0-9_]+)/g,"{$1}")));
+const routePaths=new Set(routeDefinitions.map(([, ,path])=>path.replace(/^\/v1(?=\/)/,"").replace(/:([A-Za-z0-9_]+)/g,"{$1}")).filter(path=>path.startsWith("/platform/")));
 const pathsSection=contract.split(/^paths:\s*$/m)[1]?.split(/^components:\s*$/m)[0]??"";
 const contractPaths=new Set([...pathsSection.matchAll(/^  (\/[^:]+):\s*$/gm)].map(([,path])=>path).filter(path=>path.startsWith("/platform/")));
 const missingFromContract=[...routePaths].filter(path=>!contractPaths.has(path));

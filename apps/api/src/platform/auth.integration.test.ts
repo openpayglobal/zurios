@@ -86,8 +86,8 @@ test("invitation acceptance and password login use active tenant membership", {s
   const refreshed=await refreshLogin(db,cfg,tenant.tenantId,result.sessionId,result.refreshToken);
   assert.ok(refreshed.accessToken);assert.ok(refreshed.refreshToken);
 
-  const enrollment=await beginMfaEnrollment(db,user.userId,cfg);
-  const recovery=await confirmMfaEnrollment(db,user.userId,totpCode(enrollment.secret),cfg);
+  const enrollment=await beginMfaEnrollment(db,user.userId,password,cfg);
+  const recovery=await confirmMfaEnrollment(db,user.userId,password,totpCode(enrollment.secret),cfg);
   assert.equal(recovery.recoveryCodes.length,10);
   const neutralMfaAttempt=await login(db,cfg,{email:"auth@example.test",password,ipHash:"integration"});
   if(!neutralMfaAttempt.mfaRequired)throw new Error("Expected workspace-neutral MFA challenge");

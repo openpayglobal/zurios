@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {randomBytes} from "node:crypto";
-import {hashPassword,verifyPassword,generateTotpSecret,totpCode,verifyTotpCode,encryptMfaSecret,decryptMfaSecret,generateRecoveryCodes,hashRecoveryCode} from "./auth-crypto.js";
+import {hashPassword,verifyPassword,generateTotpSecret,totpCode,verifyTotpCode,encryptMfaSecret,decryptMfaSecret,encryptMfaSecretWithConfig,decryptMfaSecretWithConfig,encryptInvitationTokenWithConfig,decryptInvitationTokenWithConfig,generateRecoveryCodes,hashRecoveryCode} from "./auth-crypto.js";
 test("password hashing uses a one-way Argon2id verifier",async()=>{
  const hash=await hashPassword("A-long-unique-password-2026!");
  assert.notEqual(hash,"A-long-unique-password-2026!");
@@ -26,4 +26,18 @@ test("recovery codes are high entropy and stored as one-way hashes",()=>{
  assert.equal(new Set(codes).size,10);
  assert.notEqual(hashRecoveryCode(codes[0]!),codes[0]);
  assert.equal(hashRecoveryCode(codes[0]!),hashRecoveryCode(codes[0]!.toLowerCase()));
+});
+
+
+test("versioned MFA and invitation envelopes remain decryptable through key rotation",()=>{
+ const legacyKey=randomBytes(32).toString("base64"),activeKey=randomBytes(32).toString("base64");
+ const config={mfaEncryptionKey:legacyKey,mfaEncryptionKeyring:JSON.stringify({legacy:legacyKey,key2026:activeKey}),mfaEncryptionActiveKeyId:"key2026"};
+ const totpSecret=generateTotpSecret(),encryptedMfa=encryptMfaSecretWithConfig(totpSecret,config);
+ assert.match(encryptedMfa,/^v2\.key2026\./);
+ assert.equal(decryptMfaSecretWithConfig(encryptedMfa,config),totpSecret);
+ const legacyMfa=encryptMfaSecret(totpSecret,legacyKey);
+ assert.equal(decryptMfaSecretWithConfig(legacyMfa,config),totpSecret);
+ const invitation="one-time-invitation-token",encryptedInvitation=encryptInvitationTokenWithConfig(invitation,config);
+ assert.match(encryptedInvitation,/^v2\.key2026\./);
+ assert.equal(decryptInvitationTokenWithConfig(encryptedInvitation,config),invitation);
 });

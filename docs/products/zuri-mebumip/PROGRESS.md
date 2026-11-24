@@ -297,3 +297,78 @@ No live Meta app credentials, business portfolio, Tech Provider verification, Ap
 
 
 **Public access-request privacy gate verification (2026-11-20):** added `GET /auth/public-config`, browser gating of the Request Zuri OS action, an optional HTTPS privacy-notice link, and a production config rule that refuses to enable public intake without the notice URL. Access requests default to disabled. Integration coverage verifies enabled/disabled public configuration, notice URL exposure, 503 behavior when disabled, non-enumerating rate limits and no account/tenant provisioning. Repository CI run 44748329176 passed both OpenAPI lint checks, route drift, typecheck, tests and build. Test totals: 52 (45 passed, 7 skipped, 0 failed). MeBuMIP Phase 1 run 44748328927 passed all API and web checks; all 23 API tests passed.
+
+
+## Runtime module-resolution correction — 2026-11-22 UTC
+
+The first READY Zuri OS API Preview was runtime-tested using the protected Vercel URL fetch path. Both `GET /health/live` and `GET /health/ready` initially returned HTTP 500 / `FUNCTION_INVOCATION_FAILED`. Vercel runtime logs isolated the cause: Node attempted to load `@zuri/core-platform/src/index.ts` from the production function bundle, but the workspace package exposed TypeScript source instead of executable JavaScript.
+
+Corrected the package contract:
+
+- `packages/core-platform/package.json` now exports `dist/index.js` for ESM runtime and `dist/index.d.ts` for TypeScript consumers.
+- Added `packages/core-platform/tsconfig.build.json` to emit JavaScript, source maps and declaration files from the package source.
+- `apps/api` build now compiles `@zuri/core-platform` before compiling the API, so direct Vercel builds cannot omit the shared package artifact.
+- Exact-head repository CI runs `44989291690` and `44989287142` both passed on commit `ae406d569ad3cc1d5eb266ca5cfca70469d46d1e` (OpenAPI validation, route drift, docs mirror, typecheck, tests and build).
+- Independently ran the API build in an isolated Vercel sandbox and imported `@zuri/core-platform` from the compiled API runtime; Node resolved the package and exposed 53 exports successfully.
+
+**Deployment gate:** the corrected source has not yet been deployed. Vercel rejected the next API deployment request with HTTP 402 `api-deployments-free-per-day`, retry-after 86,400 seconds. The previous READY deployment therefore still has the runtime module-resolution error and must not be treated as healthy. Repeat deployment, `/health/live`, `/health/ready`, and authenticated login acceptance after the limit resets. Preview SSO has not been disabled; the temporary manual bypass used during diagnosis was revoked.
+
+
+## Runtime export regression test and current CI — 2026-11-22 UTC
+
+Added `apps/api/src/platform/core-platform-runtime.test.ts` to guard the compiled workspace package contract. The test imports the package through the same Node ESM resolution path used by the deployed API and asserts the event publisher, outbox worker, idempotent mutation, outbox writer and approval-request exports exist. This catches a future regression back to exporting raw TypeScript source.
+
+Exact-head GitHub Actions runs `44989687455` and `44989683049` both passed on `4d12a6bf95c34db9e15f6cf289890e373f373138`: OpenAPI 3.1 validation for both APIs, route drift, product documentation mirror check, typecheck, tests and build. The API runtime import regression test is included in the API test suite.
+
+The latest API deployment `dpl_z8JPqXF4i9qexDNig1LGEYqXCCFW` was built from the prior source commit and is still unhealthy at runtime. The fix is committed and CI-verified, but Vercel's deployment API again returned HTTP 402 `api-deployments-free-per-day` with retry-after 86,400 seconds. No live login is claimed until the corrected commit is deployed and both health endpoints pass. The Zuri OS web Preview is HTTP 200 / READY and remains SSO-protected.
+
+
+## Health semantics and MAC workload-identity transport — 2026-11-22 UTC
+
+- Zuri OS API now registers `/health/live` and `/health/ready` before Atlas initialization and keeps the HTTP service available when MongoDB cannot connect. Liveness remains HTTP 200; readiness returns HTTP 503 with a non-secret database state. A Vercel sandbox smoke test with a deliberately unavailable local MongoDB verified both responses and confirmed that the process remains running.
+- MeBuMIP's MAC runtime-config client now sends its short-lived Vercel OIDC token both as the application `Authorization: Bearer` credential and as Vercel's `x-vercel-trusted-oidc-idp-token` Deployment Protection trusted-source proof. A unit test asserts both headers are present.
+- Exact-head GitHub CI runs `44989972867` and `44989968679` passed on `746ec6dd7b378df2a2c4657cc44b9f1fa1a36a00` (both OpenAPI contracts, route drift, docs mirror, typecheck, tests and build).
+- **Still requires Vercel owner security configuration:** the Zuri OS API project must explicitly trust the MeBuMIP API project as a Trusted Source for the intended Production-to-Production call. This is a cross-project Deployment Protection access-control grant and has not been added without owner authorization. Existing SSO protection remains enabled.
+- MAC can currently update non-secret runtime configuration (approved API/browser origins and public settings) without redeploy when the runtime-config consumer can reach it. Secret values remain unavailable from MAC pending an encryption KMS/HSM and secure bootstrap design; database bootstrap credentials remain deployment-scoped. Do not describe the complete secret-vault/no-redeploy requirement as finished.
+
+
+## Demo autofill password/hash consistency — 2026-11-22 UTC
+
+Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored Argon2id password hashes retrieved from the isolated `zuri_demo` database. All three checks returned `passwordMatches: true` for standard member, multi-workspace member and unassigned identity. The check ran in an ephemeral Vercel sandbox; the password was passed as a transient environment variable and was not printed or committed. This verifies the autofill password is synchronized with the seeded demo accounts; live API login still awaits a corrected API Preview deployment.
+
+
+## MAC workload secret delivery allowlist hardening — 2026-11-24
+
+- Replaced broad service-wide secret delivery with explicit secret-ID allowlists for each Production workload. MeBuMIP API receives only mail, MFA and audit-signing secrets; Zuri OS API receives only its JWT and MFA keys.
+- Both the Zuri OS API's own refresh and the internal MAC workload endpoint use the shared allowlisted vault reader. MongoDB selection also requires Production environment, authorized service and non-revoked state.
+- Regression tests cover both workload allowlists. Full CI passed on implementation commit `c82b76a1dc985fa892c76a1c5dd6f0ee83603d23` (run `45369507739`) and docs head `3c68434c3f226698da41436f9cbd2ee6e513a224` (run `45369769377`).
+- Deployment/live acceptance remains blocked by Vercel's build-rate limit and external AWS/Production provisioning. No Production secret delivery is claimed.
+
+
+## MeBuMIP MAC runtime snapshot validation — 2026-11-24
+
+- The runtime-config client now validates MAC snapshots before applying them: safe revision, exact service identity, exact HTTPS API/browser origins, unique browser origins, recognized secret-access state and only approved MeBuMIP secret IDs with string values.
+- Blocked secret delivery cannot contain secret values. Invalid or unexpected snapshots are rejected before process configuration changes.
+- Added regression tests for valid snapshots, malformed revisions, unsafe/duplicate origins, unknown secret IDs, invalid values and blocked-delivery behavior.
+- Client commit `b89e6d5b4f75bfa91a60ac9d0871be97d00e36df`; tests commit `3ecb381816c443f06044d8ab4063b0a9ba4d305e`; exact-head CI run **45373177245** passed all validations, typecheck, tests and build.
+- Live deployment acceptance remains blocked by Vercel deployment access/quota and outstanding AWS/Production provisioning.
+
+
+## MeBuMIP MAC identity-destination hardening — 2026-11-24
+
+- Closed a credential-forwarding trust-boundary gap: the MeBuMIP API now validates `MAC_RUNTIME_CONFIG_URL` before obtaining/sending its short-lived Vercel OIDC identity. The destination is pinned to the approved MAC HTTPS host and exact internal runtime-config path; alternate hosts, HTTP, ports, credentials, path changes, query strings and fragments are rejected.
+- Runtime-config bearer headers reject empty and CR/LF-injected tokens.
+- Added regression tests for approved destination acceptance and malicious/malformed destination rejection, plus token-header validation.
+- Implementation commit: `64b87a53f7d5c4daa05ad14025841192a5e69b95`; test commit: `bcb7fa406ec665c7c9744cc7c9040325b8dc1bac`.
+- Initial CI exposed an over-broad CR/LF character-class check that rejected ordinary token strings; corrected the expression and changed the regression test to inject actual CR/LF bytes. Final exact-head push CI run **45386574943** and PR CI run **45386581584** both passed install, replica-set setup, both OpenAPI validations, route-drift validation, documentation mirror validation, typecheck, tests and build on `178d6af4f474cf75660c7b8704abbc34d99205fe`.
+- This is a source-level control-plane security fix. It does not constitute deployed OIDC/MAC acceptance; Vercel deployment checks remain blocked by `build-rate-limit`.
+
+
+## MeBuMIP workload identity request hardening — 2026-11-24
+
+- Removed the ability for an inbound HTTP request header to supply the OIDC token used by the MeBuMIP API when calling MAC. The API now obtains its workload identity inside the Vercel function through `@vercel/oidc`; caller-controlled request headers are not identity credentials.
+- MAC runtime-config requests now explicitly disable caching and reject HTTP redirects, preventing an identity-bearing request from following an unexpected redirect.
+- Added a regression test asserting `cache: no-store` and `redirect: error` on MAC runtime-config requests.
+- Implementation commits: `1ef37a815762de42ca31d72fa89680277b36de34`, `3b0bddc1865116fdbd03ebc96eca64ea43ea5bb8`; request-policy/test commits: `3ce2a6ec7263a0861e2553edd86fd704c910bb1a`, `cc89ed6fb90646cc8eb0112ba2e416f52067d043`.
+- Exact-head push CI run `45388310743` and PR CI run `45388317050` both passed install, Mongo replica-set setup, both OpenAPI validations, route-drift validation, documentation mirror validation, typecheck, tests and build on `cc89ed6fb90646cc8eb0112ba2e416f52067d043`.
+- This verifies source and CI only. Live Vercel deployment and Production MAC/OIDC/AWS acceptance remain blocked by Vercel `build-rate-limit` and unprovisioned Production dependencies.

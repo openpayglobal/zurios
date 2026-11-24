@@ -10,6 +10,7 @@ export * from "./rbac-service.js";
 export * from "./abac-service.js";
 export * from "./feature-flags.js";
 export * from "./audit-service.js";
+export * from "./audit-signing.js";
 export * from "./repositories.js";
 
 export * from "./user-service.js";

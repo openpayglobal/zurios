@@ -9,13 +9,15 @@ import {
  upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,setOrganizationStatus,setLocationStatus,
  type AuditEventDocument,type ApprovalRequestDocument,BREAK_GLASS_ALLOWED_PERMISSIONS
 } from "@zuri/core-platform";
-import {encryptInvitationToken} from "./auth-crypto.js";
+import {encryptInvitationTokenWithConfig} from "./auth-crypto.js";
+import {encryptMacSecret,decryptMacSecret,isMacSecretVaultConfigured,type MacSecretEnvelope} from "./secret-vault.js";
 import {issueMembershipInvitation} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
 import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
+import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin,toAdminRuntimeConfig,type PlatformRuntimeConfig} from "./runtime-config-store.js";
 import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -37,6 +39,20 @@ function fail(error:unknown,reply:FastifyReply){
 async function writeAudit(db:Db,tenantId:string,p:Principal,request:FastifyRequest,secret:string,action:string,resourceType:string,resourceId:string|undefined,outcome:"success"|"denied"|"failure",metadata:Record<string,unknown>={},session?:ClientSession){
  await appendAuditEvent(db,{tenantId,actor:{userId:p.userId,ipHash:hashIp(request,secret),...(typeof request.headers["user-agent"]==="string"?{userAgent:request.headers["user-agent"].slice(0,512)}:{})},action,resourceType,...(resourceId?{resourceId}:{}),outcome,correlationId:request.id,metadata:{...metadata,...(p.emergencyGrantIds?.length?{emergencyGrantIds:p.emergencyGrantIds}:{})}},session);
 }
+async function checkRecentMfaStepUp(db:Db,secret:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
+ if(["GET","HEAD","OPTIONS"].includes(request.method))return true;
+ const now=new Date(),c=coreCollections(db),[session,user]=await Promise.all([
+  c.sessions.findOne(
+   {tenantId:p.tenantId,sessionId:p.sessionId,userId:p.userId,revokedAt:{$exists:false},expiresAt:{$gt:now},mfaStepUpAt:{$gt:new Date(now.getTime()-5*60_000)},mfaStepUpExpiresAt:{$gt:now}},
+   {projection:{_id:1}}
+  ),
+  c.users.findOne({userId:p.userId,status:"active",mfaEnabled:true},{projection:{_id:1}})
+ ]);
+ if(session&&user)return true;
+ await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{code:"MFA_STEP_UP_REQUIRED"});
+ reply.code(403).send({error:"MFA_STEP_UP_REQUIRED"});
+ return false;
+}
 async function checkTenantPermission(db:Db,secret:string,permission:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
  if(!authorize(p,{permission,resourceTenantId:p.tenantId})){
   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission});
@@ -47,6 +63,7 @@ async function checkTenantPermission(db:Db,secret:string,permission:string,reque
   await writeAudit(db,p.tenantId,p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,code:"ABAC_POLICY_DENIED"});
   reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
  }
+ if(!await checkRecentMfaStepUp(db,secret,request,reply,p))return false;
  return true;
 }
 async function checkPlatformPermission(db:Db,secret:string,permission:string,request:FastifyRequest,reply:FastifyReply,p:Principal):Promise<boolean>{
@@ -59,6 +76,7 @@ async function checkPlatformPermission(db:Db,secret:string,permission:string,req
   await writeAudit(db,"platform",p,request,secret,"authorization.denied","platform_admin",request.routeOptions.url,"denied",{permission,scope:"platform",code:"ABAC_POLICY_DENIED"});
   reply.code(403).send({error:"ABAC_POLICY_DENIED"});return false;
  }
+ if(!await checkRecentMfaStepUp(db,secret,request,reply,p))return false;
  return true;
 }
 function tenantGuard(db:Db,secret:string,permission:string){
@@ -179,7 +197,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const user=existing??await createUser(db,p.userId,{email,displayName:body.displayName,...(body.phoneE164?{phoneE164:body.phoneE164}:{})},session);
      const membership=await createMembership(db,p.tenantId,p.userId,{userId:user.userId,organizationIds:body.organizationIds,locationIds:body.locationIds,roleIds:body.roleIds},session,{allowInvitedUser:true,forceInvited:true});
      const token=await issueMembershipInvitation(db,membership.membershipId,7*24*60*60,session);
-     const encryptedToken=encryptInvitationToken(token,config.mfaEncryptionKey);
+     const encryptedToken=encryptInvitationTokenWithConfig(token,config);
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"identity.membership.invitation.created","membership",membership.membershipId,"success",{reason:body.reason,emailDomain:email.split("@")[1]},session);
      await emit(db,session,p.tenantId,request,"identity.membership.invitation.requested","membership",membership.membershipId,{membershipId:membership.membershipId,userId:user.userId,recipientEmail:email,displayName:body.displayName,encryptedInvitationToken:encryptedToken,deliveryChannel:"email"});
      return {statusCode:202,body:{data:{userId:user.userId,membershipId:membership.membershipId,status:"invited",deliveryStatus:"queued"}}};
@@ -196,7 +214,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     if(!user)return reply.code(422).send({error:"INVITED_USER_NOT_ELIGIBLE"});
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.users.invitation.resend",async session=>{
      const token=await issueMembershipInvitation(db,params.membershipId,7*24*60*60,session);
-     const encryptedToken=encryptInvitationToken(token,config.mfaEncryptionKey);
+     const encryptedToken=encryptInvitationTokenWithConfig(token,config);
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"identity.membership.invitation.resent","membership",params.membershipId,"success",{reason:body.reason},session);
      await emit(db,session,p.tenantId,request,"identity.membership.invitation.requested","membership",params.membershipId,{membershipId:params.membershipId,userId:user.userId,recipientEmail:user.emailNormalized,displayName:user.displayName,encryptedInvitationToken:encryptedToken,deliveryChannel:"email"});
      return {statusCode:202,body:{data:{membershipId:params.membershipId,status:"invited",deliveryStatus:"queued"}}};
@@ -408,7 +426,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const owner=existing??await createUser(db,p.userId,{email,displayName:body.owner.displayName,...(body.owner.phoneE164?{phoneE164:body.owner.phoneE164}:{})},session);
      const membership=await createMembership(db,tenant.tenantId,p.userId,{userId:owner.userId,organizationIds:[root.organizationId],locationIds:[],roleIds:[ownerRole.roleId]},session,{allowInvitedUser:true,forceInvited:true,allowProvisioningTenant:true});
      const invitationToken=await issueMembershipInvitation(db,membership.membershipId,7*24*60*60,session);
-     const encryptedInvitationToken=encryptInvitationToken(invitationToken,config.mfaEncryptionKey);
+     const encryptedInvitationToken=encryptInvitationTokenWithConfig(invitationToken,config);
      await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.tenant.provisioned","tenant",tenant.tenantId,"success",{reason,ownerMembershipId:membership.membershipId},session);
      await emit(db,session,"platform",request,"platform.tenant.provisioned","tenant",tenant.tenantId,{tenantId:tenant.tenantId,slug:tenant.slug});
      await emit(db,session,tenant.tenantId,request,"identity.membership.invitation.requested","membership",membership.membershipId,{membershipId:membership.membershipId,userId:owner.userId,recipientEmail:email,displayName:body.owner.displayName,encryptedInvitationToken,deliveryChannel:"email"});
@@ -441,6 +459,209 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      return {statusCode:201,body:{data:approval}};
     });
    }catch(error){return fail(error,reply);}
+  });
+
+
+  app.get("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(_request,reply)=>{
+   const runtime=await readPlatformRuntimeConfig(db);
+   return reply.header("cache-control","no-store").send({data:toAdminRuntimeConfig(runtime)});
+  });
+  app.put("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   const schema=z.object({
+    allowedOrigins:z.array(z.string().url()).min(1).max(20),
+    apiOrigins:z.object({zuriOs:z.string().url(),mebumip:z.string().url()}).strict(),
+    publicSettings:z.object({
+     accessRequestsEnabled:z.boolean().optional(),
+     privacyNoticeUrl:z.string().url().refine(value=>value.startsWith("https://"),"Privacy notice URL must use HTTPS").nullable().optional(),
+     supportEmail:z.string().email().optional(),
+     supportUrl:z.string().url().optional(),
+     defaultLocale:z.string().min(2).max(12).optional(),
+     defaultCurrency:z.string().regex(/^[A-Z]{3}$/).optional(),
+     timezone:z.string().min(3).max(80).optional()
+    }).strict(),
+    reason:z.string().trim().min(8).max(500)
+   }).strict();
+   try{
+    const body=schema.parse(request.body);
+    const allowedOrigins=normalizeOriginList(body.allowedOrigins);
+    const apiOrigins={zuriOs:normalizeVerifiedApiOrigin(body.apiOrigins.zuriOs),mebumip:normalizeVerifiedApiOrigin(body.apiOrigins.mebumip)};
+    if(body.publicSettings.accessRequestsEnabled===true&&!body.publicSettings.privacyNoticeUrl)throw new Error("PRIVACY_NOTICE_REQUIRED");
+    return await mutate(db,request,reply,p,config.jwtSecret,"platform","platform.runtime_config.update",async(session)=>{
+     const current=await readPlatformRuntimeConfig(db,session);
+     const now=new Date();
+     const revision=current.revision+1;
+     const publicSettings={
+      accessRequestsEnabled:body.publicSettings.accessRequestsEnabled??current.publicSettings.accessRequestsEnabled,
+      privacyNoticeUrl:body.publicSettings.privacyNoticeUrl===undefined?current.publicSettings.privacyNoticeUrl:body.publicSettings.privacyNoticeUrl,
+      supportEmail:body.publicSettings.supportEmail??current.publicSettings.supportEmail,
+      supportUrl:body.publicSettings.supportUrl??current.publicSettings.supportUrl,
+      defaultLocale:body.publicSettings.defaultLocale??current.publicSettings.defaultLocale,
+      defaultCurrency:body.publicSettings.defaultCurrency??current.publicSettings.defaultCurrency,
+      timezone:body.publicSettings.timezone??current.publicSettings.timezone
+     };
+     const next={revision,allowedOrigins,apiOrigins,publicSettings,updatedAt:now,updatedBy:p.userId,reason:body.reason};
+     await db.collection<PlatformRuntimeConfig>("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{_id:"global",createdAt:now}},{upsert:true,session});
+     await db.collection("platformRuntimeConfigHistory").insertOne({...next,changeId:randomUUID(),actorUserId:p.userId},{session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.runtime_config.updated","runtime_configuration","global","success",{revision,reason:body.reason,allowedOriginCount:allowedOrigins.length,apiOriginKeys:Object.keys(apiOrigins).join(",")},session);
+     return {statusCode:200,body:{status:"updated",revision,updatedAt:now.toISOString(),allowedOrigins,apiOrigins,publicSettings:body.publicSettings}};
+    });
+   }catch(error){return fail(error,reply);}
+  });
+
+  const macSecretServices = ["zurios-api","zuri-mebumip-api"] as const;
+  const macSecretIdSchema = z.string().regex(/^[a-z][a-z0-9._-]{1,63}$/);
+  const macSecretReasonSchema = z.string().trim().min(20).max(500);
+  app.get("/platform/admin/secrets",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(request,reply)=>{
+   // Explicit allowlist: a denylist can accidentally expose newly added secret fields.
+   const rows=await db.collection("mac_secrets").find({},{
+    projection:{
+     _id:0,secretId:1,version:1,allowedServices:1,environment:1,
+     createdAt:1,createdBy:1,updatedAt:1,updatedBy:1,reason:1,
+     revokedAt:1,revokedBy:1,revocationReason:1
+    }
+   }).sort({secretId:1}).toArray();
+   await writeAudit(db,"platform",principal(request),request,config.jwtSecret,"platform.mac_secret.metadata_listed","mac_secret","all","success",{count:rows.length});
+   return reply.header("cache-control","no-store").send({data:rows});
+  });
+  app.put("/platform/admin/secrets/:secretId",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    if(process.env.VERCEL_ENV!=="production"||!isMacSecretVaultConfigured())return reply.code(503).send({error:"MAC_SECRET_VAULT_UNAVAILABLE"});
+    const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
+    const body=z.object({
+     value:z.string().min(1).max(32_768),
+     allowedServices:z.array(z.enum(macSecretServices)).min(1).max(macSecretServices.length),
+     reason:macSecretReasonSchema
+    }).strict().parse(request.body);
+    const collection=db.collection("mac_secrets");
+    const previous=await collection.findOne({secretId:params.secretId});
+    if(previous?.revokedAt)return reply.code(409).send({error:"MAC_SECRET_REVOKED_REQUIRES_NEW_ID"});
+    const version=(previous?.version??0)+1;
+    const envelope=await encryptMacSecret(body.value,{secretId:params.secretId,version});
+    const key=request.headers["idempotency-key"];
+    if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const result=await runIdempotentMutation(db,{
+     tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.upsert",key,
+     request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,allowedServices:body.allowedServices,valueDigest:createHmac("sha256",config.jwtSecret).update(body.value).digest("hex")}}
+    },async session=>{
+     const current=await collection.findOne({secretId:params.secretId},{session});
+     if((current?.version??0)!==(previous?.version??0))throw new Error("MAC_SECRET_VERSION_CONFLICT");
+     const now=new Date();
+     if(current)await db.collection("mac_secret_versions").insertOne({
+      secretId:params.secretId,version:current.version,allowedServices:current.allowedServices,
+      environment:current.environment,envelope:current.envelope,createdAt:current.createdAt,
+      updatedAt:current.updatedAt,archivedAt:now,archivedBy:p.userId,reason:body.reason
+     },{session});
+     await collection.updateOne({secretId:params.secretId},{
+      $set:{secretId:params.secretId,version,allowedServices:[...new Set(body.allowedServices)],environment:"production",envelope,updatedAt:now,updatedBy:p.userId,reason:body.reason},
+      $setOnInsert:{createdAt:now,createdBy:p.userId},
+      $unset:{revokedAt:"",revokedBy:"",revocationReason:""}
+     },{upsert:true,session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.mac_secret.updated","mac_secret",params.secretId,"success",{version,allowedServices:body.allowedServices,reason:body.reason},session);
+     return {statusCode:200,body:{status:"stored_encrypted",secretId:params.secretId,version,allowedServices:[...new Set(body.allowedServices)]}};
+    });
+    reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return fail(error,reply);}
+  });
+  app.post("/platform/admin/secrets/:secretId/rotate",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    if(process.env.VERCEL_ENV!=="production"||!isMacSecretVaultConfigured())return reply.code(503).send({error:"MAC_SECRET_VAULT_UNAVAILABLE"});
+    const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
+    const body=z.object({reason:macSecretReasonSchema}).strict().parse(request.body);
+    const key=request.headers["idempotency-key"];
+    if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const collection=db.collection("mac_secrets"),previous=await collection.findOne({secretId:params.secretId,revokedAt:{$exists:false}});
+    if(!previous)return reply.code(404).send({error:"MAC_SECRET_NOT_FOUND"});
+    const nextVersion=previous.version+1;
+    const plaintext=await decryptMacSecret(previous.envelope as MacSecretEnvelope,{secretId:params.secretId,version:previous.version});
+    const envelope=await encryptMacSecret(plaintext,{secretId:params.secretId,version:nextVersion});
+    const result=await runIdempotentMutation(db,{
+     tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.rotate",key,
+     request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,fromVersion:previous.version,reason:body.reason}}
+    },async session=>{
+     const current=await collection.findOne({secretId:params.secretId},{session});
+     if(!current||current.version!==previous.version||current.revokedAt)throw new Error("MAC_SECRET_VERSION_CONFLICT");
+     const now=new Date();
+     await db.collection("mac_secret_versions").insertOne({
+      secretId:params.secretId,version:current.version,allowedServices:current.allowedServices,
+      environment:current.environment,envelope:current.envelope,createdAt:current.createdAt,
+      updatedAt:current.updatedAt,archivedAt:now,archivedBy:p.userId,reason:body.reason
+     },{session});
+     await collection.updateOne({secretId:params.secretId,version:current.version},{
+      $set:{version:nextVersion,envelope,updatedAt:now,updatedBy:p.userId,reason:body.reason}
+     },{session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.mac_secret.rotated","mac_secret",params.secretId,"success",{fromVersion:current.version,toVersion:nextVersion,reason:body.reason},session);
+     return {statusCode:200,body:{status:"rotated",secretId:params.secretId,version:nextVersion}};
+    });
+    reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return fail(error,reply);}
+  });
+  app.delete("/platform/admin/secrets/:secretId",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
+    const body=z.object({reason:macSecretReasonSchema}).strict().parse(request.body);
+    const key=request.headers["idempotency-key"];
+    if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const result=await runIdempotentMutation(db,{
+     tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.revoke",key,
+     request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,reason:body.reason}}
+    },async session=>{
+     const now=new Date();
+     const changed=await db.collection("mac_secrets").updateOne({secretId:params.secretId,revokedAt:{$exists:false}},{
+      $set:{revokedAt:now,revokedBy:p.userId,revocationReason:body.reason,updatedAt:now,updatedBy:p.userId}
+     },{session});
+     if(!changed.matchedCount)throw new Error("MAC_SECRET_NOT_FOUND");
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.mac_secret.revoked","mac_secret",params.secretId,"success",{reason:body.reason},session);
+     return {statusCode:200,body:{status:"revoked",secretId:params.secretId,revokedAt:now.toISOString()}};
+    });
+    reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return fail(error,reply);}
+  });
+
+  app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(request,reply)=>{
+   try{
+    let topology={replicaSet:false,writablePrimary:false,transactionsAvailable:false};
+    try{
+     const hello=await db.command({hello:1});
+     topology={
+      replicaSet:typeof hello.setName==="string"&&hello.setName.length>0,
+      writablePrimary:hello.isWritablePrimary===true,
+      transactionsAvailable:typeof hello.logicalSessionTimeoutMinutes==="number"&&hello.logicalSessionTimeoutMinutes>0
+     };
+    }catch{}
+    const managedSigning=[
+     {id:"5653e1ff-fd71-4a0d-8720-380cdfcaf2c4",name:"Zuri OS MAC Runtime Workload Identity",purpose:"Vercel workload identity",keyId:"75899278-1e19-4444-bec0-141dc4d17eb0",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"16d2fb82-30b7-4a0d-8c4e-49fb1de92919",name:"Zuri OS User Session JWT Signing",purpose:"User session JWT signing",keyId:"2900b63b-5eed-4689-8726-b05a4618967f",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"55210f93-c052-45a5-aeb8-e083ed0d5dce",name:"Zuri OS Audit Event Signing",purpose:"Audit event signing",keyId:"da6060ee-9fda-4389-a652-281c256be6d2",algorithm:"RS256",environment:"production",projectId:"prj_vkIcPCsN1TW3WOturczl3FcWEJkq",status:"provisioned_pending_runtime_integration"},
+     {id:"501ff21c-7c24-4e9e-b23e-789256cd6edd",name:"Zuri MeBuMIP Runtime Workload Identity",purpose:"MeBuMIP Vercel workload identity",keyId:"5d401897-e851-438f-a56c-b28453aff756",algorithm:"RS256",environment:"production",projectId:"prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ",status:"provisioned_pending_runtime_integration"},
+    ];
+    const runtimeConfig=await readPlatformRuntimeConfig(db);
+    return reply.header("cache-control","no-store").send({data:{
+     generatedAt:new Date().toISOString(),
+     environment:process.env.NODE_ENV??"unknown",
+     database:{configured:Boolean(process.env.MONGODB_URI),topology,source:"deployment_bootstrap",note:"The API requires a bootstrap database connection before it can read MAC runtime configuration. A provider-issued production URI must be validated and registered through a separate secure provisioning step; the URI is never returned."},
+     keyrings:{
+      workloadIdentity:{managedSigning:managedSigning.filter(key=>key.purpose.toLowerCase().includes("workload identity")),status:"provisioned_pending_live_oidc_validation"},
+      userSessionJwt:{legacyConfigured:Boolean(config.jwtSecret),legacyAlgorithm:"HS256",managedSigning:managedSigning.filter(key=>key.purpose==="User session JWT signing"),status:"KMS_key_provisioned_pending_application_migration"},
+      mfaEncryption:{configured:Boolean(process.env.MFA_ENCRYPTION_KEY),source:"deployment_bootstrap",status:"encryption_KMS_HSM_required_for_MAC_managed_rotation"},
+      auditSigning:{configured:Boolean(process.env.AUDIT_SIGNING_KEY||process.env.AUDIT_SIGNING_KEYRING),managedSigning:managedSigning.filter(key=>key.purpose==="Audit event signing"),status:"KMS_key_provisioned_pending_audit_pipeline_migration"}
+     },
+     apiOrigins:{items:runtimeConfig.allowedOrigins,apiOrigins:runtimeConfig.apiOrigins,revision:runtimeConfig.revision,source:"MAC_runtime_registry",status:"active"},
+     providers:{
+      meta:{configured:false,status:"provider_authorization_required"},
+      whatsapp:{configured:false,status:"provider_authorization_required"},
+      email:{configured:Boolean(process.env.RESEND_API_KEY&&process.env.MAIL_FROM),status:process.env.RESEND_API_KEY&&process.env.MAIL_FROM?"configured":"not_configured"}
+     },
+     secretStore:{status:isMacSecretVaultConfigured()?"configured_pending_live_kms_validation":"blocked",reason:isMacSecretVaultConfigured()?"AWS KMS role, region and key identifiers are present. Complete a live Production OIDC, GenerateDataKey, Decrypt and secret-delivery acceptance test before relying on this vault.":"AWS KMS envelope encryption is implemented but disabled. Provision the AWS OIDC trust role, symmetric KMS key and Production-only AWS_REGION, AWS_ROLE_ARN and MAC_SECRETS_KMS_KEY_ARN settings before storing secrets."},
+     note:"Metadata only. No private key, JWT secret, database URI or provider credential is returned."
+    }});
+   }catch(error){request.log.error({err:error,correlationId:request.id},"Infrastructure inventory failed");return reply.code(500).send({error:"INFRASTRUCTURE_INVENTORY_UNAVAILABLE"});}
   });
   app.post("/platform/admin/tenants/:tenantId/lifecycle-requests",{preHandler:platformGuard(db,config.jwtSecret,"platform.tenants.lifecycle.request")},async(request,reply)=>{
    const p=principal(request);try{

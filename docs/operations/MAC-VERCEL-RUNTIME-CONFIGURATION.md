@@ -1,6 +1,6 @@
 # MAC-to-Vercel Runtime Configuration Operations
 
-**Status:** Proposed; implementation and production acceptance pending  
+**Status:** Non-secret runtime-config source implementation present; Production acceptance pending  
 **Date:** 2026-11-20
 
 ## Objective
@@ -90,7 +90,7 @@ Roll back by creating a new MAC configuration revision from a previously approve
 
 - No verified production configuration or usable production database credential.
 - Vercel OIDC issuer mode and real token claims have not yet been verified in either project.
-- MAC runtime configuration API and user interface are not yet implemented.
+- The non-secret MAC runtime configuration API and administration UI are implemented in source; the encrypted secret lifecycle API/UI remains pending a dedicated encryption KMS/HSM.
 - Vercel API production deployment and health checks are not accepted.
 - Production rollout requires owner approval for secret/key provisioning and security review.
 
@@ -100,3 +100,38 @@ Roll back by creating a new MAC configuration revision from a previously approve
 - [Vercel OIDC token reference](https://vercel.com/docs/oidc/reference)
 - [Connect to your own API with OIDC](https://vercel.com/docs/oidc/api)
 - [`@vercel/oidc` token verification](https://github.com/vercel/vercel/blob/main/packages/oidc/docs/functions/verifyVercelOidcToken.md)
+
+
+## Implementation checkpoint — 2026-11-24
+
+The source now includes the MAC public runtime projection, an OIDC-authenticated internal runtime endpoint, and a MeBuMIP API client that obtains Vercel OIDC identity and refreshes its MAC settings without a deployment. The internal endpoint now fails closed with HTTP 503 until MongoDB initialization has completed.
+
+The Zuri OS API Vercel project has been configured with a Trusted Sources rule that permits the MeBuMIP API Production project to reach only the Zuri OS API Production environment. SSO protection remains enabled. This rule is provider-configured but still requires an actual deployed request to prove the end-to-end path.
+
+The user-session KMS signer is now wired in source for Production: `@vercel/kms` signs access JWTs using issuer `16d2fb82-30b7-4a0d-8c4e-49fb1de92919`; JOSE verifies against the issuer JWKS with strict RS256, issuer and audience checks. Local/Preview remains on HS256. Exact-head CI passed on `e2bcfc52e2d500c8fea91b1315af6672b65c4970` (run `45332099570`).
+
+**Not yet accepted:** live Production signing, live cross-project MAC fetch, API health/readiness, audit KMS signing, encryption KMS/HSM, production Atlas, provider connections, and full public end-user release. Existing Vercel build-rate limits still prevent the required fresh deployment. Configuration changes made in MAC do not require redeployment; source-code and environment-bootstrap changes still do.
+
+
+### Audit KMS signing source integration — 2026-11-24
+
+The shared audit writer and API audit writer now sign Production audit events with the dedicated Vercel KMS RS256 issuer. The event payload is canonicalized; integrity metadata records issuer, key ID, public-key fingerprint and signature. A JWKS verifier checks the signature and key fingerprint, and Production writes fail closed on signer errors. Exact-head CI run **45337383228** passed on commit **7793244a4612f62b60f4058e9e6348f322d7f6aa**. Live Production signing/verification and key-rotation retention remain unaccepted pending a successful deployment.
+
+
+### MAC private-settings response hardening — 2026-11-24
+
+The administrative runtime-config endpoint now strips the legacy `privateSettings` field from its response through a dedicated safe projection and regression test. New runtime-config history records no longer copy the legacy private field. Existing database values are retained (not deleted) pending a controlled migration, but are not returned by the admin, public or workload runtime endpoints. This is not yet a secret manager: no encrypted secret CRUD or delivery is enabled until the separate encryption KMS/HSM provider and workload-specific authorization are configured.
+
+
+### MAC encrypted secret lifecycle implementation — 2026-11-24
+
+The API source now includes an AWS KMS envelope-encryption adapter and audited secret lifecycle endpoints. It uses one fresh AES-256 data key per version, AES-256-GCM with authenticated context, and KMS-wrapped data keys. Vercel Production OIDC is exchanged for short-lived AWS credentials using STS; static AWS credentials are not stored. The workload runtime endpoint releases only active secrets scoped to the authenticated service and audits access before returning them. Admin listing omits ciphertext and plaintext; updates, rotation and revocation are versioned and idempotent.
+
+The adapter is deliberately fail-closed and is not active until the AWS account owner provisions the OIDC provider, an exact-subject Production role, a symmetric KMS key and the three Production environment settings. No AWS resources or spend were initiated. OpenAPI contracts were added; exact-head CI is pending.
+
+
+### MAC runtime secrets are consumed without redeployment — 2026-11-24
+
+Both APIs now consume MAC-managed secret values at runtime. The Zuri OS API reads its narrowly scoped authentication keys directly from the MAC secret collection using its own Production OIDC identity. MeBuMIP retrieves its service-scoped secret snapshot through the MAC internal runtime endpoint and applies validated Resend, sender, MFA and audit configuration in process memory. Refresh runs every five seconds; revoked/missing secrets are cleared, and failed Production refreshes fail closed. Production readiness checks require the configured runtime keys.
+
+This is runtime configuration inside the application, not a dynamic update of Vercel's native deployment environment. The MAC API's own MongoDB URI remains a bootstrap deployment setting because the control plane must connect to its database before it can read the vault. MeBuMIP's MongoDB URI remains a bootstrap setting in the current startup architecture. AWS region, role ARN and KMS key ARN are provider bootstrap identifiers.
