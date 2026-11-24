@@ -50,14 +50,13 @@ await app.register(cors, {
   exposedHeaders: ["X-Audit-Archive-SHA256", "X-Audit-Archive-Object-Key", "X-Audit-Archive-Status"],
 });
 
-// A real Vercel request may expose its short-lived OIDC token through the
-// x-vercel-oidc-token header. Refresh the MAC configuration in request context.
+// Refresh MAC configuration using an OIDC token minted inside this function.
 app.addHook("preHandler", async (request) => {
   if (request.url.startsWith("/health/live") || Date.now() - lastRuntimeRefreshAt <= 5_000) return;
   lastRuntimeRefreshAt = Date.now();
   const oidcHeader = request.headers["x-vercel-oidc-token"];
   try {
-    const runtime = await getMacRuntimeConfig(true, typeof oidcHeader === "string" ? oidcHeader : undefined);
+    const runtime = await getMacRuntimeConfig(true);
     if (!runtime) throw new Error("MAC_RUNTIME_CONFIG_UNAVAILABLE");
     // Apply a validated full snapshot; missing IDs clear revoked secrets.
     applyMacRuntimeSecrets(runtime.secrets ?? {});
