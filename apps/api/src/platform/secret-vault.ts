@@ -212,6 +212,7 @@ export async function readMacSecretsForService(
   db: Db,
   service: "zurios-api" | "zuri-mebumip-api",
   oidcToken: string,
+  secretIds?: string[],
 ): Promise<Array<{secretId:string;version:number;value:string}>> {
   const records = await db.collection<{
     secretId:string;
@@ -223,6 +224,7 @@ export async function readMacSecretsForService(
     environment:"production",
     allowedServices:service,
     revokedAt:{$exists:false},
+    ...(secretIds?.length?{secretId:{$in:secretIds}}:{}),
   },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
   return decryptMacSecrets(records,oidcToken);
 }
