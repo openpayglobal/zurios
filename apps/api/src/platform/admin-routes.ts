@@ -499,7 +499,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
       defaultCurrency:body.publicSettings.defaultCurrency??current.publicSettings.defaultCurrency,
       timezone:body.publicSettings.timezone??current.publicSettings.timezone
      };
-     const next={revision,allowedOrigins,apiOrigins,publicSettings,privateSettings:current.privateSettings??{},updatedAt:now,updatedBy:p.userId,reason:body.reason};
+     const next={revision,allowedOrigins,apiOrigins,publicSettings,updatedAt:now,updatedBy:p.userId,reason:body.reason};
      await db.collection<PlatformRuntimeConfig>("platformRuntimeConfig").updateOne({_id:"global"},{$set:next,$setOnInsert:{_id:"global",createdAt:now}},{upsert:true,session});
      await db.collection("platformRuntimeConfigHistory").insertOne({...next,changeId:randomUUID(),actorUserId:p.userId},{session});
      await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.runtime_config.updated","runtime_configuration","global","success",{revision,reason:body.reason,allowedOriginCount:allowedOrigins.length,apiOriginKeys:Object.keys(apiOrigins).join(",")},session);
