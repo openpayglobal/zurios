@@ -352,3 +352,13 @@ Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored A
 - Added regression tests for valid snapshots, malformed revisions, unsafe/duplicate origins, unknown secret IDs, invalid values and blocked-delivery behavior.
 - Client commit `b89e6d5b4f75bfa91a60ac9d0871be97d00e36df`; tests commit `3ecb381816c443f06044d8ab4063b0a9ba4d305e`; exact-head CI run **45373177245** passed all validations, typecheck, tests and build.
 - Live deployment acceptance remains blocked by Vercel deployment access/quota and outstanding AWS/Production provisioning.
+
+
+## MeBuMIP MAC identity-destination hardening — 2026-11-24
+
+- Closed a credential-forwarding trust-boundary gap: the MeBuMIP API now validates `MAC_RUNTIME_CONFIG_URL` before obtaining/sending its short-lived Vercel OIDC identity. The destination is pinned to the approved MAC HTTPS host and exact internal runtime-config path; alternate hosts, HTTP, ports, credentials, path changes, query strings and fragments are rejected.
+- Runtime-config bearer headers reject empty and CR/LF-injected tokens.
+- Added regression tests for approved destination acceptance and malicious/malformed destination rejection, plus token-header validation.
+- Implementation commit: `64b87a53f7d5c4daa05ad14025841192a5e69b95`; test commit: `bcb7fa406ec665c7c9744cc7c9040325b8dc1bac`.
+- Full CI was triggered for the exact head; run IDs `45386376883` (push) and `45386380675` (PR) were in progress at the time of this checkpoint. No pass is claimed until completion.
+- This is a source-level control-plane security fix. It does not constitute deployed OIDC/MAC acceptance; Vercel deployment checks remain blocked by `build-rate-limit`.
