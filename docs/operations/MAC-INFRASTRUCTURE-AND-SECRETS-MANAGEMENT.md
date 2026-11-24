@@ -248,5 +248,5 @@ The platform-admin secret inventory endpoint now emits a signed audit event for 
 - Runtime-config bearer headers reject empty and CR/LF-injected tokens.
 - Added regression tests for approved destination acceptance and malicious/malformed destination rejection, plus token-header validation.
 - Implementation commit: `64b87a53f7d5c4daa05ad14025841192a5e69b95`; test commit: `bcb7fa406ec665c7c9744cc7c9040325b8dc1bac`.
-- Full CI was triggered for the exact head; run IDs `45386376883` (push) and `45386380675` (PR) were in progress at the time of this checkpoint. No pass is claimed until completion.
+- Initial CI exposed an over-broad CR/LF character-class check that rejected ordinary token strings; corrected the expression and changed the regression test to inject actual CR/LF bytes. Final exact-head push CI run **45386574943** and PR CI run **45386581584** both passed install, replica-set setup, both OpenAPI validations, route-drift validation, documentation mirror validation, typecheck, tests and build on `178d6af4f474cf75660c7b8704abbc34d99205fe`.
 - This is a source-level control-plane security fix. It does not constitute deployed OIDC/MAC acceptance; Vercel deployment checks remain blocked by `build-rate-limit`.
