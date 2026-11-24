@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMacRuntimeConfigHeaders,
+  buildMacRuntimeConfigRequest,
   validateMacRuntimeConfig,
   validateMacRuntimeConfigUrl,
 } from "./runtime-config-client.js";
@@ -13,6 +14,13 @@ test("MAC runtime config requests carry workload identity and Vercel trusted-sou
     "x-vercel-trusted-oidc-idp-token": token,
     accept: "application/json",
   });
+});
+
+test("MAC runtime config requests disable caching and reject redirects", () => {
+  const request = buildMacRuntimeConfigRequest("workload-token");
+  assert.equal(request.method, "GET");
+  assert.equal(request.cache, "no-store");
+  assert.equal(request.redirect, "error");
 });
 
 test("MAC runtime config destination is pinned to the approved HTTPS control-plane endpoint", () => {
