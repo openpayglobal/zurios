@@ -58,12 +58,11 @@ app.addHook("preHandler", async (request) => {
   const oidcHeader = request.headers["x-vercel-oidc-token"];
   try {
     const runtime = await getMacRuntimeConfig(true, typeof oidcHeader === "string" ? oidcHeader : undefined);
-    if (runtime) {
-      // Apply a validated full snapshot; missing IDs clear revoked secrets.
-      applyMacRuntimeSecrets(runtime.secrets ?? {});
-      allowedOriginsCache = runtime.allowedOrigins;
-      allowedOriginsCacheAt = Date.now();
-    }
+    if (!runtime) throw new Error("MAC_RUNTIME_CONFIG_UNAVAILABLE");
+    // Apply a validated full snapshot; missing IDs clear revoked secrets.
+    applyMacRuntimeSecrets(runtime.secrets ?? {});
+    allowedOriginsCache = runtime.allowedOrigins;
+    allowedOriginsCacheAt = Date.now();
   } catch (error) {
     if (process.env.VERCEL_ENV === "production") {
       // A failed MAC refresh must not leave a revoked credential usable indefinitely.
