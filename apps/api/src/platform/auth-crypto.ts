@@ -64,8 +64,8 @@ export function decryptInvitationToken(envelope:string,masterKeyBase64:string):s
 
 export type MfaKeyConfiguration = {
   mfaEncryptionKey: string;
-  mfaEncryptionKeyring?: string;
-  mfaEncryptionActiveKeyId?: string;
+  mfaEncryptionKeyring?: string | undefined;
+  mfaEncryptionActiveKeyId?: string | undefined;
 };
 
 function activeMfaKey(config:MfaKeyConfiguration):{keyId:string;key:string}{
