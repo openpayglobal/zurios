@@ -6,7 +6,7 @@ const schema = z.object({
  JWT_ISSUER: z.string().url(), JWT_AUDIENCE: z.string().min(1), JWT_SECRET: z.string().min(32).optional(),
  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(900).default(900),
  SESSION_TTL_SECONDS: z.coerce.number().int().positive().max(7_776_000).default(2_592_000),
- MFA_ENCRYPTION_KEY: z.string().optional(),
+ MFA_ENCRYPTION_KEY: z.string().optional(), MFA_ENCRYPTION_KEYRING: z.string().max(16384).optional(), MFA_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
  CORS_ORIGINS: z.string().optional(),
  ACCESS_REQUESTS_ENABLED: z.enum(["true","false"]).default("false"),
  ACCESS_REQUESTS_PRIVACY_NOTICE_URL: z.string().url().refine(value=>value.startsWith("https://"),"Privacy notice URL must use HTTPS").optional()
