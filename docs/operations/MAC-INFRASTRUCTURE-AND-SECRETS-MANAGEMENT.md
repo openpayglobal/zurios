@@ -220,3 +220,12 @@ The platform-admin secret inventory endpoint now emits a signed audit event for 
 - The shared vault query always applies the explicit secret-ID filter alongside Production environment, service assignment and non-revoked state. Unknown future secrets are not implicitly delivered.
 - Added regression assertions for both service allowlists. Exact-head CI is running on `081f419e549b8b135bed447f064e1779e6e48fa4`; the result will be recorded after completion.
 - This is a source-level least-privilege correction. Live workload delivery remains unaccepted until the API deployment quota clears and real Production OIDC/KMS requests pass.
+
+
+### Least-privilege delivery validation follow-up — 2026-11-24
+
+- The first CI attempt exposed two type errors in the refactor: an impossible empty-tuple guard and one remaining call using the old optional secret-ID argument. Both were corrected.
+- Final implementation commit: `c82b76a1dc985fa892c76a1c5dd6f0ee83603d23`.
+- Exact-head Full CI run **45369507739** passed: MongoDB replica-set setup, both OpenAPI validations, route-drift validation, documentation mirrors, typecheck, tests and build.
+- The source now uses the same explicit workload secret allowlists for both the Zuri OS API's own MAC secret refresh and the cross-project internal runtime-config endpoint.
+- Deployment and live runtime acceptance remain blocked by Vercel's deployment build-rate limit and the outstanding AWS/Production provisioning gates.
