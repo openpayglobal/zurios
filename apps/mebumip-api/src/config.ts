@@ -82,8 +82,56 @@ const macRuntimeSecretSchema = z.object({
   RESEND_API_KEY: z.string().min(10).optional(),
   MAIL_FROM: z.string().email().optional(),
   MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+  MFA_ENCRYPTION_KEYRING: z.string().max(16384).optional(),
+  MFA_ENCRYPTION_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
   AUDIT_SIGNING_KEY: z.string().min(32).optional(),
-}).strict();
+  AUDIT_SIGNING_KEYRING: z.string().max(16384).optional(),
+  AUDIT_SIGNING_ACTIVE_KEY_ID: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/).optional(),
+}).superRefine((value, context) => {
+  if (Boolean(value.RESEND_API_KEY) !== Boolean(value.MAIL_FROM)) {
+    context.addIssue({ code:z.ZodIssueCode.custom,path:["RESEND_API_KEY"],message:"MAC must deliver RESEND_API_KEY and MAIL_FROM together" });
+  }
+  if (value.MFA_ENCRYPTION_KEYRING) {
+    try {
+      const ring: unknown = JSON.parse(value.MFA_ENCRYPTION_KEYRING);
+      if (!ring || typeof ring !== "object" || Array.isArray(ring)) throw new Error("MFA key ring must be an object");
+      const keys = ring as Record<string,unknown>;
+      if (Object.keys(keys).length < 1 || Object.keys(keys).length > 20) throw new Error("MFA key ring must contain 1–20 keys");
+      for (const [id,key] of Object.entries(keys)) {
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || typeof key !== "string" || !/^[a-fA-F0-9]{64}$/.test(key)) throw new Error("Invalid MFA key-ring entry");
+      }
+      if (!value.MFA_ENCRYPTION_ACTIVE_KEY_ID || !Object.hasOwn(keys,value.MFA_ENCRYPTION_ACTIVE_KEY_ID)) throw new Error("MFA active key ID must exist in the key ring");
+      if (value.MFA_ENCRYPTION_KEY && typeof keys.legacy === "string" && value.MFA_ENCRYPTION_KEY.toLowerCase() !== keys.legacy.toLowerCase()) throw new Error("MFA legacy key conflicts with key ring");
+    } catch (error) {
+      context.addIssue({code:z.ZodIssueCode.custom,path:["MFA_ENCRYPTION_KEYRING"],message:error instanceof Error?error.message:"Invalid MFA key ring"});
+    }
+  } else if (value.MFA_ENCRYPTION_ACTIVE_KEY_ID) {
+    context.addIssue({code:z.ZodIssueCode.custom,path:["MFA_ENCRYPTION_ACTIVE_KEY_ID"],message:"MFA active key ID requires a key ring"});
+  }
+  if (value.AUDIT_SIGNING_KEYRING) {
+    try {
+      const ring: unknown = JSON.parse(value.AUDIT_SIGNING_KEYRING);
+      if (!ring || typeof ring !== "object" || Array.isArray(ring)) throw new Error("Audit key ring must be an object");
+      const keys = ring as Record<string,unknown>;
+      if (Object.keys(keys).length < 1 || Object.keys(keys).length > 20) throw new Error("Audit key ring must contain 1–20 keys");
+      for (const [id,key] of Object.entries(keys)) {
+        if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id) || typeof key !== "string" || (id === "legacy" ? !/^(?:[a-fA-F0-9]{2}){32,}$/.test(key) : !/^[a-fA-F0-9]{64}$/.test(key))) throw new Error("Invalid audit key-ring entry");
+      }
+      if (!value.AUDIT_SIGNING_ACTIVE_KEY_ID || value.AUDIT_SIGNING_ACTIVE_KEY_ID === "legacy" || !Object.hasOwn(keys,value.AUDIT_SIGNING_ACTIVE_KEY_ID)) throw new Error("Audit active key ID must identify a non-legacy key");
+      if (value.AUDIT_SIGNING_KEY && typeof keys.legacy === "string" && Buffer.from(value.AUDIT_SIGNING_KEY).toString("hex") !== keys.legacy.toLowerCase()) throw new Error("Audit legacy key conflicts with key ring");
+    } catch (error) {
+      context.addIssue({code:z.ZodIssueCode.custom,path:["AUDIT_SIGNING_KEYRING"],message:error instanceof Error?error.message:"Invalid audit key ring"});
+    }
+  } else if (value.AUDIT_SIGNING_ACTIVE_KEY_ID) {
+    context.addIssue({code:z.ZodIssueCode.custom,path:["AUDIT_SIGNING_ACTIVE_KEY_ID"],message:"Audit active key ID requires a key ring"});
+  }
+});
+
+const macSecretEnvironmentKeys = [
+  "RESEND_API_KEY","MAIL_FROM","MFA_ENCRYPTION_KEY","MFA_ENCRYPTION_KEYRING",
+  "MFA_ENCRYPTION_ACTIVE_KEY_ID","AUDIT_SIGNING_KEY","AUDIT_SIGNING_KEYRING",
+  "AUDIT_SIGNING_ACTIVE_KEY_ID",
+] as const;
 
 /**
  * MAC is authoritative for provider/MFA/audit secrets in Production.
@@ -96,10 +144,16 @@ export function applyMacRuntimeSecrets(secrets: Record<string, string>): void {
     RESEND_API_KEY: secrets["resend-api-key"],
     MAIL_FROM: secrets["mail-from"],
     MFA_ENCRYPTION_KEY: secrets["mfa-encryption-key"],
+    MFA_ENCRYPTION_KEYRING: secrets["mfa-encryption-keyring"],
+    MFA_ENCRYPTION_ACTIVE_KEY_ID: secrets["mfa-encryption-active-key-id"],
     AUDIT_SIGNING_KEY: secrets["audit-signing-key"],
+    AUDIT_SIGNING_KEYRING: secrets["audit-signing-keyring"],
+    AUDIT_SIGNING_ACTIVE_KEY_ID: secrets["audit-signing-active-key-id"],
   });
-  if (Boolean(next.RESEND_API_KEY) !== Boolean(next.MAIL_FROM)) {
-    throw new Error("MAC_MAIL_SECRET_PAIR_INCOMPLETE");
-  }
   Object.assign(config, next);
+  for (const key of macSecretEnvironmentKeys) {
+    const value = next[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
 }
