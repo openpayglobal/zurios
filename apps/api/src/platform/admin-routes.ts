@@ -656,7 +656,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
       whatsapp:{configured:false,status:"provider_authorization_required"},
       email:{configured:Boolean(process.env.RESEND_API_KEY&&process.env.MAIL_FROM),status:process.env.RESEND_API_KEY&&process.env.MAIL_FROM?"configured":"not_configured"}
      },
-     secretStore:{status:"blocked",reason:"Vercel KMS provides managed JWT/message signing, not general symmetric encryption/decryption. Configure a dedicated encryption KMS/HSM before storing provider, database or MFA secret values in MAC."},
+     secretStore:{status:isMacSecretVaultConfigured()?"configured_pending_live_kms_validation":"blocked",reason:isMacSecretVaultConfigured()?"AWS KMS role, region and key identifiers are present. Complete a live Production OIDC, GenerateDataKey, Decrypt and secret-delivery acceptance test before relying on this vault.":"AWS KMS envelope encryption is implemented but disabled. Provision the AWS OIDC trust role, symmetric KMS key and Production-only AWS_REGION, AWS_ROLE_ARN and MAC_SECRETS_KMS_KEY_ARN settings before storing secrets."},
      note:"Metadata only. No private key, JWT secret, database URI or provider credential is returned."
     }});
    }catch(error){request.log.error({err:error,correlationId:request.id},"Infrastructure inventory failed");return reply.code(500).send({error:"INFRASTRUCTURE_INVENTORY_UNAVAILABLE"});}
