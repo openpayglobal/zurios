@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { generateKeyPairSync, sign as cryptoSign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign as cryptoSign } from "node:crypto";
 import { afterEach, test } from "node:test";
 import { auditEventSigningPayload, verifyAuditEventSignature, type AuditEventIntegrity } from "./audit-signing.js";
 import type { AuditEventDocument } from "./types.js";
@@ -26,10 +26,12 @@ test("verifies RS256 audit signatures against the issuer JWKS and rejects tamper
     resourceId: "tenant_test", outcome: "success", metadata: { changed: ["name"] },
   };
   const signature = cryptoSign("RSA-SHA256", Buffer.from(auditEventSigningPayload(event)), privateKey).toString("base64");
+  const fingerprint = `SHA256:${createHash("sha256").update(publicKey.export({ type: "spki", format: "der" })).digest("base64")}`;
   const integrity: AuditEventIntegrity = {
     algorithm: "RS256", issuerId: "55210f93-c052-45a5-aeb8-e083ed0d5dce",
-    keyId: "test-key", fingerprint: "test-fingerprint", signature,
+    keyId: "test-key", fingerprint, signature,
   };
   assert.equal(await verifyAuditEventSignature({ ...event, integrity }), true);
   assert.equal(await verifyAuditEventSignature({ ...event, action: "tenant.deleted", integrity }), false);
+  assert.equal(await verifyAuditEventSignature({ ...event, integrity: { ...integrity, fingerprint: "SHA256:wrong" } }), false);
 });
