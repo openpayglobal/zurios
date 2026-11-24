@@ -214,7 +214,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     if(!user)return reply.code(422).send({error:"INVITED_USER_NOT_ELIGIBLE"});
     return await mutate(db,request,reply,p,config.jwtSecret,p.tenantId,"platform.users.invitation.resend",async session=>{
      const token=await issueMembershipInvitation(db,params.membershipId,7*24*60*60,session);
-     const encryptedToken=encryptInvitationToken(token,config.mfaEncryptionKey);
+     const encryptedToken=encryptInvitationTokenWithConfig(token,config);
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"identity.membership.invitation.resent","membership",params.membershipId,"success",{reason:body.reason},session);
      await emit(db,session,p.tenantId,request,"identity.membership.invitation.requested","membership",params.membershipId,{membershipId:params.membershipId,userId:user.userId,recipientEmail:user.emailNormalized,displayName:user.displayName,encryptedInvitationToken:encryptedToken,deliveryChannel:"email"});
      return {statusCode:202,body:{data:{membershipId:params.membershipId,status:"invited",deliveryStatus:"queued"}}};
