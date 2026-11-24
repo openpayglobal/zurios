@@ -528,13 +528,11 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      allowedServices:z.array(z.enum(macSecretServices)).min(1).max(macSecretServices.length),
      reason:macSecretReasonSchema
     }).strict().parse(request.body);
-    const oidcToken=request.headers["x-vercel-oidc-token"];
-    if(typeof oidcToken!=="string"||!oidcToken)return reply.code(503).send({error:"MAC_SECRET_VAULT_OIDC_UNAVAILABLE"});
     const collection=db.collection("mac_secrets");
     const previous=await collection.findOne({secretId:params.secretId});
     if(previous?.revokedAt)return reply.code(409).send({error:"MAC_SECRET_REVOKED_REQUIRES_NEW_ID"});
     const version=(previous?.version??0)+1;
-    const envelope=await encryptMacSecret(body.value,{secretId:params.secretId,version},oidcToken);
+    const envelope=await encryptMacSecret(body.value,{secretId:params.secretId,version});
     const key=request.headers["idempotency-key"];
     if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
     const result=await runIdempotentMutation(db,{
@@ -567,15 +565,13 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     if(process.env.VERCEL_ENV!=="production"||!isMacSecretVaultConfigured())return reply.code(503).send({error:"MAC_SECRET_VAULT_UNAVAILABLE"});
     const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
     const body=z.object({reason:macSecretReasonSchema}).strict().parse(request.body);
-    const oidcToken=request.headers["x-vercel-oidc-token"];
-    if(typeof oidcToken!=="string"||!oidcToken)return reply.code(503).send({error:"MAC_SECRET_VAULT_OIDC_UNAVAILABLE"});
     const key=request.headers["idempotency-key"];
     if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
     const collection=db.collection("mac_secrets"),previous=await collection.findOne({secretId:params.secretId,revokedAt:{$exists:false}});
     if(!previous)return reply.code(404).send({error:"MAC_SECRET_NOT_FOUND"});
     const nextVersion=previous.version+1;
-    const plaintext=await decryptMacSecret(previous.envelope as MacSecretEnvelope,{secretId:params.secretId,version:previous.version},oidcToken);
-    const envelope=await encryptMacSecret(plaintext,{secretId:params.secretId,version:nextVersion},oidcToken);
+    const plaintext=await decryptMacSecret(previous.envelope as MacSecretEnvelope,{secretId:params.secretId,version:previous.version});
+    const envelope=await encryptMacSecret(plaintext,{secretId:params.secretId,version:nextVersion});
     const result=await runIdempotentMutation(db,{
      tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.rotate",key,
      request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,fromVersion:previous.version,reason:body.reason}}
