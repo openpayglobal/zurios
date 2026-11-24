@@ -16,6 +16,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
+    "@vercel/kms": "^0.3.2",
     "mongodb": "^6.12.0",
     "zod": "^3.24.1"
   },
