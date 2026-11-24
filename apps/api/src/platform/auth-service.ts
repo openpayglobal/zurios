@@ -199,7 +199,7 @@ export async function verifyMfaStepUp(
 export async function disableMfa(db:Db,userId:string,password:string,code:string,config:AuthConfig){
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
  if(!user?.passwordHash||!user.mfaSecretEncrypted||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
- const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ const secret=decryptMfaSecretWithConfig(user.mfaSecretEncrypted,config),step=verifyTotpCode(secret,code);
  if(step!==null){
   const used=await c.users.updateOne({userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},{$set:{mfaLastUsedStep:step}});
   if(!used.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
