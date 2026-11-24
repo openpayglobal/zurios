@@ -189,7 +189,7 @@ export async function decryptMacSecrets(
   if (!records.length) return [];
   const kms = await createMacKmsClient(oidcToken);
   try {
-    return await Promise.all(records.map(async record => ({
+    const settled = await Promise.allSettled(records.map(async record => ({
       secretId: record.secretId,
       version: record.version,
       value: await decryptWithKmsClient(kms, record.envelope, {
@@ -197,6 +197,9 @@ export async function decryptMacSecrets(
         version: record.version,
       }),
     })));
+    const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    if (failed) throw new Error("MAC_SECRET_DECRYPTION_FAILED");
+    return settled.map(result => (result as PromiseFulfilledResult<{secretId:string;version:number;value:string}>).value);
   } finally {
     kms.destroy();
   }
