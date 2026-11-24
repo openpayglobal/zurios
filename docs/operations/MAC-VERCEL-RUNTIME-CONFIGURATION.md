@@ -111,3 +111,8 @@ The Zuri OS API Vercel project has been configured with a Trusted Sources rule t
 The user-session KMS signer is now wired in source for Production: `@vercel/kms` signs access JWTs using issuer `16d2fb82-30b7-4a0d-8c4e-49fb1de92919`; JOSE verifies against the issuer JWKS with strict RS256, issuer and audience checks. Local/Preview remains on HS256. Exact-head CI passed on `e2bcfc52e2d500c8fea91b1315af6672b65c4970` (run `45332099570`).
 
 **Not yet accepted:** live Production signing, live cross-project MAC fetch, API health/readiness, audit KMS signing, encryption KMS/HSM, production Atlas, provider connections, and full public end-user release. Existing Vercel build-rate limits still prevent the required fresh deployment. Configuration changes made in MAC do not require redeployment; source-code and environment-bootstrap changes still do.
+
+
+### Audit KMS signing source integration — 2026-11-24
+
+The shared audit writer and API audit writer now sign Production audit events with the dedicated Vercel KMS RS256 issuer. The event payload is canonicalized; integrity metadata records issuer, key ID, public-key fingerprint and signature. A JWKS verifier checks the signature and key fingerprint, and Production writes fail closed on signer errors. Exact-head CI run **45337383228** passed on commit **7793244a4612f62b60f4058e9e6348f322d7f6aa**. Live Production signing/verification and key-rotation retention remain unaccepted pending a successful deployment.

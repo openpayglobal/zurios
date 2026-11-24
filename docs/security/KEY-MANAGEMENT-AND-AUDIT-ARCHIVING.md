@@ -125,3 +125,13 @@ Meta API versions must be explicit and centrally configured; never rely on unver
 ## Provider selection
 
 See the [Immutable Audit Archive Provider Comparison](./AUDIT-ARCHIVE-PROVIDER-COMPARISON.md) for current official documentation and trade-offs across Amazon S3 Object Lock, Azure Blob immutable storage and Google Cloud Storage Bucket Lock. The provider comparison is a research note, not a selection or compliance certification.
+
+
+## 9. Production audit-event signing integration — 2026-11-24
+
+- The shared core-platform audit writer and the API platform audit writer now use the existing Zuri OS Audit Event Signing Vercel KMS issuer (\`55210f93-c052-45a5-aeb8-e083ed0d5dce\`) when \`VERCEL_ENV=production\`.
+- Events are serialized into deterministic canonical JSON before signing. Persisted integrity metadata records RS256, issuer ID, KMS key ID, public-key fingerprint and the base64 signature.
+- The verifier resolves the matching key by \`kid\` from the issuer JWKS, independently recomputes and checks the public-key fingerprint, then verifies the RS256 signature. Tampered-payload and fingerprint regression tests were added.
+- Production writes fail closed if KMS signing fails. Local and Preview remain unsigned until a separately scoped non-production signing issuer is provisioned.
+- Exact-head CI run **45337383228** passed on commit **7793244a4612f62b60f4058e9e6348f322d7f6aa**: install, replica-set setup, both OpenAPI validations, route drift, documentation mirrors, typecheck, tests and build.
+- **Not yet accepted:** a live deployed Production signing/write/verification test, verification behavior across KMS key rotation and long-term retention, and independent immutable archive reconciliation. The Vercel deployment build-rate limit still blocks a fresh API deployment.

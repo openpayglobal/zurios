@@ -134,3 +134,10 @@ This section supersedes earlier pending-status notes where later implementation 
 - **Still pending:** KMS audit-event signing and historical verification; dedicated encryption KMS/HSM for MFA and MAC secrets; production Atlas replica set and network hardening; Resend and Meta credentials/authorization; live KMS signing and MAC runtime fetch from deployed Production functions; and successful API deployments/health checks after the Vercel build-rate limit clears.
 
 **Important distinction:** source-level session KMS integration and passing CI do not establish that a Production function has successfully signed and verified a token. No production deployment, database credential, provider credential or encryption key has been fabricated or promoted.
+
+
+## 12. Audit-event signing implementation checkpoint — 2026-11-24
+
+Production audit writes in both the shared core-platform service and the API audit writer now request RS256 signatures from the dedicated Vercel KMS audit issuer. Canonical payload serialization, key-ID and fingerprint metadata, JWKS-based signature verification, tamper tests and fail-closed Production behavior are implemented in source. The KMS signing key remains managed by Vercel; no private key or symmetric secret is stored in MongoDB or application environment variables.
+
+Exact-head CI run **45337383228** passed on **7793244a4612f62b60f4058e9e6348f322d7f6aa**. Live Production KMS calls, deployed API health, key-rotation/historical retention tests and immutable archive reconciliation remain release gates. The separate encryption KMS/HSM, production Atlas replica set, Resend and Meta credentials, and public activation approvals are still outstanding.
