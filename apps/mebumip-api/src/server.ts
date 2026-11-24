@@ -3,7 +3,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { MongoClient } from "mongodb";
-import { config, corsOrigins } from "./config.js";
+import { config, corsOrigins, applyMacRuntimeSecrets } from "./config.js";
 import { registerAuthRoutes } from "./auth.js";
 import { registerAdminRoutes } from "./admin.js";
 import { ensureMeBuMIPIndexes } from "./database.js";
@@ -56,14 +56,17 @@ app.addHook("preHandler", async (request) => {
   if (request.url.startsWith("/health/") || Date.now() - lastRuntimeRefreshAt <= 5_000) return;
   lastRuntimeRefreshAt = Date.now();
   const oidcHeader = request.headers["x-vercel-oidc-token"];
-  void getMacRuntimeConfig(true, typeof oidcHeader === "string" ? oidcHeader : undefined).then((runtime) => {
+  try {
+    const runtime = await getMacRuntimeConfig(true, typeof oidcHeader === "string" ? oidcHeader : undefined);
     if (runtime) {
+      // Apply a validated full snapshot; missing IDs clear revoked secrets.
+      applyMacRuntimeSecrets(runtime.secrets ?? {});
       allowedOriginsCache = runtime.allowedOrigins;
       allowedOriginsCacheAt = Date.now();
     }
-  }).catch((error) => {
-    app.log.warn({ err: error }, "MAC runtime refresh unavailable; retaining last known-good settings");
-  });
+  } catch (error) {
+    app.log.warn({ code:error instanceof Error?error.name:"UNKNOWN" }, "MAC runtime refresh unavailable; retaining last known-good settings");
+  }
 });
 
 app.get("/health/live", async () => ({

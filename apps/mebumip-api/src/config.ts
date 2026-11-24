@@ -25,9 +25,6 @@ const parsed = envSchema.superRefine((value, context) => {
   if (value.SESSION_COOKIE_SAME_SITE === "None" && value.NODE_ENV !== "production") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["SESSION_COOKIE_SAME_SITE"], message: "SameSite=None requires production HTTPS cookies" });
   }
-  if (value.NODE_ENV === "production" && (!value.RESEND_API_KEY || !value.MAIL_FROM)) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["RESEND_API_KEY"], message: "RESEND_API_KEY and MAIL_FROM are required in production" });
-  }
   let keyring: Record<string, unknown> | undefined;
   if (value.MFA_ENCRYPTION_KEYRING) {
     try {
@@ -45,9 +42,6 @@ const parsed = envSchema.superRefine((value, context) => {
     }
   } else if (value.MFA_ENCRYPTION_ACTIVE_KEY_ID) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_ACTIVE_KEY_ID"], message: "An active key ID requires MFA_ENCRYPTION_KEYRING" });
-  }
-  if (value.NODE_ENV === "production" && !value.MFA_ENCRYPTION_KEY && !value.MFA_ENCRYPTION_KEYRING) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["MFA_ENCRYPTION_KEY"], message: "MFA_ENCRYPTION_KEY or MFA_ENCRYPTION_KEYRING is required in production" });
   }
   if (value.NODE_ENV === "production" && !value.MONGODB_URI) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["MONGODB_URI"], message: "MONGODB_URI is required in production" });
@@ -75,9 +69,6 @@ const parsed = envSchema.superRefine((value, context) => {
   } else if (value.AUDIT_SIGNING_ACTIVE_KEY_ID) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_ACTIVE_KEY_ID"], message: "An active audit key ID requires AUDIT_SIGNING_KEYRING" });
   }
-  if (value.NODE_ENV === "production" && !value.AUDIT_SIGNING_KEY && !value.AUDIT_SIGNING_KEYRING) {
-    context.addIssue({ code: z.ZodIssueCode.custom, path: ["AUDIT_SIGNING_KEY"], message: "AUDIT_SIGNING_KEY is required in production" });
-  }
 }).safeParse(process.env);
 if (!parsed.success) {
   throw new Error(`Invalid Zuri MeBuMIP API configuration: ${parsed.error.message}`);
@@ -85,3 +76,30 @@ if (!parsed.success) {
 
 export const config = { ...parsed.data, CORS_ORIGINS: parsed.data.CORS_ORIGINS ?? (parsed.data.NODE_ENV === "production" ? "https://zuri-mebumip-openpayglobal-5300s-projects.vercel.app" : "http://localhost:5174") };
 export const corsOrigins = config.CORS_ORIGINS.split(",").map((origin) => origin.trim()).filter(Boolean);
+
+
+const macRuntimeSecretSchema = z.object({
+  RESEND_API_KEY: z.string().min(10).optional(),
+  MAIL_FROM: z.string().email().optional(),
+  MFA_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/).optional(),
+  AUDIT_SIGNING_KEY: z.string().min(32).optional(),
+}).strict();
+
+/**
+ * MAC is authoritative for provider/MFA/audit secrets in Production.
+ * Apply a complete validated snapshot atomically so revocation also clears
+ * previously cached values from this process. MONGODB_URI intentionally
+ * remains a bootstrap dependency because MAC itself requires a database.
+ */
+export function applyMacRuntimeSecrets(secrets: Record<string, string>): void {
+  const next = macRuntimeSecretSchema.parse({
+    RESEND_API_KEY: secrets["resend-api-key"],
+    MAIL_FROM: secrets["mail-from"],
+    MFA_ENCRYPTION_KEY: secrets["mfa-encryption-key"],
+    AUDIT_SIGNING_KEY: secrets["audit-signing-key"],
+  });
+  if (Boolean(next.RESEND_API_KEY) !== Boolean(next.MAIL_FROM)) {
+    throw new Error("MAC_MAIL_SECRET_PAIR_INCOMPLETE");
+  }
+  Object.assign(config, next);
+}
