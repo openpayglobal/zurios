@@ -65,6 +65,8 @@ const authConfig: AuthConfig = {
   accessTokenTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
   sessionTtlSeconds: config.SESSION_TTL_SECONDS,
   mfaEncryptionKey: config.MFA_ENCRYPTION_KEY ?? "",
+  mfaEncryptionKeyring: config.MFA_ENCRYPTION_KEYRING,
+  mfaEncryptionActiveKeyId: config.MFA_ENCRYPTION_ACTIVE_KEY_ID,
   accessRequestsEnabled: config.ACCESS_REQUESTS_ENABLED === "true",
   accessRequestsPrivacyNoticeUrl: config.ACCESS_REQUESTS_PRIVACY_NOTICE_URL,
 };
@@ -113,14 +115,22 @@ app.addHook("onRequest", async (request, reply) => {
       try {
         const oidcToken=request.headers["x-vercel-oidc-token"];
         if(typeof oidcToken!=="string"||!oidcToken)throw new Error("MAC_WORKLOAD_OIDC_UNAVAILABLE");
-        const secrets=await readMacSecretsForService(db,"zurios-api",oidcToken,["zuri-os-jwt-secret","zuri-os-mfa-encryption-key"]);
+        const secrets=await readMacSecretsForService(db,"zurios-api",oidcToken,["zuri-os-jwt-secret","zuri-os-mfa-encryption-key","zuri-os-mfa-encryption-keyring","zuri-os-mfa-encryption-active-key-id"]);
         const values=Object.fromEntries(secrets.map(item=>[item.secretId,item.value]));
         const jwtSecret=values["zuri-os-jwt-secret"];
         const mfaKey=values["zuri-os-mfa-encryption-key"];
+        const mfaKeyring=values["zuri-os-mfa-encryption-keyring"];
+        const mfaActiveKeyId=values["zuri-os-mfa-encryption-active-key-id"];
         if(typeof jwtSecret!=="string"||jwtSecret.length<32)throw new Error("MAC_JWT_SECRET_UNAVAILABLE");
         if(typeof mfaKey!=="string"||Buffer.from(mfaKey,"base64").length!==32)throw new Error("MAC_MFA_KEY_UNAVAILABLE");
+        if(mfaKeyring){
+          const ring=JSON.parse(mfaKeyring) as Record<string,unknown>;
+          if(!mfaActiveKeyId||typeof ring[mfaActiveKeyId]!=="string"||Buffer.from(ring[mfaActiveKeyId] as string,"base64").length!==32)throw new Error("MAC_MFA_KEYRING_INVALID");
+        }
         authConfig.jwtSecret=jwtSecret;
         authConfig.mfaEncryptionKey=mfaKey;
+        authConfig.mfaEncryptionKeyring=mfaKeyring;
+        authConfig.mfaEncryptionActiveKeyId=mfaActiveKeyId;
         if(secrets.length){
           await writeAuditEvent({
             tenantId:"platform",actor:{service:"zurios-api"},action:"platform.mac_secret.bundle_accessed",
@@ -131,6 +141,8 @@ app.addHook("onRequest", async (request, reply) => {
       } catch(error) {
         authConfig.jwtSecret="";
         authConfig.mfaEncryptionKey="";
+        authConfig.mfaEncryptionKeyring=undefined;
+        authConfig.mfaEncryptionActiveKeyId=undefined;
         app.log.warn({code:error instanceof Error?error.name:"UNKNOWN"},"MAC-managed API secrets unavailable; privileged authentication remains fail-closed");
       }
     })().finally(()=>{macSecretRefreshPromise=undefined;});
@@ -165,7 +177,7 @@ if (process.env.VERCEL) {
 app.get("/health/live", async () => ({ status: "ok", service: "zuri-api" }));
 app.get("/health/ready", async (_req, reply) => {
   if (!dbReady) return reply.code(503).send({ status: "not_ready", database: "unavailable" });
-  if (process.env.VERCEL_ENV === "production" && (!authConfig.jwtSecret || !authConfig.mfaEncryptionKey)) {
+  if (process.env.VERCEL_ENV === "production" && (!authConfig.jwtSecret || !authConfig.mfaEncryptionKey || (authConfig.mfaEncryptionKeyring && !authConfig.mfaEncryptionActiveKeyId))) {
     return reply.code(503).send({status:"not_ready",reason:"mac_runtime_secrets_unavailable",missing:["zuri-os-jwt-secret","zuri-os-mfa-encryption-key"]});
   }
   try {
