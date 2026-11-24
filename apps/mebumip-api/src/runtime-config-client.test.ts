@@ -34,7 +34,7 @@ test("MAC runtime config destination is pinned to the approved HTTPS control-pla
 
 test("MAC runtime config bearer headers reject empty or header-injection tokens", () => {
   assert.throws(() => buildMacRuntimeConfigHeaders(""), /MAC_RUNTIME_CONFIG_TOKEN_INVALID/);
-  assert.throws(() => buildMacRuntimeConfigHeaders("token\\r\\nInjected: yes"), /MAC_RUNTIME_CONFIG_TOKEN_INVALID/);
+  assert.throws(() => buildMacRuntimeConfigHeaders("token" + String.fromCharCode(13, 10) + "Injected: yes"), /MAC_RUNTIME_CONFIG_TOKEN_INVALID/);
 });
 
 const validConfig = () => ({
