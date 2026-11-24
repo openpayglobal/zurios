@@ -131,17 +131,20 @@ let cached: MacRuntimeConfig | null = null;
 let cachedUntil = 0;
 let inFlight: Promise<MacRuntimeConfig | null> | null = null;
 
-export async function getMacRuntimeConfig(forceRefresh = false, suppliedOidcToken?: string): Promise<MacRuntimeConfig | null> {
+export async function getMacRuntimeConfig(forceRefresh = false): Promise<MacRuntimeConfig | null> {
   if (!process.env.VERCEL) return null;
   if (!forceRefresh && cached && Date.now() < cachedUntil) return cached;
   if (inFlight) return inFlight;
 
   inFlight = (async () => {
-    const token = suppliedOidcToken ?? await getVercelOidcToken();
+    // Never accept identity material from an inbound HTTP request. Mint the
+    // workload token inside this Vercel function invocation.
+    const token = await getVercelOidcToken();
     const response = await fetch(MAC_RUNTIME_CONFIG_URL, {
       method: "GET",
       headers: buildMacRuntimeConfigHeaders(token),
       cache: "no-store",
+      redirect: "error",
     });
     if (!response.ok) throw new Error(`MAC_RUNTIME_CONFIG_UNAVAILABLE_${response.status}`);
     const body = validateMacRuntimeConfig(await response.json());
