@@ -3,6 +3,7 @@ import type { Db } from "mongodb";
 import { AssumeRoleWithWebIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { DecryptCommand, GenerateDataKeyCommand, KMSClient } from "@aws-sdk/client-kms";
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { getVercelOidcToken } from "@vercel/oidc";
 
 const TEAM_SLUG = "openpayglobal-5300s-projects";
 const TEAM_ID = "team_Gn7gvUwfzUbCZpxOIRrYK5gD";
@@ -66,12 +67,13 @@ export function openSecretWithDataKey(
   ]).toString("utf8");
 }
 
-async function createMacKmsClient(oidcToken: string): Promise<KMSClient> {
+async function createMacKmsClient(): Promise<KMSClient> {
   if (process.env.VERCEL_ENV !== "production") throw new Error("MAC_SECRET_VAULT_PRODUCTION_ONLY");
   const region = process.env.AWS_REGION;
   const roleArn = process.env.AWS_ROLE_ARN;
   const keyArn = process.env.MAC_SECRETS_KMS_KEY_ARN;
   if (!region || !roleArn || !keyArn) throw new Error("MAC_SECRET_VAULT_NOT_CONFIGURED");
+  const oidcToken = await getVercelOidcToken();
   if (!oidcToken) throw new Error("MAC_SECRET_VAULT_OIDC_REQUIRED");
 
   const { payload } = await jwtVerify(oidcToken, jwks, {
@@ -115,11 +117,10 @@ async function createMacKmsClient(oidcToken: string): Promise<KMSClient> {
 export async function encryptMacSecret(
   value: string,
   context: MacSecretContext,
-  oidcToken: string,
-): Promise<MacSecretEnvelope> {
+ ): Promise<MacSecretEnvelope> {
   const keyArn = process.env.MAC_SECRETS_KMS_KEY_ARN;
   if (!keyArn) throw new Error("MAC_SECRET_VAULT_NOT_CONFIGURED");
-  const kms = await createMacKmsClient(oidcToken);
+  const kms = await createMacKmsClient();
   try {
     const generated = await kms.send(new GenerateDataKeyCommand({
       KeyId: keyArn,
@@ -172,8 +173,7 @@ async function decryptWithKmsClient(
 export async function decryptMacSecret(
   envelope: MacSecretEnvelope,
   context: MacSecretContext,
-  oidcToken: string,
-): Promise<string> {
+ ): Promise<string> {
   const kms = await createMacKmsClient(oidcToken);
   try {
     return await decryptWithKmsClient(kms, envelope, context);
@@ -185,8 +185,7 @@ export async function decryptMacSecret(
 /** Decrypt a workload's authorized secrets with one short-lived AWS role session per request. */
 export async function decryptMacSecrets(
   records: Array<{ secretId: string; version: number; envelope: MacSecretEnvelope }>,
-  oidcToken: string,
-): Promise<Array<{ secretId: string; version: number; value: string }>> {
+ ): Promise<Array<{ secretId: string; version: number; value: string }>> {
   if (!records.length) return [];
   const kms = await createMacKmsClient(oidcToken);
   try {
@@ -211,7 +210,6 @@ export async function decryptMacSecrets(
 export async function readMacSecretsForService(
   db: Db,
   service: "zurios-api" | "zuri-mebumip-api",
-  oidcToken: string,
   secretIds?: string[],
 ): Promise<Array<{secretId:string;version:number;value:string}>> {
   const records = await db.collection<{
@@ -226,5 +224,5 @@ export async function readMacSecretsForService(
     revokedAt:{$exists:false},
     ...(secretIds?.length?{secretId:{$in:secretIds}}:{}),
   },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
-  return decryptMacSecrets(records,oidcToken);
+  return decryptMacSecrets(records);
 }
