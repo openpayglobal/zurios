@@ -1,6 +1,6 @@
 # MAC-to-Vercel Runtime Configuration Operations
 
-**Status:** Proposed; implementation and production acceptance pending  
+**Status:** Non-secret runtime-config source implementation present; Production acceptance pending  
 **Date:** 2026-11-20
 
 ## Objective
@@ -100,3 +100,14 @@ Roll back by creating a new MAC configuration revision from a previously approve
 - [Vercel OIDC token reference](https://vercel.com/docs/oidc/reference)
 - [Connect to your own API with OIDC](https://vercel.com/docs/oidc/api)
 - [`@vercel/oidc` token verification](https://github.com/vercel/vercel/blob/main/packages/oidc/docs/functions/verifyVercelOidcToken.md)
+
+
+## Implementation checkpoint — 2026-11-24
+
+The source now includes the MAC public runtime projection, an OIDC-authenticated internal runtime endpoint, and a MeBuMIP API client that obtains Vercel OIDC identity and refreshes its MAC settings without a deployment. The internal endpoint now fails closed with HTTP 503 until MongoDB initialization has completed.
+
+The Zuri OS API Vercel project has been configured with a Trusted Sources rule that permits the MeBuMIP API Production project to reach only the Zuri OS API Production environment. SSO protection remains enabled. This rule is provider-configured but still requires an actual deployed request to prove the end-to-end path.
+
+The user-session KMS signer is now wired in source for Production: `@vercel/kms` signs access JWTs using issuer `16d2fb82-30b7-4a0d-8c4e-49fb1de92919`; JOSE verifies against the issuer JWKS with strict RS256, issuer and audience checks. Local/Preview remains on HS256. Exact-head CI passed on `e2bcfc52e2d500c8fea91b1315af6672b65c4970` (run `45332099570`).
+
+**Not yet accepted:** live Production signing, live cross-project MAC fetch, API health/readiness, audit KMS signing, encryption KMS/HSM, production Atlas, provider connections, and full public end-user release. Existing Vercel build-rate limits still prevent the required fresh deployment. Configuration changes made in MAC do not require redeployment; source-code and environment-bootstrap changes still do.

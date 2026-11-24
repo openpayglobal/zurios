@@ -2,7 +2,7 @@
 
 **Owner:** Blockchain Innovations LTD  
 **Product:** Zuri OS / Zuri MeBuMIP  
-**Status:** Design and control-plane setup in progress  
+**Status:** Partially implemented in source; production activation and runtime acceptance pending  
 **Date:** 2026-11-21
 
 ## 1. Control-plane rule
@@ -121,3 +121,16 @@ The Zuri OS and MeBuMIP frontends now resolve their API origins from the public 
 The central MAC verifies Vercel's team JWKS at `https://oidc.vercel.com/openpayglobal-5300s-projects/.well-known/jwks`, the issuer `https://oidc.vercel.com/openpayglobal-5300s-projects`, the default team audience, exact `owner_id`, `project_id`, `sub` and Production environment. The exact claim contract still needs a live token test from a deployed Vercel function.
 
 The existing `zurios-api` default domain is protected by Vercel SSO, so server-to-server runtime fetch is not yet reachable from the new MeBuMIP API project. Owner approval is required to make the production deployment URL public while keeping previews protected, or a verified custom domain must be attached.
+
+
+## 11. Implementation checkpoint — 2026-11-24
+
+This section supersedes earlier pending-status notes where later implementation evidence is now available.
+
+- **Production session JWT signing:** implemented in `apps/api/src/platform/session-token.ts`. The `@vercel/kms` runtime helper signs Production access tokens with the existing `Zuri OS User Session JWT Signing` issuer (RS256). Verification uses the issuer JWKS and validates the configured issuer, audience and algorithm. The project grant remains Production-only. Local and Preview continue to use HS256; the Production KMS grant is never used as a Preview fallback. MFA challenge tokens remain separate short-lived HS256 tokens.
+- **Session-signing regression test:** added for non-production HS256 issue/verify compatibility. Exact-head GitHub Actions run `45332099570` on commit `e2bcfc52e2d500c8fea91b1315af6672b65c4970` passed install, OpenAPI validation, route-drift, documentation mirror checks, typecheck, tests and build.
+- **MAC runtime readiness:** the internal runtime-config endpoint now returns `503 RUNTIME_CONFIG_DATABASE_UNAVAILABLE` until the asynchronous MongoDB connection and index initialization has completed. A pre-created MongoDB handle is not treated as proof of readiness.
+- **Cross-project trusted source:** the `zurios-api` target project now has a narrowly scoped Vercel Trusted Sources rule permitting only `zuri-mebumip-api` Production to call `zurios-api` Production. Existing SSO protection was retained. The provider accepted the project update; a real deployed OIDC request remains the live acceptance test.
+- **Still pending:** KMS audit-event signing and historical verification; dedicated encryption KMS/HSM for MFA and MAC secrets; production Atlas replica set and network hardening; Resend and Meta credentials/authorization; live KMS signing and MAC runtime fetch from deployed Production functions; and successful API deployments/health checks after the Vercel build-rate limit clears.
+
+**Important distinction:** source-level session KMS integration and passing CI do not establish that a Production function has successfully signed and verified a token. No production deployment, database credential, provider credential or encryption key has been fabricated or promoted.
