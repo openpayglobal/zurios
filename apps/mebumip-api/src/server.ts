@@ -65,7 +65,11 @@ app.addHook("preHandler", async (request) => {
       allowedOriginsCacheAt = Date.now();
     }
   } catch (error) {
-    app.log.warn({ code:error instanceof Error?error.name:"UNKNOWN" }, "MAC runtime refresh unavailable; retaining last known-good settings");
+    if (process.env.VERCEL_ENV === "production") {
+      // A failed MAC refresh must not leave a revoked credential usable indefinitely.
+      applyMacRuntimeSecrets({});
+    }
+    app.log.warn({ code:error instanceof Error?error.name:"UNKNOWN" }, "MAC runtime refresh unavailable; clearing Production secrets and retaining last known-good non-secret settings");
   }
 });
 

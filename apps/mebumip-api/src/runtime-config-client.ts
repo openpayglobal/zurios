@@ -5,7 +5,7 @@ export type MacRuntimeConfig = {
   service: string;
   apiOrigin: string;
   allowedOrigins: string[];
-  privateSettings: Record<string, unknown>;
+  secrets?: Record<string,string>;
   secretAccess: string;
   secrets: Record<string,string>;
 };
@@ -42,8 +42,11 @@ export async function getMacRuntimeConfig(forceRefresh = false, suppliedOidcToke
       typeof body.revision !== "number" ||
       body.service !== "zuri-mebumip-api" ||
       typeof body.apiOrigin !== "string" ||
-      !Array.isArray(body.allowedOrigins)
+      !Array.isArray(body.allowedOrigins) ||
+      (body.secrets !== undefined && (!body.secrets || typeof body.secrets !== "object" || Array.isArray(body.secrets) ||
+        Object.values(body.secrets as Record<string,unknown>).some(value => typeof value !== "string")))
     ) throw new Error("MAC_RUNTIME_CONFIG_INVALID");
+    body.secrets ??= {};
     cached = body;
     cachedUntil = Date.now() + 5_000;
     return body;
