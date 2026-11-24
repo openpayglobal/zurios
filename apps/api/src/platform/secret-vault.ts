@@ -86,12 +86,17 @@ async function createMacKmsClient(oidcToken: string): Promise<KMSClient> {
   ) throw new Error("MAC_SECRET_VAULT_WORKLOAD_NOT_AUTHORIZED");
 
   const sts = new STSClient({ region });
-  const assumed = await sts.send(new AssumeRoleWithWebIdentityCommand({
-    RoleArn: roleArn,
-    RoleSessionName: "zuri-mac-secrets",
-    WebIdentityToken: oidcToken,
-    DurationSeconds: 900,
-  }));
+  let assumed;
+  try {
+    assumed = await sts.send(new AssumeRoleWithWebIdentityCommand({
+      RoleArn: roleArn,
+      RoleSessionName: "zuri-mac-secrets",
+      WebIdentityToken: oidcToken,
+      DurationSeconds: 900,
+    }));
+  } finally {
+    sts.destroy();
+  }
   const credentials = assumed.Credentials;
   if (!credentials?.AccessKeyId || !credentials.SecretAccessKey || !credentials.SessionToken) {
     throw new Error("MAC_SECRET_VAULT_AWS_CREDENTIALS_UNAVAILABLE");
@@ -114,22 +119,26 @@ export async function encryptMacSecret(
   const keyArn = process.env.MAC_SECRETS_KMS_KEY_ARN;
   if (!keyArn) throw new Error("MAC_SECRET_VAULT_NOT_CONFIGURED");
   const kms = await createMacKmsClient(oidcToken);
-  const generated = await kms.send(new GenerateDataKeyCommand({
-    KeyId: keyArn,
-    KeySpec: "AES_256",
-    EncryptionContext: {
-      application: "zuri-os-mac",
-      purpose: "mac-secret",
-      secretId: context.secretId,
-      version: String(context.version),
-    },
-  }));
-  if (!generated.Plaintext || !generated.CiphertextBlob) throw new Error("MAC_SECRET_DATA_KEY_GENERATION_FAILED");
-  const dataKey = Buffer.from(generated.Plaintext);
   try {
-    return sealSecretWithDataKey(value, dataKey, generated.CiphertextBlob, keyArn, context);
+    const generated = await kms.send(new GenerateDataKeyCommand({
+      KeyId: keyArn,
+      KeySpec: "AES_256",
+      EncryptionContext: {
+        application: "zuri-os-mac",
+        purpose: "mac-secret",
+        secretId: context.secretId,
+        version: String(context.version),
+      },
+    }));
+    if (!generated.Plaintext || !generated.CiphertextBlob) throw new Error("MAC_SECRET_DATA_KEY_GENERATION_FAILED");
+    const dataKey = Buffer.from(generated.Plaintext);
+    try {
+      return sealSecretWithDataKey(value, dataKey, generated.CiphertextBlob, keyArn, context);
+    } finally {
+      dataKey.fill(0);
+    }
   } finally {
-    dataKey.fill(0);
+    kms.destroy();
   }
 }
 
@@ -139,21 +148,25 @@ export async function decryptMacSecret(
   oidcToken: string,
 ): Promise<string> {
   const kms = await createMacKmsClient(oidcToken);
-  const unwrapped = await kms.send(new DecryptCommand({
-    KeyId: envelope.kmsKeyArn,
-    CiphertextBlob: Buffer.from(envelope.encryptedDataKey, "base64"),
-    EncryptionContext: {
-      application: "zuri-os-mac",
-      purpose: "mac-secret",
-      secretId: context.secretId,
-      version: String(context.version),
-    },
-  }));
-  if (!unwrapped.Plaintext) throw new Error("MAC_SECRET_DATA_KEY_DECRYPTION_FAILED");
-  const dataKey = Buffer.from(unwrapped.Plaintext);
   try {
-    return openSecretWithDataKey(envelope, dataKey, context);
+    const unwrapped = await kms.send(new DecryptCommand({
+      KeyId: envelope.kmsKeyArn,
+      CiphertextBlob: Buffer.from(envelope.encryptedDataKey, "base64"),
+      EncryptionContext: {
+        application: "zuri-os-mac",
+        purpose: "mac-secret",
+        secretId: context.secretId,
+        version: String(context.version),
+      },
+    }));
+    if (!unwrapped.Plaintext) throw new Error("MAC_SECRET_DATA_KEY_DECRYPTION_FAILED");
+    const dataKey = Buffer.from(unwrapped.Plaintext);
+    try {
+      return openSecretWithDataKey(envelope, dataKey, context);
+    } finally {
+      dataKey.fill(0);
+    }
   } finally {
-    dataKey.fill(0);
+    kms.destroy();
   }
 }
