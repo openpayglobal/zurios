@@ -135,3 +135,10 @@ See the [Immutable Audit Archive Provider Comparison](./AUDIT-ARCHIVE-PROVIDER-C
 - Production writes fail closed if KMS signing fails. Local and Preview remain unsigned until a separately scoped non-production signing issuer is provisioned.
 - Exact-head CI run **45337383228** passed on commit **7793244a4612f62b60f4058e9e6348f322d7f6aa**: install, replica-set setup, both OpenAPI validations, route drift, documentation mirrors, typecheck, tests and build.
 - **Not yet accepted:** a live deployed Production signing/write/verification test, verification behavior across KMS key rotation and long-term retention, and independent immutable archive reconciliation. The Vercel deployment build-rate limit still blocks a fresh API deployment.
+
+
+## MAC secret vault encryption and workload federation — 2026-11-24
+
+MAC secret storage now has source support for envelope encryption backed by AWS KMS. The service requests a unique AES-256 data key per secret version, encrypts locally with AES-256-GCM and stores only the ciphertext and KMS-wrapped data key. Authenticated encryption context binds the ciphertext to the MAC application, secret identifier and version. Vercel OIDC is exchanged through AWS STS for short-lived credentials; no static AWS access keys are stored.
+
+Secret upsert, rotation and revocation are audited and versioned. Workload delivery is scoped by the verified Production service identity and allowed-service list; audit signing must succeed before secrets are returned. The adapter is disabled until the AWS owner creates the OIDC provider/trust role and KMS key and the Production-only role/key/region settings are configured. Old encrypted versions must be retained until a verified recovery and retention policy authorizes deletion.

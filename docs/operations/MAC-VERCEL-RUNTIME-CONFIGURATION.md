@@ -121,3 +121,10 @@ The shared audit writer and API audit writer now sign Production audit events wi
 ### MAC private-settings response hardening — 2026-11-24
 
 The administrative runtime-config endpoint now strips the legacy `privateSettings` field from its response through a dedicated safe projection and regression test. New runtime-config history records no longer copy the legacy private field. Existing database values are retained (not deleted) pending a controlled migration, but are not returned by the admin, public or workload runtime endpoints. This is not yet a secret manager: no encrypted secret CRUD or delivery is enabled until the separate encryption KMS/HSM provider and workload-specific authorization are configured.
+
+
+### MAC encrypted secret lifecycle implementation — 2026-11-24
+
+The API source now includes an AWS KMS envelope-encryption adapter and audited secret lifecycle endpoints. It uses one fresh AES-256 data key per version, AES-256-GCM with authenticated context, and KMS-wrapped data keys. Vercel Production OIDC is exchanged for short-lived AWS credentials using STS; static AWS credentials are not stored. The workload runtime endpoint releases only active secrets scoped to the authenticated service and audits access before returning them. Admin listing omits ciphertext and plaintext; updates, rotation and revocation are versioned and idempotent.
+
+The adapter is deliberately fail-closed and is not active until the AWS account owner provisions the OIDC provider, an exact-subject Production role, a symmetric KMS key and the three Production environment settings. No AWS resources or spend were initiated. OpenAPI contracts were added; exact-head CI is pending.

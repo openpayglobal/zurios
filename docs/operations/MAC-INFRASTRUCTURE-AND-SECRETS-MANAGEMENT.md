@@ -149,3 +149,13 @@ Exact-head CI run **45337383228** passed on **7793244a4612f62b60f4058e9e6348f322
 - Runtime-config revision history no longer copies the legacy `privateSettings` field into new history records. Existing stored data is not destructively migrated or exposed.
 - Public and internal workload endpoints continue to return only their explicitly scoped non-secret configuration. Secret delivery remains disabled until a dedicated encryption KMS/HSM provider, workload-scoped authorization and rotation/revocation lifecycle are deployed and accepted.
 - Exact-head CI for the initial projection commit is pending; the follow-up history hardening commit is `6476ed9aa192e4e722ab2e5ff59d71261ee88de3`.
+
+
+## AWS KMS-backed MAC secret vault source integration — 2026-11-24
+
+- Added an AWS KMS envelope-encryption adapter for MAC secrets. Each secret version receives a fresh 256-bit data key from AWS KMS; the value is encrypted locally with AES-256-GCM and authenticated context binding. Only the KMS-wrapped data key and ciphertext are persisted.
+- The adapter exchanges the MAC API Production Vercel OIDC token for short-lived AWS credentials using STS \`AssumeRoleWithWebIdentity\`. No static AWS access key is stored in Vercel.
+- Added platform-admin secret metadata listing, encrypted upsert, fresh-data-key rotation, and revocation endpoints. Idempotency records contain an HMAC digest of the submitted value, never the plaintext. Audit records contain only secret identifiers, version and scope.
+- Production MeBuMIP API workload requests may retrieve only active secrets explicitly scoped to \`zuri-mebumip-api\`; retrieval is no-store and audited before returning plaintext. Secret delivery fails closed if encryption, OIDC, KMS or audit signing is unavailable.
+- Added AES-GCM context-binding/tamper tests, secret/version collection indexes, and OpenAPI contracts for the lifecycle endpoints.
+- **Not provisioned/live:** AWS account IAM OIDC provider and exact-subject trust role, symmetric KMS key, role policy restricted to \`kms:GenerateDataKey\` and \`kms:Decrypt\`, and Production-only \`AWS_REGION\`, \`AWS_ROLE_ARN\`, \`MAC_SECRETS_KMS_KEY_ARN\` configuration. The adapter remains disabled until those external resources exist. No AWS account, key or paid service was created.
