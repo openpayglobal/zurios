@@ -6,13 +6,13 @@ import {createSession,rotateRefreshToken,revokeSession} from "@zuri/core-platfor
 import {permissionsForMembership,platformPermissionsForUser} from "@zuri/core-platform";
 import {appendAuditEvent,appendOutboxEvent} from "@zuri/core-platform";
 import {decryptMfaSecret,encryptMfaSecret,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
+import { signSessionAccessToken } from "./session-token.js";
 export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
 const key=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
 const normalizeEmail=(email:string)=>email.trim().toLowerCase();
 const activeMembershipWindow=(now:Date)=>({$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]});
 async function issueAccessToken(config:AuthConfig,claims:{userId:string;tenantId:string;membershipId:string;sessionId:string;permissions:string[]}){
- return new SignJWT({tenantId:claims.tenantId,membershipId:claims.membershipId,sessionId:claims.sessionId,permissions:claims.permissions})
-  .setProtectedHeader({alg:"HS256"}).setIssuer(config.issuer).setAudience(config.audience).setSubject(claims.userId).setIssuedAt().setExpirationTime(`${config.accessTokenTtlSeconds}s`).sign(key(config));
+ return signSessionAccessToken(config,claims);
 }
 async function issueMfaChallenge(db:Db,config:AuthConfig,claims:{userId:string;tenantId?:string;membershipId?:string}){
  const challengeId=randomUUID(),now=new Date();

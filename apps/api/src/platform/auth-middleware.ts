@@ -1,18 +1,17 @@
 import type {Db} from "mongodb";
 import type {FastifyReply,FastifyRequest} from "fastify";
-import {jwtVerify} from "jose";
+import { verifySessionAccessToken } from "./session-token.js";
 import {coreCollections,permissionsForMembership,platformPermissionsForUser} from "@zuri/core-platform";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 export type AuthenticatedPrincipal=PlatformPrincipal&{membershipId:string;sessionId:string};
 declare module "fastify"{interface FastifyRequest{principal?:AuthenticatedPrincipal;}}
-const signingKey=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
 export function authenticate(db:Db,config:AuthConfig){
  return async(request:FastifyRequest,reply:FastifyReply)=>{
   const header=request.headers.authorization;
   if(typeof header!=="string"||!header.startsWith("Bearer "))return reply.code(401).send({error:"UNAUTHENTICATED"});
   try{
-   const {payload}=await jwtVerify(header.slice(7),signingKey(config),{issuer:config.issuer,audience:config.audience,algorithms:["HS256"]});
+   const {payload}=await verifySessionAccessToken(header.slice(7),config);
    const userId=payload.sub,tenantId=payload.tenantId,membershipId=payload.membershipId,sessionId=payload.sessionId;
    if(typeof userId!=="string"||typeof tenantId!=="string"||typeof membershipId!=="string"||typeof sessionId!=="string")throw new Error("INVALID_ACCESS_CLAIMS");
    const c=coreCollections(db),now=new Date();
