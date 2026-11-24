@@ -121,11 +121,11 @@ app.addHook("onRequest", async (request, reply) => {
         if(typeof mfaKey!=="string"||Buffer.from(mfaKey,"base64").length!==32)throw new Error("MAC_MFA_KEY_UNAVAILABLE");
         authConfig.jwtSecret=jwtSecret;
         authConfig.mfaEncryptionKey=mfaKey;
-        for(const item of secrets){
+        if(secrets.length){
           await writeAuditEvent({
-            tenantId:"platform",actor:{service:"zurios-api"},action:"platform.mac_secret.accessed",
-            resourceType:"mac_secret",resourceId:item.secretId,outcome:"success",
-            metadata:{service:"zurios-api",version:item.version}
+            tenantId:"platform",actor:{service:"zurios-api"},action:"platform.mac_secret.bundle_accessed",
+            resourceType:"mac_secret_bundle",resourceId:"zurios-api",outcome:"success",
+            metadata:{service:"zurios-api",resourceIds:secrets.map(item=>item.secretId),versions:secrets.map(item=>item.version)}
           });
         }
       } catch(error) {
@@ -249,15 +249,15 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
         for (const item of values) {
           secrets[item.secretId] = item.value;
         }
-        for (const item of values) {
+        if(values.length){
           await writeAuditEvent({
             tenantId:"platform",
             actor:{service:expectedProject},
-            action:"platform.mac_secret.accessed",
-            resourceType:"mac_secret",
-            resourceId:item.secretId,
+            action:"platform.mac_secret.bundle_accessed",
+            resourceType:"mac_secret_bundle",
+            resourceId:expectedProject,
             outcome:"success",
-            metadata:{service:expectedProject,version:item.version}
+            metadata:{service:expectedProject,resourceIds:values.map(item=>item.secretId),versions:values.map(item=>item.version)}
           });
         }
       } catch (error) {
