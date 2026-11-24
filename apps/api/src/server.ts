@@ -125,8 +125,13 @@ app.addHook("onRequest", async (request, reply) => {
         if(typeof mfaKey!=="string"||Buffer.from(mfaKey,"base64").length!==32)throw new Error("MAC_MFA_KEY_UNAVAILABLE");
         if(mfaKeyring){
           const ring=JSON.parse(mfaKeyring) as Record<string,unknown>;
-          if(!mfaActiveKeyId||typeof ring[mfaActiveKeyId]!=="string"||Buffer.from(ring[mfaActiveKeyId] as string,"base64").length!==32)throw new Error("MAC_MFA_KEYRING_INVALID");
-        }
+          const entries=Object.entries(ring);
+          if(entries.length<1||entries.length>20||!mfaActiveKeyId||typeof ring[mfaActiveKeyId]!=="string")throw new Error("MAC_MFA_KEYRING_INVALID");
+          for(const [keyId,keyValue] of entries){
+            if(!/^[a-zA-Z0-9_-]{1,64}$/.test(keyId)||typeof keyValue!=="string"||Buffer.from(keyValue,"base64").length!==32)throw new Error("MAC_MFA_KEYRING_INVALID");
+          }
+          if(typeof ring.legacy==="string"&&ring.legacy!==mfaKey)throw new Error("MAC_MFA_LEGACY_KEY_MISMATCH");
+        }else if(mfaActiveKeyId)throw new Error("MAC_MFA_KEYRING_INVALID");
         authConfig.jwtSecret=jwtSecret;
         authConfig.mfaEncryptionKey=mfaKey;
         authConfig.mfaEncryptionKeyring=mfaKeyring;
