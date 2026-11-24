@@ -185,3 +185,14 @@ The repository intentionally does not create AWS resources or assume an AWS acco
 5. After deployment, run a live acceptance test covering OIDC role assumption, GenerateDataKey, AES-GCM round trip, KMS Decrypt, service-scope denial, audit signing, rotation, revocation and historical recovery. Only then treat the vault as operational.
 
 The Vercel Production environment currently has no AWS role/key settings, and the repository has no linked AWS account to provision. Do not enter real secret values until this checklist and the database bootstrap prerequisites are complete.
+
+
+## MAC vault workload-identity boundary correction — 2026-11-24
+
+- Removed reliance on caller-supplied `x-vercel-oidc-token` headers for AWS KMS operations.
+- The MAC API now obtains its own short-lived Production workload identity through `@vercel/oidc`, verifies its exact team, project, owner, subject and Production claims, and only then exchanges that identity through AWS STS.
+- Secret create, rotate, and internal workload delivery all use the MAC API's own identity. A MeBuMIP caller's token is used only to authenticate the caller to the MAC internal endpoint; it is never reused as the AWS role identity.
+- Added `@vercel/oidc` to the Zuri OS API dependencies. Exact-head CI run **45346142900** passed typecheck, tests and build after this correction.
+- Live AWS STS/KMS acceptance remains blocked until the account owner provisions the exact-subject AWS IAM OIDC provider/role, symmetric KMS key and Production-only provider identifiers. No AWS resources or costs were created.
+
+This correction closes a workload-identity trust-boundary defect in the earlier source integration. It does not constitute live Production secret-vault acceptance.
