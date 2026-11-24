@@ -196,3 +196,8 @@ The Vercel Production environment currently has no AWS role/key settings, and th
 - Live AWS STS/KMS acceptance remains blocked until the account owner provisions the exact-subject AWS IAM OIDC provider/role, symmetric KMS key and Production-only provider identifiers. No AWS resources or costs were created.
 
 This correction closes a workload-identity trust-boundary defect in the earlier source integration. It does not constitute live Production secret-vault acceptance.
+
+
+## Secret metadata access audit — 2026-11-24
+
+The platform-admin secret inventory endpoint now emits a signed audit event for every metadata enumeration, recording the administrator, count and operation without recording secret values or encrypted envelopes. The response remains metadata-only, excludes the encrypted envelope, and is marked no-store. This adds visibility to secret discovery as well as create, rotate, revoke and workload-delivery operations.
