@@ -90,6 +90,12 @@ export default function App(){
  const [privacyNoticeUrlDraft,setPrivacyNoticeUrlDraft]=useState("");
  const [accessRequestsEnabledDraft,setAccessRequestsEnabledDraft]=useState(false);
  const [runtimeSaveMessage,setRuntimeSaveMessage]=useState("");
+ const [secretIdDraft,setSecretIdDraft]=useState("");
+ const [secretValueDraft,setSecretValueDraft]=useState("");
+ const [secretServicesDraft,setSecretServicesDraft]=useState<string[]>(["zuri-mebumip-api"]);
+ const [secretReasonDraft,setSecretReasonDraft]=useState("Provisioned through MAC secret vault after owner review");
+ const [secretActionMessage,setSecretActionMessage]=useState("");
+ const [secretBusy,setSecretBusy]=useState(false);
  const [stepUpOpen,setStepUpOpen]=useState(false);
  const [stepUpPassword,setStepUpPassword]=useState("");
  const [stepUpCode,setStepUpCode]=useState("");
