@@ -20,6 +20,10 @@ const MEBUMIP_SECRET_IDS = [
   "audit-signing-active-key-id",
 ] as const;
 
+const MAC_RUNTIME_CONFIG_HOST = "zurios-api-openpayglobal-5300s-projects.vercel.app";
+const MAC_RUNTIME_CONFIG_PATH = "/platform/internal/runtime-config";
+const DEFAULT_MAC_RUNTIME_CONFIG_URL = `https://${MAC_RUNTIME_CONFIG_HOST}${MAC_RUNTIME_CONFIG_PATH}`;
+
 function isExactHttpsOrigin(value: unknown): value is string {
   if (typeof value !== "string" || value.length > 512) return false;
   try {
@@ -33,6 +37,32 @@ function isExactHttpsOrigin(value: unknown): value is string {
       !url.hash;
   } catch {
     return false;
+  }
+}
+
+/** Pin the identity-bearing request to MAC's approved host and exact endpoint. */
+export function validateMacRuntimeConfigUrl(value: unknown): string {
+  if (typeof value !== "string" || value.length > 1024) {
+    throw new Error("MAC_RUNTIME_CONFIG_URL_INVALID");
+  }
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      url.hostname !== MAC_RUNTIME_CONFIG_HOST ||
+      url.port !== "" ||
+      url.username !== "" ||
+      url.password !== "" ||
+      url.pathname !== MAC_RUNTIME_CONFIG_PATH ||
+      url.search !== "" ||
+      url.hash !== "" ||
+      url.href !== value
+    ) {
+      throw new Error("MAC_RUNTIME_CONFIG_URL_INVALID");
+    }
+    return url.href;
+  } catch {
+    throw new Error("MAC_RUNTIME_CONFIG_URL_INVALID");
   }
 }
 
@@ -84,6 +114,9 @@ export function validateMacRuntimeConfig(value: unknown): MacRuntimeConfig {
 }
 
 export function buildMacRuntimeConfigHeaders(token: string): Record<string, string> {
+  if (typeof token !== "string" || token.trim() === "" || /[\\r\\n]/.test(token)) {
+    throw new Error("MAC_RUNTIME_CONFIG_TOKEN_INVALID");
+  }
   return {
     authorization: `Bearer ${token}`,
     "x-vercel-trusted-oidc-idp-token": token,
@@ -91,8 +124,9 @@ export function buildMacRuntimeConfigHeaders(token: string): Record<string, stri
   };
 }
 
-const MAC_RUNTIME_CONFIG_URL = process.env.MAC_RUNTIME_CONFIG_URL
-  ?? "https://zurios-api-openpayglobal-5300s-projects.vercel.app/platform/internal/runtime-config";
+const MAC_RUNTIME_CONFIG_URL = validateMacRuntimeConfigUrl(
+  process.env.MAC_RUNTIME_CONFIG_URL ?? DEFAULT_MAC_RUNTIME_CONFIG_URL,
+);
 let cached: MacRuntimeConfig | null = null;
 let cachedUntil = 0;
 let inFlight: Promise<MacRuntimeConfig | null> | null = null;
