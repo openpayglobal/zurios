@@ -970,6 +970,67 @@ paths:
         "201": {description: Platform lifecycle approval request created}
         "403": {$ref: "#/components/responses/Forbidden"}
 
+  /platform/admin/secrets:
+    get:
+      tags: [Administration]
+      operationId: listMacManagedSecrets
+      summary: List MAC-managed secret metadata without encrypted payloads or plaintext values
+      responses:
+        "200": {description: Secret identifiers, versions, scopes and lifecycle metadata only}
+        "401": {$ref: "#/components/responses/Unauthenticated"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+  /platform/admin/secrets/{secretId}:
+    put:
+      tags: [Administration]
+      operationId: upsertMacManagedSecret
+      summary: Create or replace an encrypted MAC-managed secret
+      parameters:
+        - {name: secretId, in: path, required: true, schema: {type: string, pattern: "^[a-z][a-z0-9._-]{1,63}$"}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacSecretUpsert"}
+      responses:
+        "200": {description: Secret stored as an AES-256-GCM envelope with a KMS-wrapped data key}
+        "400": {description: Invalid request or missing idempotency key}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "503": {description: Production KMS or workload identity is unavailable}
+    delete:
+      tags: [Administration]
+      operationId: revokeMacManagedSecret
+      summary: Revoke a MAC-managed secret for all workload consumers
+      parameters:
+        - {name: secretId, in: path, required: true, schema: {type: string}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacSecretReason"}
+      responses:
+        "200": {description: Secret revoked; encrypted historical versions retained}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Secret not found}
+  /platform/admin/secrets/{secretId}/rotate:
+    post:
+      tags: [Administration]
+      operationId: rotateMacManagedSecret
+      summary: Re-encrypt an existing secret with a fresh data key and current KMS key
+      parameters:
+        - {name: secretId, in: path, required: true, schema: {type: string}}
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MacSecretReason"}
+      responses:
+        "200": {description: New encrypted version created and previous envelope archived}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404": {description: Secret not found}
+        "503": {description: Production KMS or workload identity is unavailable}
   /platform/admin/infrastructure:
     get:
       tags: [Administration]
@@ -1346,6 +1407,24 @@ components:
       required: [reason]
       properties:
         reason: {type: string, minLength: 20, maxLength: 2000}
+    MacSecretUpsert:
+      type: object
+      additionalProperties: false
+      required: [value, allowedServices, reason]
+      properties:
+        value: {type: string, minLength: 1, maxLength: 32768, writeOnly: true}
+        allowedServices:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: {type: string, enum: [zurios-api, zuri-mebumip-api]}
+        reason: {type: string, minLength: 20, maxLength: 500}
+    MacSecretReason:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 20, maxLength: 500}
     ConfigurationUpdate:
       type: object
       required: [value, reason]
