@@ -250,3 +250,13 @@ The platform-admin secret inventory endpoint now emits a signed audit event for 
 - Implementation commit: `64b87a53f7d5c4daa05ad14025841192a5e69b95`; test commit: `bcb7fa406ec665c7c9744cc7c9040325b8dc1bac`.
 - Initial CI exposed an over-broad CR/LF character-class check that rejected ordinary token strings; corrected the expression and changed the regression test to inject actual CR/LF bytes. Final exact-head push CI run **45386574943** and PR CI run **45386581584** both passed install, replica-set setup, both OpenAPI validations, route-drift validation, documentation mirror validation, typecheck, tests and build on `178d6af4f474cf75660c7b8704abbc34d99205fe`.
 - This is a source-level control-plane security fix. It does not constitute deployed OIDC/MAC acceptance; Vercel deployment checks remain blocked by `build-rate-limit`.
+
+
+## MeBuMIP workload identity request hardening — 2026-11-24
+
+- Removed the ability for an inbound HTTP request header to supply the OIDC token used by the MeBuMIP API when calling MAC. The API now obtains its workload identity inside the Vercel function through `@vercel/oidc`; caller-controlled request headers are not identity credentials.
+- MAC runtime-config requests now explicitly disable caching and reject HTTP redirects, preventing an identity-bearing request from following an unexpected redirect.
+- Added a regression test asserting `cache: no-store` and `redirect: error` on MAC runtime-config requests.
+- Implementation commits: `1ef37a815762de42ca31d72fa89680277b36de34`, `3b0bddc1865116fdbd03ebc96eca64ea43ea5bb8`; request-policy/test commits: `3ce2a6ec7263a0861e2553edd86fd704c910bb1a`, `cc89ed6fb90646cc8eb0112ba2e416f52067d043`.
+- Exact-head push CI run `45388310743` and PR CI run `45388317050` both passed install, Mongo replica-set setup, both OpenAPI validations, route-drift validation, documentation mirror validation, typecheck, tests and build on `cc89ed6fb90646cc8eb0112ba2e416f52067d043`.
+- This verifies source and CI only. Live Vercel deployment and Production MAC/OIDC/AWS acceptance remain blocked by Vercel `build-rate-limit` and unprovisioned Production dependencies.
