@@ -113,7 +113,7 @@ app.addHook("onRequest", async (request, reply) => {
       try {
         const oidcToken=request.headers["x-vercel-oidc-token"];
         if(typeof oidcToken!=="string"||!oidcToken)throw new Error("MAC_WORKLOAD_OIDC_UNAVAILABLE");
-        const secrets=await readMacSecretsForService(db,"zurios-api",oidcToken);
+        const secrets=await readMacSecretsForService(db,"zurios-api",oidcToken,["zuri-os-jwt-secret","zuri-os-mfa-encryption-key"]);
         const values=Object.fromEntries(secrets.map(item=>[item.secretId,item.value]));
         const jwtSecret=values["zuri-os-jwt-secret"];
         const mfaKey=values["zuri-os-mfa-encryption-key"];
