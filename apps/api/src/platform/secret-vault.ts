@@ -143,6 +143,31 @@ export async function encryptMacSecret(
   }
 }
 
+async function decryptWithKmsClient(
+  kms: KMSClient,
+  envelope: MacSecretEnvelope,
+  context: MacSecretContext,
+): Promise<string> {
+  const unwrapped = await kms.send(new DecryptCommand({
+    KeyId: envelope.kmsKeyArn,
+    CiphertextBlob: Buffer.from(envelope.encryptedDataKey, "base64"),
+    EncryptionContext: {
+      application: "zuri-os-mac",
+      purpose: "mac-secret",
+      secretId: context.secretId,
+      version: String(context.version),
+    },
+  }));
+  if (!unwrapped.Plaintext) throw new Error("MAC_SECRET_DATA_KEY_DECRYPTION_FAILED");
+  const dataKey = Buffer.from(unwrapped.Plaintext);
+  try {
+    return openSecretWithDataKey(envelope, dataKey, context);
+  } finally {
+    dataKey.fill(0);
+    unwrapped.Plaintext.fill(0);
+  }
+}
+
 export async function decryptMacSecret(
   envelope: MacSecretEnvelope,
   context: MacSecretContext,
@@ -150,24 +175,28 @@ export async function decryptMacSecret(
 ): Promise<string> {
   const kms = await createMacKmsClient(oidcToken);
   try {
-    const unwrapped = await kms.send(new DecryptCommand({
-      KeyId: envelope.kmsKeyArn,
-      CiphertextBlob: Buffer.from(envelope.encryptedDataKey, "base64"),
-      EncryptionContext: {
-        application: "zuri-os-mac",
-        purpose: "mac-secret",
-        secretId: context.secretId,
-        version: String(context.version),
-      },
-    }));
-    if (!unwrapped.Plaintext) throw new Error("MAC_SECRET_DATA_KEY_DECRYPTION_FAILED");
-    const dataKey = Buffer.from(unwrapped.Plaintext);
-    try {
-      return openSecretWithDataKey(envelope, dataKey, context);
-    } finally {
-      dataKey.fill(0);
-      unwrapped.Plaintext.fill(0);
-    }
+    return await decryptWithKmsClient(kms, envelope, context);
+  } finally {
+    kms.destroy();
+  }
+}
+
+/** Decrypt a workload's authorized secrets with one short-lived AWS role session per request. */
+export async function decryptMacSecrets(
+  records: Array<{ secretId: string; version: number; envelope: MacSecretEnvelope }>,
+  oidcToken: string,
+): Promise<Array<{ secretId: string; version: number; value: string }>> {
+  if (!records.length) return [];
+  const kms = await createMacKmsClient(oidcToken);
+  try {
+    return await Promise.all(records.map(async record => ({
+      secretId: record.secretId,
+      version: record.version,
+      value: await decryptWithKmsClient(kms, record.envelope, {
+        secretId: record.secretId,
+        version: record.version,
+      }),
+    })));
   } finally {
     kms.destroy();
   }
