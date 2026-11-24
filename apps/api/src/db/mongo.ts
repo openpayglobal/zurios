@@ -69,7 +69,10 @@ async function ensureIndexes(db:Db):Promise<void>{
   db.collection("auth_rate_limits").createIndex({key:1},{unique:true}),
   db.collection("auth_rate_limits").createIndex({expiresAt:1},{expireAfterSeconds:0}),
   db.collection("auth_challenges").createIndex({challengeId:1},{unique:true}),
-  db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0})
+  db.collection("auth_challenges").createIndex({expiresAt:1},{expireAfterSeconds:0}),
+  db.collection("mac_secrets").createIndex({secretId:1},{unique:true}),
+  db.collection("mac_secret_versions").createIndex({secretId:1,version:1},{unique:true}),
+  db.collection("mac_secret_versions").createIndex({createdAt:1})
  ]);
 }
 export async function closeMongo():Promise<void>{await client?.close();client=undefined;database=undefined;connectionPromise=undefined;}
