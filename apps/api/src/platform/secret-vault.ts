@@ -174,7 +174,7 @@ export async function decryptMacSecret(
   envelope: MacSecretEnvelope,
   context: MacSecretContext,
  ): Promise<string> {
-  const kms = await createMacKmsClient(oidcToken);
+  const kms = await createMacKmsClient();
   try {
     return await decryptWithKmsClient(kms, envelope, context);
   } finally {
@@ -187,7 +187,7 @@ export async function decryptMacSecrets(
   records: Array<{ secretId: string; version: number; envelope: MacSecretEnvelope }>,
  ): Promise<Array<{ secretId: string; version: number; value: string }>> {
   if (!records.length) return [];
-  const kms = await createMacKmsClient(oidcToken);
+  const kms = await createMacKmsClient();
   try {
     const settled = await Promise.allSettled(records.map(async record => ({
       secretId: record.secretId,
