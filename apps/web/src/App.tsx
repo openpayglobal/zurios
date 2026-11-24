@@ -172,8 +172,8 @@ export default function App(){
    if(target==="breakglass")result=await api("/v1/platform/admin/break-glass");
    if(target==="configuration")result=await api("/v1/platform/admin/configuration");
    if(target==="infrastructure"){
-    const [inventory,runtime]=await Promise.all([api<any>("/platform/admin/infrastructure"),api<any>("/platform/admin/runtime-config")]);
-    result={...inventory,runtimeConfig:runtime.data};
+    const [inventory,runtime,secrets]=await Promise.all([api<any>("/platform/admin/infrastructure"),api<any>("/platform/admin/runtime-config"),api<any>("/platform/admin/secrets")]);
+    result={...inventory,runtimeConfig:runtime.data,secrets:secrets.data??[]};
    }
    if(target==="tenants")result=await api("/v1/platform/admin/tenants");
    if(target==="access")result=await api("/platform/admin/access-requests?status=pending");
@@ -308,6 +308,49 @@ export default function App(){
    await loadView("infrastructure");
   }catch(cause){setRuntimeSaveMessage(cause instanceof Error?cause.message:"Unable to save runtime configuration.");}
   finally{setBusy(false);}
+ };
+
+
+ const macSecrets=(infrastructureState.secrets??[]) as Array<{secretId:string;version:number;allowedServices:string[];environment:string;updatedAt?:string;revokedAt?:string}>;
+ const toggleSecretService=(service:string,checked:boolean)=>setSecretServicesDraft(current=>checked?[...new Set([...current,service])]:current.filter(value=>value!==service));
+ const saveMacSecret=async(event:FormEvent)=>{
+  event.preventDefault();
+  if(secretReasonDraft.trim().length<20||!secretServicesDraft.length)return;
+  setSecretBusy(true);setSecretActionMessage("");setError("");
+  try{
+   const result=await api<any>("/platform/admin/secrets/"+encodeURIComponent(secretIdDraft.trim()),{
+    method:"PUT",headers:{"idempotency-key":idempotency()},
+    body:JSON.stringify({value:secretValueDraft,allowedServices:secretServicesDraft,reason:secretReasonDraft.trim()})
+   });
+   setSecretValueDraft("");setSecretActionMessage("Secret encrypted and stored as version "+result.version+". The plaintext is not available for read-back.");
+   await loadView("infrastructure");
+  }catch(cause){setSecretActionMessage(cause instanceof Error?cause.message:"Unable to store MAC secret.");}
+  finally{setSecretBusy(false);}
+ };
+ const rotateMacSecret=async(secretId:string)=>{
+  if(secretReasonDraft.trim().length<20){setSecretActionMessage("Enter a rotation reason of at least 20 characters first.");return;}
+  setSecretBusy(true);setSecretActionMessage("");setError("");
+  try{
+   const result=await api<any>("/platform/admin/secrets/"+encodeURIComponent(secretId)+"/rotate",{
+    method:"POST",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason:secretReasonDraft.trim()})
+   });
+   setSecretActionMessage("Secret "+secretId+" rotated to version "+result.version+".");
+   await loadView("infrastructure");
+  }catch(cause){setSecretActionMessage(cause instanceof Error?cause.message:"Unable to rotate MAC secret.");}
+  finally{setSecretBusy(false);}
+ };
+ const revokeMacSecret=async(secretId:string)=>{
+  if(!window.confirm("Revoke "+secretId+" for all authorized workloads? Existing encrypted history will be retained."))return;
+  if(secretReasonDraft.trim().length<20){setSecretActionMessage("Enter a revocation reason of at least 20 characters first.");return;}
+  setSecretBusy(true);setSecretActionMessage("");setError("");
+  try{
+   await api("/platform/admin/secrets/"+encodeURIComponent(secretId),{
+    method:"DELETE",headers:{"idempotency-key":idempotency()},body:JSON.stringify({reason:secretReasonDraft.trim()})
+   });
+   setSecretActionMessage("Secret "+secretId+" revoked. Workload delivery will no longer return it.");
+   await loadView("infrastructure");
+  }catch(cause){setSecretActionMessage(cause instanceof Error?cause.message:"Unable to revoke MAC secret.");}
+  finally{setSecretBusy(false);}
  };
 
  if(!session||!principal){
@@ -452,7 +495,27 @@ export default function App(){
       <Panel className="p-5"><div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">Vercel KMS signing issuers</h2><Status value="provisioned"/></div>{(infrastructure.keyrings?.userSessionJwt?.managedSigning??[]).map((key:any)=><div key={key.id} className="border-t border-white/[0.06] py-4"><div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">{key.name}</p><Status value={key.status}/></div><p className="mt-1 text-xs text-slate-500">{key.purpose} · {key.algorithm} · {key.environment}</p><p className="mt-1 break-all text-[10px] text-slate-600">Issuer {key.id}</p><p className="mt-1 text-[10px] text-slate-600">Key {key.keyId} · project {key.projectId}</p></div>)}</Panel>
       <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Approved API origins</h2>{(infrastructure.apiOrigins?.items??[]).length?(infrastructure.apiOrigins.items.map((origin:string)=><div key={origin} className="border-t border-white/[0.06] py-3 text-xs text-slate-300">{origin}</div>)):<Empty label="No API origins configured."/ >}<div className="mt-3"><Status value={infrastructure.apiOrigins?.status??"unknown"}/></div><p className="mt-3 text-xs leading-5 text-slate-500">Approved browser origins are read from the versioned MAC runtime registry and applied to CORS within five seconds without redeployment.</p></Panel>
       <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Provider authorization</h2>{Object.entries(infrastructure.providers??{}).map(([name,value]:[string,any])=><div key={name} className="flex items-center justify-between border-t border-white/[0.06] py-3"><span className="text-xs capitalize text-slate-400">{name}</span><Status value={value.status??(value.configured?"configured":"not_configured")}/></div>)}</Panel>
-      <Panel className="p-5"><h2 className="mb-4 text-sm font-semibold">Encrypted secret storage</h2><Status value={infrastructure.secretStore?.status??"unknown"}/><p className="mt-3 text-xs leading-6 text-slate-400">{infrastructure.secretStore?.reason}</p><p className="mt-3 text-[10px] leading-5 text-slate-600">Vercel KMS signing is not general-purpose symmetric encryption. Do not store provider tokens, MongoDB URIs or MFA secrets until a dedicated encryption KMS/HSM is connected.</p></Panel>
+      <Panel className="p-5">
+       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><h2 className="text-sm font-semibold">MAC encrypted secret vault</h2><Status value={infrastructure.secretStore?.status??"unknown"}/></div>
+       <p className="mb-4 text-xs leading-6 text-slate-400">{infrastructure.secretStore?.reason??"Secret delivery remains disabled until AWS KMS OIDC federation is provisioned."}</p>
+       <form onSubmit={saveMacSecret} className="space-y-4 border-t border-white/[0.06] pt-4">
+        <div className="grid gap-3 md:grid-cols-2">
+         <Input label="Secret identifier" value={secretIdDraft} onChange={setSecretIdDraft} placeholder="resend-api-key" required/>
+         <Input label="Secret value (write-only)" value={secretValueDraft} onChange={setSecretValueDraft} type="password" placeholder="Paste secret value; never shown again" required/>
+        </div>
+        <div><p className="mb-2 text-xs font-medium text-slate-400">Authorized Production workloads</p><div className="flex flex-wrap gap-4 text-xs text-slate-300">
+         <label className="flex items-center gap-2"><input type="checkbox" checked={secretServicesDraft.includes("zurios-api")} onChange={event=>toggleSecretService("zurios-api",event.target.checked)}/> Zuri OS API</label>
+         <label className="flex items-center gap-2"><input type="checkbox" checked={secretServicesDraft.includes("zuri-mebumip-api")} onChange={event=>toggleSecretService("zuri-mebumip-api",event.target.checked)}/> MeBuMIP API</label>
+        </div></div>
+        <Input label="Reason for storing, rotating or revoking" value={secretReasonDraft} onChange={setSecretReasonDraft} placeholder="Document the operational reason (20+ characters)" required/>
+        <div className="flex flex-wrap items-center gap-3"><Button type="submit" disabled={secretBusy||!secretIdDraft.trim()||!secretValueDraft||secretReasonDraft.trim().length<20||!secretServicesDraft.length}>{secretBusy?"Working…":"Encrypt and store secret"}</Button><p className="text-[10px] text-slate-500">Write-only input. The console never reads plaintext back.</p></div>
+       </form>
+       {secretActionMessage&&<p role="status" className="mt-4 text-xs text-cyan-200">{secretActionMessage}</p>}
+       <div className="mt-5 border-t border-white/[0.06] pt-4"><div className="mb-3 flex items-center justify-between"><h3 className="text-xs font-semibold text-slate-200">Stored secret metadata</h3><Button variant="secondary" onClick={()=>void loadView("infrastructure")} disabled={secretBusy}><RefreshCw size={13}/> Refresh</Button></div>
+        {macSecrets.length?macSecrets.map(secret=><div key={secret.secretId} className="border-t border-white/[0.06] py-3 first:border-0"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-xs font-semibold text-slate-200">{secret.secretId}</p><p className="mt-1 text-[10px] text-slate-500">Version {secret.version} · {secret.environment} · {secret.allowedServices.join(", ")}</p><p className="mt-1 text-[10px] text-slate-600">{secret.updatedAt?new Date(secret.updatedAt).toLocaleString():"Update time unavailable"}</p></div><div className="flex flex-wrap gap-2"><Button variant="secondary" disabled={secretBusy||Boolean(secret.revokedAt)} onClick={()=>void rotateMacSecret(secret.secretId)}>Rotate</Button>{!secret.revokedAt&&<Button variant="danger" disabled={secretBusy} onClick={()=>void revokeMacSecret(secret.secretId)}>Revoke</Button>}<Status value={secret.revokedAt?"revoked":"active"}/></div></div></div>):<Empty label="No MAC-managed secrets have been stored."/ >}
+       </div>
+       <p className="mt-4 text-[10px] leading-5 text-slate-600">Values are encrypted with AES-256-GCM and KMS-wrapped data keys. Workloads receive only active secrets explicitly scoped to their verified Production identity. Revoked encrypted history is retained; no plaintext export is provided.</p>
+      </Panel>
      </div>
      <p className="mt-5 text-[10px] text-slate-600">Last checked {infrastructure.generatedAt?new Date(infrastructure.generatedAt).toLocaleString():"—"} · {infrastructure.environment??"unknown"} · Metadata only</p>
     </>}
