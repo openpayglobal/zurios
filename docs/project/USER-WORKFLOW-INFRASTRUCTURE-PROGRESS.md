@@ -325,3 +325,13 @@ Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored A
 - Added the MAC web-client step-up experience: privileged write requests automatically open a verification dialog, retry only after successful step-up, and offer first-time MFA enrollment when needed. The flow displays the one-time authenticator secret/provisioning URI and recovery codes in memory only; it does not store them in browser storage.
 - MFA enrollment initiation and confirmation now both require password reauthentication; pending enrollment expires after ten minutes. Enrollment state and its audit event commit transactionally. TOTP/recovery-code step-up, session grant and success audit also commit transactionally.
 - Extended shared user/session document types for pending-enrollment expiry and five-minute step-up timestamps. The initial backend guard/outbox correction CI run `44994706706` passed all checks; follow-up UI, enrollment lifecycle and type updates require the latest exact-head CI run before acceptance.
+
+
+## MAC workload secret delivery allowlist hardening — 2026-11-24
+
+- Audited the internal MAC runtime-config handler and found that its MongoDB query returned every active secret assigned to a workload. This was broader than the minimum secret set each API requires.
+- Added fixed per-service secret-ID allowlists. Zuri OS API receives only its JWT/MFA key material; MeBuMIP API receives only its mail/MFA/audit-signing material.
+- Routed both the Zuri OS API's own refresh path and cross-project internal runtime-config delivery through the same allowlisted vault reader. Queries require Production environment, exact service assignment, non-revoked state and exact secret IDs.
+- Added regression tests asserting the service boundaries and documented the change in the MAC infrastructure/secrets operations guide.
+- Initial CI type errors were fixed. Full exact-head CI passed on implementation commit `c82b76a1dc985fa892c76a1c5dd6f0ee83603d23` (run `45369507739`) and documentation head `3c68434c3f226698da41436f9cbd2ee6e513a224` (run `45369769377`).
+- **Not yet live:** Vercel deployment checks for all four projects still return `build-rate-limit`. AWS OIDC/STS/KMS provisioning, Production bootstrap configuration and live workload delivery acceptance remain outstanding. No quota bypass, billing change or Production release was performed.
