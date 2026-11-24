@@ -13,6 +13,26 @@ const AUDIENCE = `https://vercel.com/${TEAM_SLUG}`;
 const jwks = createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks`));
 
 export type MacSecretContext = { secretId: string; version: number };
+
+/** Least-privilege secret IDs each Production workload is permitted to receive. */
+export const MAC_SECRET_IDS_BY_SERVICE = {
+  "zurios-api": [
+    "zuri-os-jwt-secret",
+    "zuri-os-mfa-encryption-key",
+    "zuri-os-mfa-encryption-keyring",
+    "zuri-os-mfa-encryption-active-key-id",
+  ],
+  "zuri-mebumip-api": [
+    "resend-api-key",
+    "mail-from",
+    "mebumip-mfa-encryption-key",
+    "mfa-encryption-keyring",
+    "mfa-encryption-active-key-id",
+    "mebumip-audit-signing-key",
+    "audit-signing-keyring",
+    "audit-signing-active-key-id",
+  ],
+} as const;
 export type MacSecretEnvelope = {
   algorithm: "AES-256-GCM";
   kmsKeyArn: string;
@@ -209,9 +229,10 @@ export async function decryptMacSecrets(
 /** Read and decrypt only active secret versions explicitly scoped to one Production service. */
 export async function readMacSecretsForService(
   db: Db,
-  service: "zurios-api" | "zuri-mebumip-api",
-  secretIds?: string[],
+  service: keyof typeof MAC_SECRET_IDS_BY_SERVICE,
 ): Promise<Array<{secretId:string;version:number;value:string}>> {
+  const secretIds = MAC_SECRET_IDS_BY_SERVICE[service];
+  if (secretIds.length === 0) return [];
   const records = await db.collection<{
     secretId:string;
     version:number;
@@ -222,7 +243,7 @@ export async function readMacSecretsForService(
     environment:"production",
     allowedServices:service,
     revokedAt:{$exists:false},
-    ...(secretIds?.length?{secretId:{$in:secretIds}}:{}),
+    secretId:{$in:[...secretIds]},
   },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
   return decryptMacSecrets(records);
 }
