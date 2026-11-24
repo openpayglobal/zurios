@@ -114,7 +114,7 @@ export function validateMacRuntimeConfig(value: unknown): MacRuntimeConfig {
 }
 
 export function buildMacRuntimeConfigHeaders(token: string): Record<string, string> {
-  if (typeof token !== "string" || token.trim() === "" || /[\\r\\n]/.test(token)) {
+  if (typeof token !== "string" || token.trim() === "" || /[\r\n]/.test(token)) {
     throw new Error("MAC_RUNTIME_CONFIG_TOKEN_INVALID");
   }
   return {
