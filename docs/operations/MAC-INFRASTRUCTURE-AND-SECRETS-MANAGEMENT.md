@@ -211,3 +211,12 @@ The platform-admin secret inventory endpoint now emits a signed audit event for 
 - A redeployment was attempted against the exact commit but Vercel returned HTTP 402 `api-deployments-free-per-day` with a 24-hour retry interval. No alternate account, billing change, quota bypass or SSO weakening was used. The existing MeBuMIP API Preview remains in ERROR until a new deployment can be built.
 - The Zuri OS API and both frontend deployment records were READY at the previous source commit `ed9f50f`; they do not prove that the latest source commit is deployed or that authenticated API workflows pass live.
 - The MAC secret inventory endpoint now uses an explicit metadata field allowlist, and its exact-head source validation passed on commit `c64f57da8565c42af5adcd1cd20efddec947eea6` (both CI runs).
+
+
+## Workload secret delivery least-privilege correction — 2026-11-24
+
+- Replaced the internal runtime endpoint's broad query for every secret assigned to a workload with explicit per-service secret-ID allowlists.
+- Zuri OS API receives only its JWT and MFA encryption key material. MeBuMIP API receives only its mail, MFA and audit-signing configuration.
+- The shared vault query always applies the explicit secret-ID filter alongside Production environment, service assignment and non-revoked state. Unknown future secrets are not implicitly delivered.
+- Added regression assertions for both service allowlists. Exact-head CI is running on `081f419e549b8b135bed447f064e1779e6e48fa4`; the result will be recorded after completion.
+- This is a source-level least-privilege correction. Live workload delivery remains unaccepted until the API deployment quota clears and real Production OIDC/KMS requests pass.
