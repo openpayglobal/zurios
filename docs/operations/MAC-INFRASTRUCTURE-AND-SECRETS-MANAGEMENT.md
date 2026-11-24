@@ -201,3 +201,13 @@ This correction closes a workload-identity trust-boundary defect in the earlier 
 ## Secret metadata access audit — 2026-11-24
 
 The platform-admin secret inventory endpoint now emits a signed audit event for every metadata enumeration, recording the administrator, count and operation without recording secret values or encrypted envelopes. The response remains metadata-only, excludes the encrypted envelope, and is marked no-store. This adds visibility to secret discovery as well as create, rotate, revoke and workload-delivery operations.
+
+
+## MeBuMIP API deployment build correction — 2026-11-24
+
+- A Vercel Preview deployment for the MeBuMIP API at source `ed9f50f277ac53491f8c58c44cb2770a2865e26a` failed TypeScript compilation because two runtime-secret keyring validators used `Object.hasOwn`, which the deployed TypeScript library configuration did not expose.
+- Replaced both calls with `Object.prototype.hasOwnProperty.call`, matching the already-used compatibility-safe checks in the same module. No runtime behavior or accepted keyring shape changed.
+- Fix commit: `643d9cf0f749e7eae0d92dbbc0794aa30799cee6`. Full GitHub CI is running for this exact source head.
+- A redeployment was attempted against the exact commit but Vercel returned HTTP 402 `api-deployments-free-per-day` with a 24-hour retry interval. No alternate account, billing change, quota bypass or SSO weakening was used. The existing MeBuMIP API Preview remains in ERROR until a new deployment can be built.
+- The Zuri OS API and both frontend deployment records were READY at the previous source commit `ed9f50f`; they do not prove that the latest source commit is deployed or that authenticated API workflows pass live.
+- The MAC secret inventory endpoint now uses an explicit metadata field allowlist, and its exact-head source validation passed on commit `c64f57da8565c42af5adcd1cd20efddec947eea6` (both CI runs).
