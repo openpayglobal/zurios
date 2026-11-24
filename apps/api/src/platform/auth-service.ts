@@ -5,9 +5,9 @@ import {coreCollections} from "@zuri/core-platform";
 import {createSession,rotateRefreshToken,revokeSession} from "@zuri/core-platform";
 import {permissionsForMembership,platformPermissionsForUser} from "@zuri/core-platform";
 import {appendAuditEvent,appendOutboxEvent} from "@zuri/core-platform";
-import {decryptMfaSecret,encryptMfaSecret,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
+import {decryptMfaSecretWithConfig,encryptMfaSecretWithConfig,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
 import { signSessionAccessToken } from "./session-token.js";
-export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
+export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;mfaEncryptionKeyring?:string;mfaEncryptionActiveKeyId?:string;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
 const key=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
 const normalizeEmail=(email:string)=>email.trim().toLowerCase();
 const activeMembershipWindow=(now:Date)=>({$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]});
@@ -121,7 +121,7 @@ export async function verifyMfaLogin(db:Db,config:AuthConfig,challengeToken:stri
  if(claims.purpose!=="mfa"||typeof claims.sub!=="string"||typeof claims.challengeId!=="string"||((typeof claims.tenantId==="string")!==(typeof claims.membershipId==="string")))throw new Error("INVALID_MFA_CHALLENGE");
  const c=coreCollections(db),user=await c.users.findOne({userId:claims.sub,status:"active",mfaEnabled:true});
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_NOT_CONFIGURED");
- const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ const secret=decryptMfaSecretWithConfig(user.mfaSecretEncrypted,config),step=verifyTotpCode(secret,code);
  if(step!==null){
   const result=await c.users.updateOne({userId:user.userId,$or:[{mfaLastUsedStep:{$lt:step}},{mfaLastUsedStep:{$exists:false}}]},{$set:{mfaLastUsedStep:step}});
   if(!result.modifiedCount)throw new Error("MFA_CODE_ALREADY_USED");
@@ -144,7 +144,7 @@ export async function beginMfaEnrollment(db:Db,userId:string,password:string,con
  if(!user)throw new Error("ACTIVE_USER_REQUIRED");
  if(user.mfaEnabled)throw new Error("MFA_ALREADY_ENABLED");
  if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
- const secret=generateTotpSecret(),encrypted=encryptMfaSecret(secret,config.mfaEncryptionKey),now=new Date(),expiresAt=new Date(now.getTime()+10*60_000),transaction=db.client.startSession();
+ const secret=generateTotpSecret(),encrypted=encryptMfaSecretWithConfig(secret,config),now=new Date(),expiresAt=new Date(now.getTime()+10*60_000),transaction=db.client.startSession();
  try{
   await transaction.withTransaction(async()=>{
    const updated=await c.users.updateOne({userId,status:"active",mfaEnabled:{$ne:true}},{$set:{pendingMfaSecretEncrypted:encrypted,pendingMfaSecretExpiresAt:expiresAt,updatedAt:now}},{session:transaction});
@@ -216,7 +216,7 @@ export async function confirmMfaEnrollment(db:Db,userId:string,password:string,c
  const c=coreCollections(db),now=new Date(),user=await c.users.findOne({userId,status:"active"}),pendingSecret=user?.pendingMfaSecretEncrypted;
  if(!user||!pendingSecret||!(user.pendingMfaSecretExpiresAt instanceof Date)||user.pendingMfaSecretExpiresAt<=now)throw new Error("MFA_ENROLLMENT_EXPIRED");
  if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
- const secret=decryptMfaSecret(pendingSecret,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
+ const secret=decryptMfaSecretWithConfig(pendingSecret,config),step=verifyTotpCode(secret,code);if(step===null)throw new Error("INVALID_MFA_CODE");
  const recoveryCodes=generateRecoveryCodes(),mfaRecoveryCodeHashes=recoveryCodes.map(hashRecoveryCode),transaction=db.client.startSession();
  try{
   await transaction.withTransaction(async()=>{
