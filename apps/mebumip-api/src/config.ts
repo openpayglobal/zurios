@@ -143,10 +143,10 @@ export function applyMacRuntimeSecrets(secrets: Record<string, string>): void {
   const next = macRuntimeSecretSchema.parse({
     RESEND_API_KEY: secrets["resend-api-key"],
     MAIL_FROM: secrets["mail-from"],
-    MFA_ENCRYPTION_KEY: secrets["mfa-encryption-key"],
+    MFA_ENCRYPTION_KEY: secrets["mebumip-mfa-encryption-key"],
     MFA_ENCRYPTION_KEYRING: secrets["mfa-encryption-keyring"],
     MFA_ENCRYPTION_ACTIVE_KEY_ID: secrets["mfa-encryption-active-key-id"],
-    AUDIT_SIGNING_KEY: secrets["audit-signing-key"],
+    AUDIT_SIGNING_KEY: secrets["mebumip-audit-signing-key"],
     AUDIT_SIGNING_KEYRING: secrets["audit-signing-keyring"],
     AUDIT_SIGNING_ACTIVE_KEY_ID: secrets["audit-signing-active-key-id"],
   });
