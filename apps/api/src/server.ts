@@ -10,6 +10,8 @@ import { authRoutes } from "./platform/auth-routes.js";
 import { platformRoutes } from "./platform/platform-routes.js";
 import { adminRoutes } from "./platform/admin-routes.js";
 import { readPlatformRuntimeConfig } from "./platform/runtime-config-store.js";
+import { decryptMacSecret,isMacSecretVaultConfigured,type MacSecretEnvelope } from "./platform/secret-vault.js";
+import { writeAuditEvent } from "./platform/audit.js";
 import type { AuthConfig } from "./platform/auth-service.js";
 import { createMongoEventBusPublisher, dispatchOutboxBatch, runOutboxWorker } from "@zuri/core-platform";
 
@@ -192,13 +194,53 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
     ) return reply.code(403).send({ error: "WORKLOAD_IDENTITY_NOT_AUTHORIZED" });
 
     const runtime = await readPlatformRuntimeConfig(db);
+    let secrets: Record<string,string> = {};
+    const secretVaultEnabled = isMacSecretVaultConfigured() && process.env.VERCEL_ENV === "production";
+    if (secretVaultEnabled) {
+      const macOidcToken = request.headers["x-vercel-oidc-token"];
+      if (typeof macOidcToken !== "string" || !macOidcToken) {
+        return reply.code(503).send({ error: "MAC_SECRET_VAULT_OIDC_UNAVAILABLE" });
+      }
+      try {
+        const records = await db.collection<{
+          secretId:string; version:number; allowedServices:string[]; environment:string;
+          envelope:MacSecretEnvelope; revokedAt?:Date;
+        }>("mac_secrets").find({
+          environment:"production",
+          allowedServices:expectedProject,
+          revokedAt:{$exists:false}
+        },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
+        const values = await Promise.all(records.map(async record => ({
+          secretId:record.secretId,
+          version:record.version,
+          value:await decryptMacSecret(record.envelope,{secretId:record.secretId,version:record.version},macOidcToken)
+        })));
+        for (const item of values) {
+          secrets[item.secretId] = item.value;
+        }
+        for (const item of values) {
+          await writeAuditEvent({
+            tenantId:"platform",
+            actor:{service:expectedProject},
+            action:"platform.mac_secret.accessed",
+            resourceType:"mac_secret",
+            resourceId:item.secretId,
+            outcome:"success",
+            metadata:{service:expectedProject,version:item.version}
+          });
+        }
+      } catch (error) {
+        request.log.error({code:error instanceof Error?error.name:"UNKNOWN"},"MAC secret delivery failed");
+        return reply.code(503).send({error:"MAC_SECRET_DELIVERY_UNAVAILABLE"});
+      }
+    }
     return reply.header("cache-control", "no-store").send({
       revision: runtime.revision,
       service: expectedProject,
       apiOrigin: expectedProject === "zuri-mebumip-api" ? runtime.apiOrigins.mebumip : runtime.apiOrigins.zuriOs,
       allowedOrigins: runtime.allowedOrigins,
-      privateSettings: {},
-      secretAccess: "blocked_until_encryption_kms_is_configured",
+      secrets,
+      secretAccess: secretVaultEnabled ? "enabled" : "blocked_until_encryption_kms_is_configured",
     });
   } catch {
     return reply.code(401).send({ error: "WORKLOAD_IDENTITY_INVALID" });

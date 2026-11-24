@@ -510,14 +510,13 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
   });
 
   const macSecretServices = ["zurios-api","zuri-mebumip-api"] as const;
-  const replyNoStore=(rows:unknown[])=>({data:rows});
   const macSecretIdSchema = z.string().regex(/^[a-z][a-z0-9._-]{1,63}$/);
   const macSecretReasonSchema = z.string().trim().min(20).max(500);
-  app.get("/platform/admin/secrets",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async()=>{
+  app.get("/platform/admin/secrets",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(_request,reply)=>{
    const rows=await db.collection("mac_secrets").find({},{
     projection:{_id:0,envelope:0}
    }).sort({secretId:1}).toArray();
-   return replyNoStore(rows);
+   return reply.header("cache-control","no-store").send({data:rows});
   });
   app.put("/platform/admin/secrets/:secretId",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
    const p=principal(request);
