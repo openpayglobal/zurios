@@ -128,3 +128,10 @@ The administrative runtime-config endpoint now strips the legacy `privateSetting
 The API source now includes an AWS KMS envelope-encryption adapter and audited secret lifecycle endpoints. It uses one fresh AES-256 data key per version, AES-256-GCM with authenticated context, and KMS-wrapped data keys. Vercel Production OIDC is exchanged for short-lived AWS credentials using STS; static AWS credentials are not stored. The workload runtime endpoint releases only active secrets scoped to the authenticated service and audits access before returning them. Admin listing omits ciphertext and plaintext; updates, rotation and revocation are versioned and idempotent.
 
 The adapter is deliberately fail-closed and is not active until the AWS account owner provisions the OIDC provider, an exact-subject Production role, a symmetric KMS key and the three Production environment settings. No AWS resources or spend were initiated. OpenAPI contracts were added; exact-head CI is pending.
+
+
+### MAC runtime secrets are consumed without redeployment — 2026-11-24
+
+Both APIs now consume MAC-managed secret values at runtime. The Zuri OS API reads its narrowly scoped authentication keys directly from the MAC secret collection using its own Production OIDC identity. MeBuMIP retrieves its service-scoped secret snapshot through the MAC internal runtime endpoint and applies validated Resend, sender, MFA and audit configuration in process memory. Refresh runs every five seconds; revoked/missing secrets are cleared, and failed Production refreshes fail closed. Production readiness checks require the configured runtime keys.
+
+This is runtime configuration inside the application, not a dynamic update of Vercel's native deployment environment. The MAC API's own MongoDB URI remains a bootstrap deployment setting because the control plane must connect to its database before it can read the vault. MeBuMIP's MongoDB URI remains a bootstrap setting in the current startup architecture. AWS region, role ARN and KMS key ARN are provider bootstrap identifiers.

@@ -159,3 +159,16 @@ Exact-head CI run **45337383228** passed on **7793244a4612f62b60f4058e9e6348f322
 - Production MeBuMIP API workload requests may retrieve only active secrets explicitly scoped to \`zuri-mebumip-api\`; retrieval is no-store and audited before returning plaintext. Secret delivery fails closed if encryption, OIDC, KMS or audit signing is unavailable.
 - Added AES-GCM context-binding/tamper tests, secret/version collection indexes, and OpenAPI contracts for the lifecycle endpoints.
 - **Not provisioned/live:** AWS account IAM OIDC provider and exact-subject trust role, symmetric KMS key, role policy restricted to \`kms:GenerateDataKey\` and \`kms:Decrypt\`, and Production-only \`AWS_REGION\`, \`AWS_ROLE_ARN\`, \`MAC_SECRETS_KMS_KEY_ARN\` configuration. The adapter remains disabled until those external resources exist. No AWS account, key or paid service was created.
+
+
+## Runtime consumption of MAC-managed secrets — 2026-11-24
+
+The MAC vault is now consumed by both first-party API workloads in source:
+
+- **Zuri OS API:** after its database is ready, it reads only \`zuri-os-jwt-secret\`, \`zuri-os-mfa-encryption-key\`, \`zuri-os-mfa-encryption-keyring\` and \`zuri-os-mfa-encryption-active-key-id\` for its own verified Production identity. It updates its live auth configuration without a deployment. Versioned MFA and invitation envelopes preserve old-key decryption during key rotation.
+- **MeBuMIP API:** its Vercel OIDC runtime client retrieves the service-scoped secret snapshot from MAC and atomically applies validated Resend, mail sender, MFA and audit key/keyring values to the running process. Missing IDs clear revoked values. A failed Production refresh clears the runtime secrets rather than retaining a credential indefinitely.
+- Both APIs audit secret-bundle access. Readiness is blocked when required Production runtime keys are absent. The runtime refresh interval is five seconds; this is application-level runtime configuration, not a mutation of Vercel's native \`process.env\` deployment settings.
+- **Bootstrap exception:** the MAC API must obtain its own MongoDB URI before it can read its own database-backed vault. The Zuri OS API \`MONGODB_URI\` therefore remains a bootstrap deployment setting. MeBuMIP's database URI also remains a bootstrap setting in the current startup design. The AWS region, role ARN and KMS key ARN are provider identifiers required to initialize the envelope-encryption adapter.
+- Secret rotation and revocation after bootstrap do not require redeployment. Changing Vercel's native environment variables still follows Vercel's deployment semantics.
+
+For key rotation, add the new key to the JSON keyring first, then switch the active key ID, and retain the legacy key until historical encrypted data/audit events are re-encrypted or retired under an approved retention plan.

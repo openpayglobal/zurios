@@ -142,3 +142,12 @@ See the [Immutable Audit Archive Provider Comparison](./AUDIT-ARCHIVE-PROVIDER-C
 MAC secret storage now has source support for envelope encryption backed by AWS KMS. The service requests a unique AES-256 data key per secret version, encrypts locally with AES-256-GCM and stores only the ciphertext and KMS-wrapped data key. Authenticated encryption context binds the ciphertext to the MAC application, secret identifier and version. Vercel OIDC is exchanged through AWS STS for short-lived credentials; no static AWS access keys are stored.
 
 Secret upsert, rotation and revocation are audited and versioned. Workload delivery is scoped by the verified Production service identity and allowed-service list; audit signing must succeed before secrets are returned. The adapter is disabled until the AWS owner creates the OIDC provider/trust role and KMS key and the Production-only role/key/region settings are configured. Old encrypted versions must be retained until a verified recovery and retention policy authorizes deletion.
+
+
+## First-party MAC secret consumption and rotation — 2026-11-24
+
+Both Zuri OS API and MeBuMIP API now have source-level runtime secret consumers. Zuri OS API retrieves only its own JWT/MFA keys from MAC. MeBuMIP retrieves only secrets scoped to its Production Vercel project and applies Resend, mail sender, MFA and audit signing keys/keyrings to the running process. Secret reads are audited; refresh is bounded to five seconds; missing values clear revoked credentials; failed Production refreshes fail closed.
+
+Zuri OS MFA and invitation encryption now use versioned keyring envelopes while preserving decryption of legacy unversioned values. MeBuMIP already uses versioned MFA/audit keyrings; runtime validation now requires legacy-key retention when keyrings are configured. The rotation procedure is add key → switch active key → retain legacy key through historical-data re-encryption/retention acceptance.
+
+This does not mutate Vercel's native \`process.env\` settings. The MAC API MongoDB URI remains a bootstrap deployment setting (the control plane must connect before it can read its own vault); MeBuMIP MongoDB URI remains bootstrap under the current startup model. Live Production acceptance awaits AWS role/key provisioning, Production variables, database provisioning and a deployment.
