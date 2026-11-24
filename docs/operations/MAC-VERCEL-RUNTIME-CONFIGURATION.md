@@ -90,7 +90,7 @@ Roll back by creating a new MAC configuration revision from a previously approve
 
 - No verified production configuration or usable production database credential.
 - Vercel OIDC issuer mode and real token claims have not yet been verified in either project.
-- MAC runtime configuration API and user interface are not yet implemented.
+- The non-secret MAC runtime configuration API and administration UI are implemented in source; the encrypted secret lifecycle API/UI remains pending a dedicated encryption KMS/HSM.
 - Vercel API production deployment and health checks are not accepted.
 - Production rollout requires owner approval for secret/key provisioning and security review.
 
