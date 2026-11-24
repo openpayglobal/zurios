@@ -163,7 +163,9 @@ const publicRuntimeConfigHandler = async (request: FastifyRequest, reply: Fastif
 };
 
 const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: FastifyReply) => {
-  if (!db) return reply.code(503).send({ error: "RUNTIME_CONFIG_DATABASE_UNAVAILABLE" });
+  // The database handle exists before the asynchronous connection/index phase completes.
+  // Do not attempt a runtime-config read until readiness has been established.
+  if (!dbReady) return reply.code(503).send({ error: "RUNTIME_CONFIG_DATABASE_UNAVAILABLE" });
   const authorization = request.headers.authorization;
   const token = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
   if (!token) return reply.code(401).send({ error: "WORKLOAD_IDENTITY_REQUIRED" });
