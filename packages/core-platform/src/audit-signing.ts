@@ -80,7 +80,7 @@ export async function verifyAuditEventSignature(
       key.alg === "RS256" && key.use === "sig"
     );
     if (!jwk) return false;
-    const publicKey = createPublicKey({ key: jwk, format: "jwk" });
+    const publicKey = createPublicKey({ key: jwk as never, format: "jwk" });
     return verifyCryptoSignature(
       "RSA-SHA256",
       Buffer.from(auditEventSigningPayload(event), "utf8"),
