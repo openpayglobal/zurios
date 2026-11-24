@@ -172,3 +172,16 @@ The MAC vault is now consumed by both first-party API workloads in source:
 - Secret rotation and revocation after bootstrap do not require redeployment. Changing Vercel's native environment variables still follows Vercel's deployment semantics.
 
 For key rotation, add the new key to the JSON keyring first, then switch the active key ID, and retain the legacy key until historical encrypted data/audit events are re-encrypted or retired under an approved retention plan.
+
+
+### AWS KMS Production activation checklist
+
+The repository intentionally does not create AWS resources or assume an AWS account. The account owner must provision these exact trust boundaries before enabling the vault:
+
+1. Create the IAM OIDC provider for \`https://oidc.vercel.com/openpayglobal-5300s-projects\` with audience \`https://vercel.com/openpayglobal-5300s-projects\`.
+2. Create a dedicated IAM role whose trust policy allows \`sts:AssumeRoleWithWebIdentity\` only for audience \`https://vercel.com/openpayglobal-5300s-projects\` and subject \`owner:openpayglobal-5300s-projects:project:zurios-api:environment:production\`. Do not allow Preview, other projects or wildcard subjects.
+3. Create a symmetric AWS KMS key in the chosen region. Grant that role only \`kms:GenerateDataKey\` and \`kms:Decrypt\` on the exact key ARN, with encryption-context conditions for \`application=zuri-os-mac\` and \`purpose=mac-secret\`. Add old key ARNs to Decrypt permissions only for the approved historical-retention period.
+4. Add these non-secret provider identifiers to the **Production** environment of the \`zurios-api\` Vercel project: \`AWS_REGION\`, \`AWS_ROLE_ARN\`, \`MAC_SECRETS_KMS_KEY_ARN\`. Do not add static AWS access keys. A one-time deployment is required for Vercel Functions to receive new environment settings.
+5. After deployment, run a live acceptance test covering OIDC role assumption, GenerateDataKey, AES-GCM round trip, KMS Decrypt, service-scope denial, audit signing, rotation, revocation and historical recovery. Only then treat the vault as operational.
+
+The Vercel Production environment currently has no AWS role/key settings, and the repository has no linked AWS account to provision. Do not enter real secret values until this checklist and the database bootstrap prerequisites are complete.
