@@ -16,7 +16,7 @@ import {authorize} from "./authorization.js";
 import type {AuthConfig} from "./auth-service.js";
 import type {PlatformPrincipal} from "./types.js";
 import {upsertPolicySchema,featureFlagSchema} from "./platform-schemas.js";
-import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin,type PlatformRuntimeConfig} from "./runtime-config-store.js";
+import {readPlatformRuntimeConfig,normalizeOriginList,normalizeVerifiedApiOrigin,toAdminRuntimeConfig,type PlatformRuntimeConfig} from "./runtime-config-store.js";
 import {reasonSchema,approvalScopeSchema,inviteUserSchema,createApprovalRequestSchema,approvalDecisionSchema,policySimulationSchema,createAuditExportSchema,breakGlassRevokeSchema,configurationUpdateSchema,provisionTenantSchema,lifecycleRequestSchema,tenantLifecycleRequestSchema,reviewAccessRequestSchema} from "./admin-schemas.js";
 
 type Principal=PlatformPrincipal&{membershipId:string;sessionId:string};
@@ -463,7 +463,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
 
   app.get("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(_request,reply)=>{
    const runtime=await readPlatformRuntimeConfig(db);
-   return reply.header("cache-control","no-store").send({data:runtime});
+   return reply.header("cache-control","no-store").send({data:toAdminRuntimeConfig(runtime)});
   });
   app.put("/platform/admin/runtime-config",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
    const p=principal(request);

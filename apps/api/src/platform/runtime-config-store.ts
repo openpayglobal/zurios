@@ -86,3 +86,12 @@ export async function readPlatformRuntimeConfig(db: Db, session?: ClientSession)
     : await collection.findOne({ _id: "global" });
   return current ?? defaultPlatformRuntimeConfig;
 }
+
+
+/** Safe administrative view: private runtime settings never leave the MAC API. */
+export type AdminRuntimeConfig = Omit<PlatformRuntimeConfig, "privateSettings">;
+
+export function toAdminRuntimeConfig(runtime: PlatformRuntimeConfig): AdminRuntimeConfig {
+  const { privateSettings: _privateSettings, ...safe } = runtime;
+  return safe;
+}

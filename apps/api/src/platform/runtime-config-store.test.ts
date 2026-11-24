@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { defaultPlatformRuntimeConfig, normalizeOriginList, normalizeVerifiedApiOrigin } from "./runtime-config-store.js";
+import { defaultPlatformRuntimeConfig, normalizeOriginList, normalizeVerifiedApiOrigin, toAdminRuntimeConfig } from "./runtime-config-store.js";
 
 test("accepts exact HTTPS origins for verified API projects", () => {
   assert.equal(normalizeVerifiedApiOrigin("https://zurios-api-openpayglobal-5300s-projects.vercel.app"), "https://zurios-api-openpayglobal-5300s-projects.vercel.app");
@@ -25,4 +25,16 @@ test("ships a safe non-secret bootstrap runtime configuration", () => {
   assert.equal(defaultPlatformRuntimeConfig.revision, 0);
   assert.equal(defaultPlatformRuntimeConfig.publicSettings.accessRequestsEnabled, null);
   assert.deepEqual(defaultPlatformRuntimeConfig.privateSettings, {});
+});
+
+
+test("administrative runtime-config projection never returns private settings", () => {
+  const runtime = {
+    ...defaultPlatformRuntimeConfig,
+    privateSettings: { sentinelSecret: "must-never-leave-MAC", nested: { token: "also-private" } },
+  };
+  const safe = toAdminRuntimeConfig(runtime);
+  assert.equal("privateSettings" in safe, false);
+  assert.equal(JSON.stringify(safe).includes("must-never-leave-MAC"), false);
+  assert.equal(JSON.stringify(safe).includes("also-private"), false);
 });
