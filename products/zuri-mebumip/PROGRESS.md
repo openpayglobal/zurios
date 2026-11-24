@@ -343,3 +343,12 @@ Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored A
 - Both the Zuri OS API's own refresh and the internal MAC workload endpoint use the shared allowlisted vault reader. MongoDB selection also requires Production environment, authorized service and non-revoked state.
 - Regression tests cover both workload allowlists. Full CI passed on implementation commit `c82b76a1dc985fa892c76a1c5dd6f0ee83603d23` (run `45369507739`) and docs head `3c68434c3f226698da41436f9cbd2ee6e513a224` (run `45369769377`).
 - Deployment/live acceptance remains blocked by Vercel's build-rate limit and external AWS/Production provisioning. No Production secret delivery is claimed.
+
+
+## MeBuMIP MAC runtime snapshot validation — 2026-11-24
+
+- The runtime-config client now validates MAC snapshots before applying them: safe revision, exact service identity, exact HTTPS API/browser origins, unique browser origins, recognized secret-access state and only approved MeBuMIP secret IDs with string values.
+- Blocked secret delivery cannot contain secret values. Invalid or unexpected snapshots are rejected before process configuration changes.
+- Added regression tests for valid snapshots, malformed revisions, unsafe/duplicate origins, unknown secret IDs, invalid values and blocked-delivery behavior.
+- Client commit `b89e6d5b4f75bfa91a60ac9d0871be97d00e36df`; tests commit `3ecb381816c443f06044d8ab4063b0a9ba4d305e`; exact-head CI run **45373177245** passed all validations, typecheck, tests and build.
+- Live deployment acceptance remains blocked by Vercel deployment access/quota and outstanding AWS/Production provisioning.
