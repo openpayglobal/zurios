@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import type { Db } from "mongodb";
 import { AssumeRoleWithWebIdentityCommand, STSClient } from "@aws-sdk/client-sts";
 import { DecryptCommand, GenerateDataKeyCommand, KMSClient } from "@aws-sdk/client-kms";
 import { createRemoteJWKSet, jwtVerify } from "jose";
@@ -203,4 +204,25 @@ export async function decryptMacSecrets(
   } finally {
     kms.destroy();
   }
+}
+
+
+/** Read and decrypt only active secret versions explicitly scoped to one Production service. */
+export async function readMacSecretsForService(
+  db: Db,
+  service: "zurios-api" | "zuri-mebumip-api",
+  oidcToken: string,
+): Promise<Array<{secretId:string;version:number;value:string}>> {
+  const records = await db.collection<{
+    secretId:string;
+    version:number;
+    allowedServices:string[];
+    environment:string;
+    envelope:MacSecretEnvelope;
+  }>("mac_secrets").find({
+    environment:"production",
+    allowedServices:service,
+    revokedAt:{$exists:false},
+  },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
+  return decryptMacSecrets(records,oidcToken);
 }
