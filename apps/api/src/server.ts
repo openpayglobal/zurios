@@ -113,7 +113,7 @@ app.addHook("onRequest", async (request, reply) => {
     lastMacSecretRefreshAt=Date.now();
     macSecretRefreshPromise=(async()=>{
       try {
-        const secrets=await readMacSecretsForService(db,"zurios-api",["zuri-os-jwt-secret","zuri-os-mfa-encryption-key","zuri-os-mfa-encryption-keyring","zuri-os-mfa-encryption-active-key-id"]);
+        const secrets=await readMacSecretsForService(db,"zurios-api");
         const values=Object.fromEntries(secrets.map(item=>[item.secretId,item.value]));
         const jwtSecret=values["zuri-os-jwt-secret"];
         const mfaKey=values["zuri-os-mfa-encryption-key"];
