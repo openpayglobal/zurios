@@ -136,6 +136,7 @@ export async function encryptMacSecret(
       return sealSecretWithDataKey(value, dataKey, generated.CiphertextBlob, keyArn, context);
     } finally {
       dataKey.fill(0);
+      generated.Plaintext.fill(0);
     }
   } finally {
     kms.destroy();
@@ -165,6 +166,7 @@ export async function decryptMacSecret(
       return openSecretWithDataKey(envelope, dataKey, context);
     } finally {
       dataKey.fill(0);
+      unwrapped.Plaintext.fill(0);
     }
   } finally {
     kms.destroy();
