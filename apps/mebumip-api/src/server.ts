@@ -53,7 +53,7 @@ await app.register(cors, {
 // A real Vercel request may expose its short-lived OIDC token through the
 // x-vercel-oidc-token header. Refresh the MAC configuration in request context.
 app.addHook("preHandler", async (request) => {
-  if (request.url.startsWith("/health/") || Date.now() - lastRuntimeRefreshAt <= 5_000) return;
+  if (request.url.startsWith("/health/live") || Date.now() - lastRuntimeRefreshAt <= 5_000) return;
   lastRuntimeRefreshAt = Date.now();
   const oidcHeader = request.headers["x-vercel-oidc-token"];
   try {
@@ -82,7 +82,21 @@ app.get("/health/ready", async (_request, reply) => {
   if (!databaseReady) {
     return reply.code(503).send({ status: "not_ready", reason: "database_unavailable" });
   }
-  return { status: "ready", database: "connected" };
+  if (process.env.VERCEL_ENV === "production") {
+    const missingRuntimeSecrets = [
+      !(config.RESEND_API_KEY && config.MAIL_FROM) ? "mail_delivery" : null,
+      !(config.MFA_ENCRYPTION_KEY || config.MFA_ENCRYPTION_KEYRING) ? "mfa_encryption" : null,
+      !(config.AUDIT_SIGNING_KEY || config.AUDIT_SIGNING_KEYRING) ? "audit_signing" : null,
+    ].filter((value): value is string => value !== null);
+    if (missingRuntimeSecrets.length) {
+      return reply.code(503).send({
+        status: "not_ready",
+        reason: "mac_runtime_secrets_unavailable",
+        missing: missingRuntimeSecrets,
+      });
+    }
+  }
+  return { status: "ready", database: "connected", runtimeSecrets: "configured" };
 });
 
 // All application routes are registered only after MongoDB indexes are ready.
