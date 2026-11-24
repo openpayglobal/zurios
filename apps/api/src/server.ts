@@ -228,7 +228,7 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
       algorithms: ["RS256"],
     });
     const projectId = typeof payload.project_id === "string" ? payload.project_id : "";
-    const expectedProjects: Record<string, string> = {
+    const expectedProjects: Record<string, "zurios-api" | "zuri-mebumip-api"> = {
       "prj_vkIcPCsN1TW3WOturczl3FcWEJkq": "zurios-api",
       "prj_7Ud5L31qXeLoFeguYm75Gje3sZDJ": "zuri-mebumip-api",
     };
