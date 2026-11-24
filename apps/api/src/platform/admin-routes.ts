@@ -581,7 +581,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,fromVersion:previous.version,reason:body.reason}}
     },async session=>{
      const current=await collection.findOne({secretId:params.secretId},{session});
-     if(current?.version!==previous.version||current?.revokedAt)throw new Error("MAC_SECRET_VERSION_CONFLICT");
+     if(!current||current.version!==previous.version||current.revokedAt)throw new Error("MAC_SECRET_VERSION_CONFLICT");
      const now=new Date();
      await db.collection("mac_secret_versions").insertOne({
       secretId:params.secretId,version:current.version,allowedServices:current.allowedServices,
