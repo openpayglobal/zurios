@@ -10,7 +10,7 @@ import { authRoutes } from "./platform/auth-routes.js";
 import { platformRoutes } from "./platform/platform-routes.js";
 import { adminRoutes } from "./platform/admin-routes.js";
 import { readPlatformRuntimeConfig } from "./platform/runtime-config-store.js";
-import { decryptMacSecret,isMacSecretVaultConfigured,type MacSecretEnvelope } from "./platform/secret-vault.js";
+import { decryptMacSecrets,isMacSecretVaultConfigured,type MacSecretEnvelope } from "./platform/secret-vault.js";
 import { writeAuditEvent } from "./platform/audit.js";
 import type { AuthConfig } from "./platform/auth-service.js";
 import { createMongoEventBusPublisher, dispatchOutboxBatch, runOutboxWorker } from "@zuri/core-platform";
@@ -210,11 +210,7 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
           allowedServices:expectedProject,
           revokedAt:{$exists:false}
         },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
-        const values = await Promise.all(records.map(async record => ({
-          secretId:record.secretId,
-          version:record.version,
-          value:await decryptMacSecret(record.envelope,{secretId:record.secretId,version:record.version},macOidcToken)
-        })));
+        const values = await decryptMacSecrets(records,macOidcToken);
         for (const item of values) {
           secrets[item.secretId] = item.value;
         }
