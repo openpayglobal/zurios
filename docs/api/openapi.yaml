@@ -976,7 +976,7 @@ paths:
       operationId: listMacManagedSecrets
       summary: List MAC-managed secret metadata without encrypted payloads or plaintext values
       responses:
-        "200": {description: Secret identifiers, versions, scopes and lifecycle metadata only}
+        "200": {description: "Secret identifiers, versions, scopes and lifecycle metadata only"}
         "401": {$ref: "#/components/responses/Unauthenticated"}
         "403": {$ref: "#/components/responses/Forbidden"}
   /platform/admin/secrets/{secretId}:
