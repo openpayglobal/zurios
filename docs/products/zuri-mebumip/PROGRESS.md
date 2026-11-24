@@ -335,3 +335,11 @@ The latest API deployment `dpl_z8JPqXF4i9qexDNig1LGEYqXCCFW` was built from the 
 ## Demo autofill password/hash consistency — 2026-11-22 UTC
 
 Verified the exact branch-scoped `VITE_DEMO_PASSWORD` against the three stored Argon2id password hashes retrieved from the isolated `zuri_demo` database. All three checks returned `passwordMatches: true` for standard member, multi-workspace member and unassigned identity. The check ran in an ephemeral Vercel sandbox; the password was passed as a transient environment variable and was not printed or committed. This verifies the autofill password is synchronized with the seeded demo accounts; live API login still awaits a corrected API Preview deployment.
+
+
+## MAC workload secret delivery allowlist hardening — 2026-11-24
+
+- Replaced broad service-wide secret delivery with explicit secret-ID allowlists for each Production workload. MeBuMIP API receives only mail, MFA and audit-signing secrets; Zuri OS API receives only its JWT and MFA keys.
+- Both the Zuri OS API's own refresh and the internal MAC workload endpoint use the shared allowlisted vault reader. MongoDB selection also requires Production environment, authorized service and non-revoked state.
+- Regression tests cover both workload allowlists. Full CI passed on implementation commit `c82b76a1dc985fa892c76a1c5dd6f0ee83603d23` (run `45369507739`) and docs head `3c68434c3f226698da41436f9cbd2ee6e513a224` (run `45369769377`).
+- Deployment/live acceptance remains blocked by Vercel's build-rate limit and external AWS/Production provisioning. No Production secret delivery is claimed.
