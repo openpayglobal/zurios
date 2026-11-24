@@ -124,6 +124,15 @@ export function buildMacRuntimeConfigHeaders(token: string): Record<string, stri
   };
 }
 
+export function buildMacRuntimeConfigRequest(token: string): RequestInit {
+  return {
+    method: "GET",
+    headers: buildMacRuntimeConfigHeaders(token),
+    cache: "no-store",
+    redirect: "error",
+  };
+}
+
 const MAC_RUNTIME_CONFIG_URL = validateMacRuntimeConfigUrl(
   process.env.MAC_RUNTIME_CONFIG_URL ?? DEFAULT_MAC_RUNTIME_CONFIG_URL,
 );
@@ -140,12 +149,7 @@ export async function getMacRuntimeConfig(forceRefresh = false): Promise<MacRunt
     // Never accept identity material from an inbound HTTP request. Mint the
     // workload token inside this Vercel function invocation.
     const token = await getVercelOidcToken();
-    const response = await fetch(MAC_RUNTIME_CONFIG_URL, {
-      method: "GET",
-      headers: buildMacRuntimeConfigHeaders(token),
-      cache: "no-store",
-      redirect: "error",
-    });
+    const response = await fetch(MAC_RUNTIME_CONFIG_URL, buildMacRuntimeConfigRequest(token));
     if (!response.ok) throw new Error(`MAC_RUNTIME_CONFIG_UNAVAILABLE_${response.status}`);
     const body = validateMacRuntimeConfig(await response.json());
     cached = body;
