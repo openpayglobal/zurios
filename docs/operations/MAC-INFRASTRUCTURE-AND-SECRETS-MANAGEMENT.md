@@ -141,3 +141,11 @@ This section supersedes earlier pending-status notes where later implementation 
 Production audit writes in both the shared core-platform service and the API audit writer now request RS256 signatures from the dedicated Vercel KMS audit issuer. Canonical payload serialization, key-ID and fingerprint metadata, JWKS-based signature verification, tamper tests and fail-closed Production behavior are implemented in source. The KMS signing key remains managed by Vercel; no private key or symmetric secret is stored in MongoDB or application environment variables.
 
 Exact-head CI run **45337383228** passed on **7793244a4612f62b60f4058e9e6348f322d7f6aa**. Live Production KMS calls, deployed API health, key-rotation/historical retention tests and immutable archive reconciliation remain release gates. The separate encryption KMS/HSM, production Atlas replica set, Resend and Meta credentials, and public activation approvals are still outstanding.
+
+
+## Private runtime-configuration response hardening — 2026-11-24
+
+- The MAC administrative runtime-config read now uses an explicit safe projection that omits `privateSettings`; a regression test asserts nested secret-like values are absent from the response projection.
+- Runtime-config revision history no longer copies the legacy `privateSettings` field into new history records. Existing stored data is not destructively migrated or exposed.
+- Public and internal workload endpoints continue to return only their explicitly scoped non-secret configuration. Secret delivery remains disabled until a dedicated encryption KMS/HSM provider, workload-scoped authorization and rotation/revocation lifecycle are deployed and accepted.
+- Exact-head CI for the initial projection commit is pending; the follow-up history hardening commit is `6476ed9aa192e4e722ab2e5ff59d71261ee88de3`.

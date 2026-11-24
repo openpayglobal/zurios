@@ -116,3 +116,8 @@ The user-session KMS signer is now wired in source for Production: `@vercel/kms`
 ### Audit KMS signing source integration — 2026-11-24
 
 The shared audit writer and API audit writer now sign Production audit events with the dedicated Vercel KMS RS256 issuer. The event payload is canonicalized; integrity metadata records issuer, key ID, public-key fingerprint and signature. A JWKS verifier checks the signature and key fingerprint, and Production writes fail closed on signer errors. Exact-head CI run **45337383228** passed on commit **7793244a4612f62b60f4058e9e6348f322d7f6aa**. Live Production signing/verification and key-rotation retention remain unaccepted pending a successful deployment.
+
+
+### MAC private-settings response hardening — 2026-11-24
+
+The administrative runtime-config endpoint now strips the legacy `privateSettings` field from its response through a dedicated safe projection and regression test. New runtime-config history records no longer copy the legacy private field. Existing database values are retained (not deleted) pending a controlled migration, but are not returned by the admin, public or workload runtime endpoints. This is not yet a secret manager: no encrypted secret CRUD or delivery is enabled until the separate encryption KMS/HSM provider and workload-specific authorization are configured.
