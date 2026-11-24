@@ -113,9 +113,7 @@ app.addHook("onRequest", async (request, reply) => {
     lastMacSecretRefreshAt=Date.now();
     macSecretRefreshPromise=(async()=>{
       try {
-        const oidcToken=request.headers["x-vercel-oidc-token"];
-        if(typeof oidcToken!=="string"||!oidcToken)throw new Error("MAC_WORKLOAD_OIDC_UNAVAILABLE");
-        const secrets=await readMacSecretsForService(db,"zurios-api",oidcToken,["zuri-os-jwt-secret","zuri-os-mfa-encryption-key","zuri-os-mfa-encryption-keyring","zuri-os-mfa-encryption-active-key-id"]);
+        const secrets=await readMacSecretsForService(db,"zurios-api",["zuri-os-jwt-secret","zuri-os-mfa-encryption-key","zuri-os-mfa-encryption-keyring","zuri-os-mfa-encryption-active-key-id"]);
         const values=Object.fromEntries(secrets.map(item=>[item.secretId,item.value]));
         const jwtSecret=values["zuri-os-jwt-secret"];
         const mfaKey=values["zuri-os-mfa-encryption-key"];
@@ -249,10 +247,6 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
     let secrets: Record<string,string> = {};
     const secretVaultEnabled = isMacSecretVaultConfigured() && process.env.VERCEL_ENV === "production";
     if (secretVaultEnabled) {
-      const macOidcToken = request.headers["x-vercel-oidc-token"];
-      if (typeof macOidcToken !== "string" || !macOidcToken) {
-        return reply.code(503).send({ error: "MAC_SECRET_VAULT_OIDC_UNAVAILABLE" });
-      }
       try {
         const records = await db.collection<{
           secretId:string; version:number; allowedServices:string[]; environment:string;
@@ -262,7 +256,7 @@ const internalRuntimeConfigHandler = async (request: FastifyRequest, reply: Fast
           allowedServices:expectedProject,
           revokedAt:{$exists:false}
         },{projection:{_id:0,secretId:1,version:1,envelope:1}}).toArray();
-        const values = await decryptMacSecrets(records,macOidcToken);
+        const values = await decryptMacSecrets(records);
         for (const item of values) {
           secrets[item.secretId] = item.value;
         }
