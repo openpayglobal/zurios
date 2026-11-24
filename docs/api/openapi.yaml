@@ -1126,13 +1126,14 @@ paths:
     get:
       tags: [Runtime Configuration]
       operationId: getWorkloadRuntimeConfiguration
-      summary: Read service-scoped runtime configuration using Vercel team OIDC workload identity
+      summary: Read service-scoped runtime configuration and authorized secrets using Vercel team OIDC workload identity
       security:
         - VercelWorkloadIdentity: []
       responses:
-        "200": {description: Service-scoped non-secret configuration and revision}
+        "200": {description: Service-scoped configuration and active secrets explicitly allowed for the authenticated Production workload; secrets are returned only when the MAC encryption KMS is configured and are never cached}
         "401": {description: Missing or invalid Vercel workload identity}
         "403": {description: Workload project or environment is not authorized}
+        "503": {description: MAC database, encryption KMS, workload identity or audit signing is unavailable; secret delivery fails closed}
 components:
   parameters:
     IdempotencyKey:
