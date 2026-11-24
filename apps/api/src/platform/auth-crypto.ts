@@ -60,3 +60,62 @@ export function encryptInvitationToken(token:string,masterKeyBase64:string):stri
 export function decryptInvitationToken(envelope:string,masterKeyBase64:string):string{
  return decryptMfaSecret(envelope,invitationEncryptionKey(masterKeyBase64));
 }
+
+
+export type MfaKeyConfiguration = {
+  mfaEncryptionKey: string;
+  mfaEncryptionKeyring?: string;
+  mfaEncryptionActiveKeyId?: string;
+};
+
+function activeMfaKey(config:MfaKeyConfiguration):{keyId:string;key:string}{
+  if(config.mfaEncryptionKeyring){
+    const ring=JSON.parse(config.mfaEncryptionKeyring) as Record<string,string>;
+    const keyId=config.mfaEncryptionActiveKeyId??"";
+    const key=ring[keyId];
+    if(!key||Buffer.from(key,"base64").length!==32)throw new Error("MFA_ACTIVE_KEY_UNAVAILABLE");
+    return {keyId,key};
+  }
+  if(!config.mfaEncryptionKey||Buffer.from(config.mfaEncryptionKey,"base64").length!==32)throw new Error("MFA_ENCRYPTION_KEY_UNAVAILABLE");
+  return {keyId:"legacy",key:config.mfaEncryptionKey};
+}
+
+export function encryptMfaSecretWithConfig(secret:string,config:MfaKeyConfiguration):string{
+  const active=activeMfaKey(config);
+  return active.keyId==="legacy"
+    ? encryptMfaSecret(secret,active.key)
+    : "v2."+active.keyId+"."+encryptMfaSecret(secret,active.key);
+}
+
+export function decryptMfaSecretWithConfig(value:string,config:MfaKeyConfiguration):string{
+  if(value.startsWith("v2.")){
+    const parts=value.split(".");
+    const keyId=parts[1];
+    if(!keyId)throw new Error("INVALID_VERSIONED_MFA_SECRET");
+    const ring=config.mfaEncryptionKeyring?JSON.parse(config.mfaEncryptionKeyring) as Record<string,string>:{};
+    const key=keyId==="legacy"?config.mfaEncryptionKey:ring[keyId];
+    if(!key||Buffer.from(key,"base64").length!==32)throw new Error("MFA_DECRYPTION_KEY_UNAVAILABLE");
+    return decryptMfaSecret(parts.slice(2).join("."),key);
+  }
+  if(value.startsWith("v1."))return decryptMfaSecret(value.slice(3),config.mfaEncryptionKey);
+  return decryptMfaSecret(value,config.mfaEncryptionKey);
+}
+
+export function encryptInvitationTokenWithConfig(token:string,config:MfaKeyConfiguration):string{
+  const active=activeMfaKey(config);
+  const envelope=encryptMfaSecret(token,invitationEncryptionKey(active.key));
+  return active.keyId==="legacy"?envelope:"v2."+active.keyId+"."+envelope;
+}
+
+export function decryptInvitationTokenWithConfig(value:string,config:MfaKeyConfiguration):string{
+  if(value.startsWith("v2.")){
+    const parts=value.split(".");
+    const keyId=parts[1];
+    if(!keyId)throw new Error("INVALID_VERSIONED_INVITATION_TOKEN");
+    const ring=config.mfaEncryptionKeyring?JSON.parse(config.mfaEncryptionKeyring) as Record<string,string>:{};
+    const key=keyId==="legacy"?config.mfaEncryptionKey:ring[keyId];
+    if(!key||Buffer.from(key,"base64").length!==32)throw new Error("INVITATION_DECRYPTION_KEY_UNAVAILABLE");
+    return decryptMfaSecret(parts.slice(2).join("."),invitationEncryptionKey(key));
+  }
+  return decryptInvitationToken(value,config.mfaEncryptionKey);
+}
