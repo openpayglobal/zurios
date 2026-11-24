@@ -9,7 +9,7 @@ import {
  upsertPolicy,setFeatureFlag,createBreakGlassGrant,revokeBreakGlassGrant,setTenantStatus,setOrganizationStatus,setLocationStatus,
  type AuditEventDocument,type ApprovalRequestDocument,BREAK_GLASS_ALLOWED_PERMISSIONS
 } from "@zuri/core-platform";
-import {encryptInvitationToken} from "./auth-crypto.js";
+import {encryptInvitationTokenWithConfig} from "./auth-crypto.js";
 import {encryptMacSecret,decryptMacSecret,isMacSecretVaultConfigured,type MacSecretEnvelope} from "./secret-vault.js";
 import {issueMembershipInvitation} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
@@ -197,7 +197,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const user=existing??await createUser(db,p.userId,{email,displayName:body.displayName,...(body.phoneE164?{phoneE164:body.phoneE164}:{})},session);
      const membership=await createMembership(db,p.tenantId,p.userId,{userId:user.userId,organizationIds:body.organizationIds,locationIds:body.locationIds,roleIds:body.roleIds},session,{allowInvitedUser:true,forceInvited:true});
      const token=await issueMembershipInvitation(db,membership.membershipId,7*24*60*60,session);
-     const encryptedToken=encryptInvitationToken(token,config.mfaEncryptionKey);
+     const encryptedToken=encryptInvitationTokenWithConfig(token,config);
      await writeAudit(db,p.tenantId,p,request,config.jwtSecret,"identity.membership.invitation.created","membership",membership.membershipId,"success",{reason:body.reason,emailDomain:email.split("@")[1]},session);
      await emit(db,session,p.tenantId,request,"identity.membership.invitation.requested","membership",membership.membershipId,{membershipId:membership.membershipId,userId:user.userId,recipientEmail:email,displayName:body.displayName,encryptedInvitationToken:encryptedToken,deliveryChannel:"email"});
      return {statusCode:202,body:{data:{userId:user.userId,membershipId:membership.membershipId,status:"invited",deliveryStatus:"queued"}}};
@@ -426,7 +426,7 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
      const owner=existing??await createUser(db,p.userId,{email,displayName:body.owner.displayName,...(body.owner.phoneE164?{phoneE164:body.owner.phoneE164}:{})},session);
      const membership=await createMembership(db,tenant.tenantId,p.userId,{userId:owner.userId,organizationIds:[root.organizationId],locationIds:[],roleIds:[ownerRole.roleId]},session,{allowInvitedUser:true,forceInvited:true,allowProvisioningTenant:true});
      const invitationToken=await issueMembershipInvitation(db,membership.membershipId,7*24*60*60,session);
-     const encryptedInvitationToken=encryptInvitationToken(invitationToken,config.mfaEncryptionKey);
+     const encryptedInvitationToken=encryptInvitationTokenWithConfig(invitationToken,config);
      await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.tenant.provisioned","tenant",tenant.tenantId,"success",{reason,ownerMembershipId:membership.membershipId},session);
      await emit(db,session,"platform",request,"platform.tenant.provisioned","tenant",tenant.tenantId,{tenantId:tenant.tenantId,slug:tenant.slug});
      await emit(db,session,tenant.tenantId,request,"identity.membership.invitation.requested","membership",membership.membershipId,{membershipId:membership.membershipId,userId:owner.userId,recipientEmail:email,displayName:body.owner.displayName,encryptedInvitationToken,deliveryChannel:"email"});
