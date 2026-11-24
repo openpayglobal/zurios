@@ -229,3 +229,14 @@ The platform-admin secret inventory endpoint now emits a signed audit event for 
 - Exact-head Full CI run **45369507739** passed: MongoDB replica-set setup, both OpenAPI validations, route-drift validation, documentation mirrors, typecheck, tests and build.
 - The source now uses the same explicit workload secret allowlists for both the Zuri OS API's own MAC secret refresh and the cross-project internal runtime-config endpoint.
 - Deployment and live runtime acceptance remain blocked by Vercel's deployment build-rate limit and the outstanding AWS/Production provisioning gates.
+
+
+## MeBuMIP MAC runtime snapshot validation — 2026-11-24
+
+- Added strict consumer-side validation before a MAC runtime snapshot can update MeBuMIP process configuration.
+- The API now requires a non-negative safe-integer revision, the exact `zuri-mebumip-api` service identity, exact HTTPS origins without credentials/path/query/fragment, 1–20 unique approved-shape HTTPS browser origins, a recognized secret-access state, and string values for only the eight explicitly permitted MeBuMIP secret IDs.
+- A blocked secret-access response is required to contain no secret values. Unknown secret IDs, malformed values, unsafe origins, duplicate origins and invalid revisions fail closed.
+- Added regression tests for valid snapshots and each rejection boundary.
+- Implementation commits: client validation `b89e6d5b4f75bfa91a60ac9d0871be97d00e36df`; test coverage `3ecb381816c443f06044d8ab4063b0a9ba4d305e`.
+- Exact-head Full CI run **45373177245** passed, including both OpenAPI validations, route drift, documentation mirror checks, typecheck, tests and build.
+- This is source/CI validation only; the latest source remains undeployed while Vercel deployment access/quota is blocked. Live MAC-to-MeBuMIP acceptance remains pending.
