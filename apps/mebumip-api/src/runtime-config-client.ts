@@ -2,12 +2,86 @@ import { getVercelOidcToken } from "@vercel/oidc";
 
 export type MacRuntimeConfig = {
   revision: number;
-  service: string;
+  service: "zuri-mebumip-api";
   apiOrigin: string;
   allowedOrigins: string[];
-  secrets?: Record<string,string>;
-  secretAccess: string;
+  secrets: Record<string,string>;
+  secretAccess: "enabled" | "blocked_until_encryption_kms_is_configured";
 };
+
+const MEBUMIP_SECRET_IDS = [
+  "resend-api-key",
+  "mail-from",
+  "mebumip-mfa-encryption-key",
+  "mfa-encryption-keyring",
+  "mfa-encryption-active-key-id",
+  "mebumip-audit-signing-key",
+  "audit-signing-keyring",
+  "audit-signing-active-key-id",
+] as const;
+
+function isExactHttpsOrigin(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 512) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" &&
+      url.origin === value &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash;
+  } catch {
+    return false;
+  }
+}
+
+/** Validate the entire control-plane response before any runtime state is changed. */
+export function validateMacRuntimeConfig(value: unknown): MacRuntimeConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("MAC_RUNTIME_CONFIG_INVALID");
+  }
+  const body = value as Record<string, unknown>;
+  if (
+    !Number.isSafeInteger(body.revision) ||
+    (body.revision as number) < 0 ||
+    body.service !== "zuri-mebumip-api" ||
+    !isExactHttpsOrigin(body.apiOrigin) ||
+    !Array.isArray(body.allowedOrigins) ||
+    body.allowedOrigins.length < 1 ||
+    body.allowedOrigins.length > 20 ||
+    !body.allowedOrigins.every(isExactHttpsOrigin) ||
+    new Set(body.allowedOrigins).size !== body.allowedOrigins.length ||
+    (body.secretAccess !== "enabled" &&
+      body.secretAccess !== "blocked_until_encryption_kms_is_configured")
+  ) {
+    throw new Error("MAC_RUNTIME_CONFIG_INVALID");
+  }
+
+  const rawSecrets = body.secrets === undefined ? {} : body.secrets;
+  if (!rawSecrets || typeof rawSecrets !== "object" || Array.isArray(rawSecrets)) {
+    throw new Error("MAC_RUNTIME_CONFIG_INVALID");
+  }
+  const secrets = rawSecrets as Record<string, unknown>;
+  const allowedSecretIds = new Set<string>(MEBUMIP_SECRET_IDS);
+  if (Object.entries(secrets).some(([key, secret]) =>
+    !allowedSecretIds.has(key) || typeof secret !== "string"
+  )) {
+    throw new Error("MAC_RUNTIME_CONFIG_INVALID");
+  }
+  if (body.secretAccess !== "enabled" && Object.keys(secrets).length > 0) {
+    throw new Error("MAC_RUNTIME_CONFIG_INVALID");
+  }
+
+  return {
+    revision: body.revision as number,
+    service: "zuri-mebumip-api",
+    apiOrigin: body.apiOrigin,
+    allowedOrigins: [...body.allowedOrigins] as string[],
+    secrets: { ...secrets } as Record<string,string>,
+    secretAccess: body.secretAccess,
+  };
+}
 
 export function buildMacRuntimeConfigHeaders(token: string): Record<string, string> {
   return {
@@ -36,16 +110,7 @@ export async function getMacRuntimeConfig(forceRefresh = false, suppliedOidcToke
       cache: "no-store",
     });
     if (!response.ok) throw new Error(`MAC_RUNTIME_CONFIG_UNAVAILABLE_${response.status}`);
-    const body = await response.json() as MacRuntimeConfig;
-    if (
-      typeof body.revision !== "number" ||
-      body.service !== "zuri-mebumip-api" ||
-      typeof body.apiOrigin !== "string" ||
-      !Array.isArray(body.allowedOrigins) ||
-      (body.secrets !== undefined && (!body.secrets || typeof body.secrets !== "object" || Array.isArray(body.secrets) ||
-        Object.values(body.secrets as Record<string,unknown>).some(value => typeof value !== "string")))
-    ) throw new Error("MAC_RUNTIME_CONFIG_INVALID");
-    body.secrets ??= {};
+    const body = validateMacRuntimeConfig(await response.json());
     cached = body;
     cachedUntil = Date.now() + 5_000;
     return body;
