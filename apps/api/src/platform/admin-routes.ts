@@ -10,6 +10,7 @@ import {
  type AuditEventDocument,type ApprovalRequestDocument,BREAK_GLASS_ALLOWED_PERMISSIONS
 } from "@zuri/core-platform";
 import {encryptInvitationToken} from "./auth-crypto.js";
+import {encryptMacSecret,decryptMacSecret,isMacSecretVaultConfigured,type MacSecretEnvelope} from "./secret-vault.js";
 import {issueMembershipInvitation} from "./auth-service.js";
 import {authenticate} from "./auth-middleware.js";
 import {authorize} from "./authorization.js";
@@ -507,6 +508,121 @@ export function adminRoutes(db:Db,config:AuthConfig):FastifyPluginAsync{
     });
    }catch(error){return fail(error,reply);}
   });
+
+  const macSecretServices = ["zurios-api","zuri-mebumip-api"] as const;
+  const replyNoStore=(rows:unknown[])=>({data:rows});
+  const macSecretIdSchema = z.string().regex(/^[a-z][a-z0-9._-]{1,63}$/);
+  const macSecretReasonSchema = z.string().trim().min(20).max(500);
+  app.get("/platform/admin/secrets",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async()=>{
+   const rows=await db.collection("mac_secrets").find({},{
+    projection:{_id:0,envelope:0}
+   }).sort({secretId:1}).toArray();
+   return replyNoStore(rows);
+  });
+  app.put("/platform/admin/secrets/:secretId",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    if(process.env.VERCEL_ENV!=="production"||!isMacSecretVaultConfigured())return reply.code(503).send({error:"MAC_SECRET_VAULT_UNAVAILABLE"});
+    const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
+    const body=z.object({
+     value:z.string().min(1).max(32_768),
+     allowedServices:z.array(z.enum(macSecretServices)).min(1).max(macSecretServices.length),
+     reason:macSecretReasonSchema
+    }).strict().parse(request.body);
+    const oidcToken=request.headers["x-vercel-oidc-token"];
+    if(typeof oidcToken!=="string"||!oidcToken)return reply.code(503).send({error:"MAC_SECRET_VAULT_OIDC_UNAVAILABLE"});
+    const collection=db.collection("mac_secrets");
+    const previous=await collection.findOne({secretId:params.secretId});
+    if(previous?.revokedAt)return reply.code(409).send({error:"MAC_SECRET_REVOKED_REQUIRES_NEW_ID"});
+    const version=(previous?.version??0)+1;
+    const envelope=await encryptMacSecret(body.value,{secretId:params.secretId,version},oidcToken);
+    const key=request.headers["idempotency-key"];
+    if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const result=await runIdempotentMutation(db,{
+     tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.upsert",key,
+     request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,allowedServices:body.allowedServices,valueDigest:createHmac("sha256",config.jwtSecret).update(body.value).digest("hex")}}
+    },async session=>{
+     const current=await collection.findOne({secretId:params.secretId},{session});
+     if((current?.version??0)!==(previous?.version??0))throw new Error("MAC_SECRET_VERSION_CONFLICT");
+     const now=new Date();
+     if(current)await db.collection("mac_secret_versions").insertOne({
+      secretId:params.secretId,version:current.version,allowedServices:current.allowedServices,
+      environment:current.environment,envelope:current.envelope,createdAt:current.createdAt,
+      updatedAt:current.updatedAt,archivedAt:now,archivedBy:p.userId,reason:body.reason
+     },{session});
+     await collection.updateOne({secretId:params.secretId},{
+      $set:{secretId:params.secretId,version,allowedServices:[...new Set(body.allowedServices)],environment:"production",envelope,updatedAt:now,updatedBy:p.userId,reason:body.reason},
+      $setOnInsert:{createdAt:now,createdBy:p.userId},
+      $unset:{revokedAt:"",revokedBy:"",revocationReason:""}
+     },{upsert:true,session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.mac_secret.updated","mac_secret",params.secretId,"success",{version,allowedServices:body.allowedServices,reason:body.reason},session);
+     return {statusCode:200,body:{status:"stored_encrypted",secretId:params.secretId,version,allowedServices:[...new Set(body.allowedServices)]}};
+    });
+    reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return fail(error,reply);}
+  });
+  app.post("/platform/admin/secrets/:secretId/rotate",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    if(process.env.VERCEL_ENV!=="production"||!isMacSecretVaultConfigured())return reply.code(503).send({error:"MAC_SECRET_VAULT_UNAVAILABLE"});
+    const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
+    const body=z.object({reason:macSecretReasonSchema}).strict().parse(request.body);
+    const oidcToken=request.headers["x-vercel-oidc-token"];
+    if(typeof oidcToken!=="string"||!oidcToken)return reply.code(503).send({error:"MAC_SECRET_VAULT_OIDC_UNAVAILABLE"});
+    const key=request.headers["idempotency-key"];
+    if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const collection=db.collection("mac_secrets"),previous=await collection.findOne({secretId:params.secretId,revokedAt:{$exists:false}});
+    if(!previous)return reply.code(404).send({error:"MAC_SECRET_NOT_FOUND"});
+    const nextVersion=previous.version+1;
+    const plaintext=await decryptMacSecret(previous.envelope as MacSecretEnvelope,{secretId:params.secretId,version:previous.version},oidcToken);
+    const envelope=await encryptMacSecret(plaintext,{secretId:params.secretId,version:nextVersion},oidcToken);
+    const result=await runIdempotentMutation(db,{
+     tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.rotate",key,
+     request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,fromVersion:previous.version,reason:body.reason}}
+    },async session=>{
+     const current=await collection.findOne({secretId:params.secretId},{session});
+     if(current?.version!==previous.version||current?.revokedAt)throw new Error("MAC_SECRET_VERSION_CONFLICT");
+     const now=new Date();
+     await db.collection("mac_secret_versions").insertOne({
+      secretId:params.secretId,version:current.version,allowedServices:current.allowedServices,
+      environment:current.environment,envelope:current.envelope,createdAt:current.createdAt,
+      updatedAt:current.updatedAt,archivedAt:now,archivedBy:p.userId,reason:body.reason
+     },{session});
+     await collection.updateOne({secretId:params.secretId,version:current.version},{
+      $set:{version:nextVersion,envelope,updatedAt:now,updatedBy:p.userId,reason:body.reason}
+     },{session});
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.mac_secret.rotated","mac_secret",params.secretId,"success",{fromVersion:current.version,toVersion:nextVersion,reason:body.reason},session);
+     return {statusCode:200,body:{status:"rotated",secretId:params.secretId,version:nextVersion}};
+    });
+    reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return fail(error,reply);}
+  });
+  app.delete("/platform/admin/secrets/:secretId",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.write")},async(request,reply)=>{
+   const p=principal(request);
+   try{
+    const params=z.object({secretId:macSecretIdSchema}).parse(request.params);
+    const body=z.object({reason:macSecretReasonSchema}).strict().parse(request.body);
+    const key=request.headers["idempotency-key"];
+    if(typeof key!=="string"||key.length<8||key.length>128)return reply.code(400).send({error:"IDEMPOTENCY_KEY_REQUIRED"});
+    const result=await runIdempotentMutation(db,{
+     tenantId:"platform",actorId:p.userId,operation:"platform.mac_secret.revoke",key,
+     request:{method:request.method,path:request.routeOptions.url,body:{secretId:params.secretId,reason:body.reason}}
+    },async session=>{
+     const now=new Date();
+     const changed=await db.collection("mac_secrets").updateOne({secretId:params.secretId,revokedAt:{$exists:false}},{
+      $set:{revokedAt:now,revokedBy:p.userId,revocationReason:body.reason,updatedAt:now,updatedBy:p.userId}
+     },{session});
+     if(!changed.matchedCount)throw new Error("MAC_SECRET_NOT_FOUND");
+     await writeAudit(db,"platform",p,request,config.jwtSecret,"platform.mac_secret.revoked","mac_secret",params.secretId,"success",{reason:body.reason},session);
+     return {statusCode:200,body:{status:"revoked",secretId:params.secretId,revokedAt:now.toISOString()}};
+    });
+    reply.header("Idempotency-Replayed",result.replayed?"true":"false");
+    return reply.code(result.statusCode).send(result.body);
+   }catch(error){return fail(error,reply);}
+  });
+
   app.get("/platform/admin/infrastructure",{preHandler:platformGuard(db,config.jwtSecret,"platform.configuration.read")},async(request,reply)=>{
    try{
     let topology={replicaSet:false,writablePrimary:false,transactionsAvailable:false};
