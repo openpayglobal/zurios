@@ -10,7 +10,7 @@ import { authRoutes } from "./platform/auth-routes.js";
 import { platformRoutes } from "./platform/platform-routes.js";
 import { adminRoutes } from "./platform/admin-routes.js";
 import { readPlatformRuntimeConfig } from "./platform/runtime-config-store.js";
-import { decryptMacSecrets,isMacSecretVaultConfigured,type MacSecretEnvelope } from "./platform/secret-vault.js";
+import { decryptMacSecrets,isMacSecretVaultConfigured,readMacSecretsForService,type MacSecretEnvelope } from "./platform/secret-vault.js";
 import { writeAuditEvent } from "./platform/audit.js";
 import type { AuthConfig } from "./platform/auth-service.js";
 import { createMongoEventBusPublisher, dispatchOutboxBatch, runOutboxWorker } from "@zuri/core-platform";
@@ -28,6 +28,8 @@ let outboxDispatchInFlight: Promise<void> | undefined;
 const db: Db = getMongoDatabase();
 let dbReady = false;
 let dbInitialization: Promise<void> | undefined;
+let lastMacSecretRefreshAt=0;
+let macSecretRefreshPromise:Promise<void>|undefined;
 
 const initializeDatabase = async (): Promise<void> => {
   if (dbReady) return;
@@ -59,7 +61,7 @@ app.setErrorHandler((error, _request, reply) => {
 const authConfig: AuthConfig = {
   issuer: config.JWT_ISSUER,
   audience: config.JWT_AUDIENCE,
-  jwtSecret: config.JWT_SECRET,
+  jwtSecret: config.JWT_SECRET ?? "",
   accessTokenTtlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
   sessionTtlSeconds: config.SESSION_TTL_SECONDS,
   mfaEncryptionKey: config.MFA_ENCRYPTION_KEY ?? "",
@@ -95,7 +97,7 @@ await app.register(cors, {
 // Keep health probes independent from Atlas startup. Ordinary API requests wait
 // for the bounded connection/index initialization and fail closed while unavailable.
 app.addHook("onRequest", async (request, reply) => {
-  if (request.url.startsWith("/health/")) return;
+  if (request.url.startsWith("/health/live")) return;
   if (!dbReady) {
     try {
       await initializeDatabase();
@@ -104,6 +106,36 @@ app.addHook("onRequest", async (request, reply) => {
       return reply.code(503).send({ error: "DATABASE_UNAVAILABLE" });
     }
   }
+  if (process.env.VERCEL_ENV !== "production") return;
+  if (!macSecretRefreshPromise && Date.now() - lastMacSecretRefreshAt > 5_000) {
+    lastMacSecretRefreshAt=Date.now();
+    macSecretRefreshPromise=(async()=>{
+      try {
+        const oidcToken=request.headers["x-vercel-oidc-token"];
+        if(typeof oidcToken!=="string"||!oidcToken)throw new Error("MAC_WORKLOAD_OIDC_UNAVAILABLE");
+        const secrets=await readMacSecretsForService(db,"zurios-api",oidcToken);
+        const values=Object.fromEntries(secrets.map(item=>[item.secretId,item.value]));
+        const jwtSecret=values["zuri-os-jwt-secret"];
+        const mfaKey=values["zuri-os-mfa-encryption-key"];
+        if(typeof jwtSecret!=="string"||jwtSecret.length<32)throw new Error("MAC_JWT_SECRET_UNAVAILABLE");
+        if(typeof mfaKey!=="string"||Buffer.from(mfaKey,"base64").length!==32)throw new Error("MAC_MFA_KEY_UNAVAILABLE");
+        authConfig.jwtSecret=jwtSecret;
+        authConfig.mfaEncryptionKey=mfaKey;
+        for(const item of secrets){
+          await writeAuditEvent({
+            tenantId:"platform",actor:{service:"zurios-api"},action:"platform.mac_secret.accessed",
+            resourceType:"mac_secret",resourceId:item.secretId,outcome:"success",
+            metadata:{service:"zurios-api",version:item.version}
+          });
+        }
+      } catch(error) {
+        authConfig.jwtSecret="";
+        authConfig.mfaEncryptionKey="";
+        app.log.warn({code:error instanceof Error?error.name:"UNKNOWN"},"MAC-managed API secrets unavailable; privileged authentication remains fail-closed");
+      }
+    })().finally(()=>{macSecretRefreshPromise=undefined;});
+  }
+  if(macSecretRefreshPromise)await macSecretRefreshPromise;
 });
 
 // Vercel Functions are request-scoped. Do not leave a permanent polling loop
@@ -133,6 +165,9 @@ if (process.env.VERCEL) {
 app.get("/health/live", async () => ({ status: "ok", service: "zuri-api" }));
 app.get("/health/ready", async (_req, reply) => {
   if (!dbReady) return reply.code(503).send({ status: "not_ready", database: "unavailable" });
+  if (process.env.VERCEL_ENV === "production" && (!authConfig.jwtSecret || !authConfig.mfaEncryptionKey)) {
+    return reply.code(503).send({status:"not_ready",reason:"mac_runtime_secrets_unavailable",missing:["zuri-os-jwt-secret","zuri-os-mfa-encryption-key"]});
+  }
   try {
     await db.command({ ping: 1 });
     const hello = await db.command({ hello: 1 });
