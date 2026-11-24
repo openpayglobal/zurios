@@ -7,7 +7,7 @@ import {permissionsForMembership,platformPermissionsForUser} from "@zuri/core-pl
 import {appendAuditEvent,appendOutboxEvent} from "@zuri/core-platform";
 import {decryptMfaSecretWithConfig,encryptMfaSecretWithConfig,generateRecoveryCodes,generateTotpSecret,hashOpaqueToken,hashPassword,hashRecoveryCode,verifyPassword,verifyTotpCode} from "./auth-crypto.js";
 import { signSessionAccessToken } from "./session-token.js";
-export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;mfaEncryptionKeyring?:string;mfaEncryptionActiveKeyId?:string;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
+export type AuthConfig={issuer:string;audience:string;jwtSecret:string;accessTokenTtlSeconds:number;sessionTtlSeconds:number;mfaEncryptionKey:string;mfaEncryptionKeyring?:string|undefined;mfaEncryptionActiveKeyId?:string|undefined;accessRequestsEnabled?:boolean;accessRequestsPrivacyNoticeUrl?:string|undefined};
 const key=(config:AuthConfig)=>new TextEncoder().encode(config.jwtSecret);
 const normalizeEmail=(email:string)=>email.trim().toLowerCase();
 const activeMembershipWindow=(now:Date)=>({$and:[{$or:[{validFrom:{$exists:false}},{validFrom:{$lte:now}}]},{$or:[{validUntil:{$exists:false}},{validUntil:{$gt:now}}]}]});
@@ -161,7 +161,7 @@ export async function verifyMfaStepUp(
  const c=coreCollections(db),user=await c.users.findOne({userId,status:"active",mfaEnabled:true});
  if(!user?.mfaSecretEncrypted)throw new Error("MFA_ENROLLMENT_REQUIRED");
  if(!user.passwordHash||!await verifyPassword(password,user.passwordHash))throw new Error("MFA_STEP_UP_FAILED");
- const secret=decryptMfaSecret(user.mfaSecretEncrypted,config.mfaEncryptionKey),step=verifyTotpCode(secret,code);
+ const secret=decryptMfaSecretWithConfig(user.mfaSecretEncrypted,config),step=verifyTotpCode(secret,code);
  const recoveryHash=hashRecoveryCode(code);
  const now=new Date(),expiresAt=new Date(now.getTime()+5*60_000),transaction=db.client.startSession();
  try{
